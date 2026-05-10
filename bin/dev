@@ -1,0 +1,7 @@
+#!/bin/bash
+
+source .env
+
+make dev APP_NAME=.dev
+$DEV_RUN_OPTS.dev.*
+rm .dev.*
