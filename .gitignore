@@ -3,5 +3,9 @@ SDL3.dll
 game.*
 .env
 
+# builds
+windows.zip
+linux.zip
+
 # ripgrep
 .rgignore

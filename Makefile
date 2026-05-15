@@ -3,7 +3,7 @@
 export
 
 # File/directory names
-APP_NAME	?= game
+GAME_NAME	?= game
 SRC_FILES	= $(shell find src -type f -name '*.c')
 
 # Compilers
@@ -32,8 +32,22 @@ ifeq ($(DEV_PLATFORM), Windows)
 	DEV_LINK_FLAGS	:= $(WIN_LINK_FLAGS)
 endif
 
-dev:
-	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o $(APP_NAME)$(EXT)
+.PHONY: all clean dev windows linux
+
+all: windows linux
 
 clean:
-	rm $(APP_NAME)$(EXT)
+	rm -rf windows.zip linux.zip $(GAME_NAME)$(EXT)
+
+dev:
+	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o $(GAME_NAME)$(EXT)
+
+windows:
+	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
+	zip -r -q windows.zip $(GAME_NAME).exe SDL3.dll
+	rm $(GAME_NAME).exe
+
+linux:
+	$(LINUX_CC) $(SRC_FILES) $(LINUX_COMP_FLAGS) $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
+	zip -r -q linux.zip $(GAME_NAME).x86_64
+	rm $(GAME_NAME).x86_64
