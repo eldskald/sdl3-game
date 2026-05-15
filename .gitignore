@@ -1,5 +1,4 @@
-/lib
-/include
+/SDL3
 SDL3.dll
 game.*
 .env

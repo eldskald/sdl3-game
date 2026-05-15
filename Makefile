@@ -12,11 +12,11 @@ WIN_CC	 := x86_64-w64-mingw32-gcc
 
 # Compile flags
 LINUX_COMP_FLAGS	= -std=c99 -Wall -I./src
-WIN_COMP_FLAGS		= -std=c99 -Wall -I./src -I./include
+WIN_COMP_FLAGS		= -std=c99 -Wall -I./src -I./SDL3/include
 
 # Linker flags
 LINUX_LINK_FLAGS	= -lSDL3 -lpthread
-WIN_LINK_FLAGS		= -L./lib -lSDL3
+WIN_LINK_FLAGS		= -L./SDL3/lib -lSDL3
 
 # Setting platform commands
 ifeq ($(DEV_PLATFORM), Linux)
