@@ -15,7 +15,7 @@ LINUX_COMP_FLAGS	= -std=c99 -Wall -I./src
 WIN_COMP_FLAGS		= -std=c99 -Wall -I./src -I./SDL3/include
 
 # Linker flags
-LINUX_LINK_FLAGS	= -lSDL3 -lpthread
+LINUX_LINK_FLAGS	= -lSDL3
 WIN_LINK_FLAGS		= -L./SDL3/lib -lSDL3
 
 # Setting platform commands
@@ -44,10 +44,10 @@ dev:
 
 windows:
 	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
-	zip -r -q windows.zip $(GAME_NAME).exe SDL3.dll
+	zip -r -q windows.zip $(GAME_NAME).exe SDL3.dll res
 	rm $(GAME_NAME).exe
 
 linux:
 	$(LINUX_CC) $(SRC_FILES) $(LINUX_COMP_FLAGS) $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
-	zip -r -q linux.zip $(GAME_NAME).x86_64
+	zip -r -q linux.zip $(GAME_NAME).x86_64 res
 	rm $(GAME_NAME).x86_64
