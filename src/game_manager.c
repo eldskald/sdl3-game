@@ -1,4 +1,5 @@
 #include "game_manager.h"
+#include "defs.h"
 #include "inputs.h"
 #include "renderer.h"
 #include <SDL3/SDL.h>
@@ -10,20 +11,24 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 
+#ifdef DEV
+#include "dev/dev.h"
+#endif
+
 #undef SDL_HINT_MAIN_CALLBACK_RATE
 #define SDL_HINT_MAIN_CALLBACK_RATE 0
 
-#define SEC2NANOSEC 1000000.0f
+#define SEC2NANOSEC 1000000000
 
 static SDL_Thread* fixed_t = NULL;
 
-static const Uint64 fixed_t_target_rate = (Uint64)SEC2NANOSEC / 30;
-static float fixed_t_dt = 0.0f;
+static const Uint64 fixed_t_target_rate = SEC2NANOSEC / FIXED_T_TARGET_FPS;
 static Uint64 fixed_t_start = 0;
+static Uint64 fixed_t_diff = 0;
 
-static const Uint64 main_t_target_rate = (Uint64)SEC2NANOSEC / 60;
-static float main_t_dt = 0.0f;
+static const Uint64 main_t_target_rate = SEC2NANOSEC / MAIN_T_TARGET_FPS;
 static Uint64 main_t_start = 0;
+static Uint64 main_t_diff = 0;
 
 static bool running = true;
 
@@ -35,17 +40,19 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Started fixed loop thread.");
 
     while (running) {
-
         // Fixed thread loop
 
+#ifdef DEV
+        DEV_update();
+#endif
+
         // Calculate and cap tick rate
-        Uint64 now = SDL_GetTicksNS();
-        if (fixed_t_target_rate > now - fixed_t_start) {
-            fixed_t_dt = (float)fixed_t_target_rate / SEC2NANOSEC;
-            SDL_DelayNS(fixed_t_target_rate - (now - fixed_t_start));
+        if (fixed_t_target_rate > SDL_GetTicksNS() - fixed_t_start) {
+            fixed_t_diff = fixed_t_target_rate;
+            SDL_DelayPrecise(fixed_t_target_rate -
+                        (SDL_GetTicksNS() - fixed_t_start));
         } else {
-            fixed_t_dt =
-                (float)(SDL_GetTicksNS() - fixed_t_start) / SEC2NANOSEC;
+            fixed_t_diff = SDL_GetTicksNS() - fixed_t_start;
         }
         fixed_t_start = SDL_GetTicksNS();
     }
@@ -71,6 +78,11 @@ int GAME_MANAGER_start(void) {
 
     if (RENDERER_start((char*)base_path)) return 1;
 
+#ifdef DEV
+    DEV_start();
+#endif
+
+
     fixed_t = SDL_CreateThread(fixed_thread, "fixed", NULL);
 
     return 0;
@@ -84,6 +96,10 @@ void GAME_MANAGER_stop(void) {
     SDL_WaitThread(fixed_t, NULL);
 
     RENDERER_stop();
+
+#ifdef DEV
+    DEV_stop();
+#endif
 
     SDL_Quit();
 }
@@ -110,12 +126,11 @@ void GAME_MANAGER_update(void) {
     RENDERER_update();
 
     // Calculate and cap tick rate
-    Uint64 now = SDL_GetTicksNS();
-    if (main_t_target_rate > now - main_t_start) {
-        main_t_dt = (float)main_t_target_rate / SEC2NANOSEC;
-        SDL_DelayNS(main_t_target_rate - (now - main_t_start));
+    if (main_t_target_rate > SDL_GetTicksNS() - main_t_start) {
+        main_t_diff = main_t_target_rate;
+        SDL_DelayPrecise(main_t_target_rate - (SDL_GetTicksNS() - main_t_start));
     } else {
-        main_t_dt = (float)(SDL_GetTicksNS() - main_t_start) / SEC2NANOSEC;
+        main_t_diff = SDL_GetTicksNS() - main_t_start;
     }
     main_t_start = SDL_GetTicksNS();
 }
@@ -127,10 +142,10 @@ void GAME_MANAGER_quit(void) {
 
 
 float GAME_MANAGER_get_fixed_dt() {
-    return fixed_t_dt;
+    return (float)fixed_t_diff / (float)SEC2NANOSEC;
 }
 
 
 float GAME_MANAGER_get_main_dt() {
-    return main_t_dt;
+    return (float)main_t_diff / (float)SEC2NANOSEC;
 }
