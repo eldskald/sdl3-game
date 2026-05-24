@@ -3,13 +3,15 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_init.h>
 
-// Initializes game. Call on SDL_AppInit(). Returns 0 when successful, 1 otherwise.
+// Initializes game. Call on SDL_AppInit(). Returns 0 when successful, 1
+// otherwise.
 int GAME_MANAGER_start(void);
 
 // Main thread loop. Call on SDL_AppIterate().
 void GAME_MANAGER_update(void);
 
-// Event handling. Call on SDL_AppEvent(). Returns 1 when game is quitting, 0 otherwise.
+// Event handling. Call on SDL_AppEvent(). Returns 1 when game is quitting, 0
+// otherwise.
 int GAME_MANAGER_events(SDL_Event* event);
 
 // Unloads game. Call on SDL_AppQuit().

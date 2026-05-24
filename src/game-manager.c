@@ -1,4 +1,4 @@
-#include "game_manager.h"
+#include "game-manager.h"
 #include "defs.h"
 #include "inputs.h"
 #include "renderer.h"
@@ -34,8 +34,6 @@ static bool running = true;
 
 
 
-// FIXED THREAD ----------------------------------------------------------------
-// Put all ticks on the fixed loop here
 static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Started fixed loop thread.");
 
@@ -50,7 +48,7 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
         if (fixed_t_target_rate > SDL_GetTicksNS() - fixed_t_start) {
             fixed_t_diff = fixed_t_target_rate;
             SDL_DelayPrecise(fixed_t_target_rate -
-                        (SDL_GetTicksNS() - fixed_t_start));
+                             (SDL_GetTicksNS() - fixed_t_start));
         } else {
             fixed_t_diff = SDL_GetTicksNS() - fixed_t_start;
         }
@@ -60,13 +58,9 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Ending fixed loop thread.");
     return 0;
 }
-// -----------------------------------------------------------------------------
 
 
 
-// EXPORTED FUNCTIONS ----------------------------------------------------------
-
-// Called on SDL_AppInit()
 int GAME_MANAGER_start(void) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_VIDEO, SDL_LOG_PRIORITY_INFO);
@@ -89,7 +83,6 @@ int GAME_MANAGER_start(void) {
 }
 
 
-// Called on SDL_AppQuit()
 void GAME_MANAGER_stop(void) {
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Closing game...");
 
@@ -105,7 +98,6 @@ void GAME_MANAGER_stop(void) {
 }
 
 
-// Called on SDL_AppEvent()
 int GAME_MANAGER_events(SDL_Event* event) {
     if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
         running = false;
@@ -119,7 +111,7 @@ int GAME_MANAGER_events(SDL_Event* event) {
 }
 
 
-// Called on SDL_AppIterate()
+
 void GAME_MANAGER_update(void) {
 
     // Main thread loop
@@ -128,7 +120,8 @@ void GAME_MANAGER_update(void) {
     // Calculate and cap tick rate
     if (main_t_target_rate > SDL_GetTicksNS() - main_t_start) {
         main_t_diff = main_t_target_rate;
-        SDL_DelayPrecise(main_t_target_rate - (SDL_GetTicksNS() - main_t_start));
+        SDL_DelayPrecise(main_t_target_rate -
+                         (SDL_GetTicksNS() - main_t_start));
     } else {
         main_t_diff = SDL_GetTicksNS() - main_t_start;
     }

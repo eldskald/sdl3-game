@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "defs.h"
+#include "sprites.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_gpu.h>
@@ -12,17 +13,16 @@
 #include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_video.h>
 
+#ifdef DEV
+#include "game-manager.h"
+#endif
+
 static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
 static SDL_Texture* base_screen = NULL;
 
-static SDL_Texture* spritesheet = NULL;
 
 
-
-// START GRAPHICS PIPELINE -----------------------------------------------------
-// Handles the creation of all the SDL structs for handling graphics.
-// Returns 1 when an error ocurred, 0 otherwise.
 static int start_graphics_pipeline() {
 
     // Initialize video
@@ -46,8 +46,6 @@ static int start_graphics_pipeline() {
     }
     SDL_SetWindowMinimumSize(window, MIN_WINDOW_SIZE_X, MIN_WINDOW_SIZE_Y);
     SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Window initialized successfully.");
-
-
 
     // Creating SDL_Renderer
     renderer = SDL_CreateRenderer(window, NULL);
@@ -77,59 +75,21 @@ static int start_graphics_pipeline() {
 
     return 0;
 }
-// -----------------------------------------------------------------------------
 
 
 
-// LOAD GRAPHICAL ASSETS -------------------------------------------------------
-// Handles loading textures, shaders, etc.
-// Returns 1 when an error ocurred, 0 otherwise.
-static int load_graphical_assets(char* base_path) {
-
-    // Load textures
-    char* sheet_path = NULL;
-    SDL_asprintf(&sheet_path, "%s%stest.png", base_path, RES_TEXTURES_PATH);
-    SDL_Surface* surface = SDL_LoadPNG(sheet_path);
-    if (!surface) {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
-                     "Couldn't load spritesheet: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_free(sheet_path);
-    spritesheet = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_DestroySurface(surface);
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
-
-
-
-    return 0;
-}
-// -----------------------------------------------------------------------------
-
-
-
-// RENDER BASE SCREEN ----------------------------------------------------------
 static void render_base_screen(void) {
     SDL_SetRenderTarget(renderer, base_screen);
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
 
-    SDL_FRect dstrect = (SDL_FRect){
-        .x = 100.0f,
-        .y = 100.0f,
-        .w = 32.0f,
-        .h = 32.0f,
-    };
-    SDL_RenderTexture(renderer, spritesheet, NULL, &dstrect);
+    SPRITES_update(renderer);
 
     SDL_RenderPresent(renderer);
 }
-// -----------------------------------------------------------------------------
 
 
 
-// RENDER FINAL SCREEN ---------------------------------------------------------
 static void render_final_screen(void) {
     SDL_SetRenderTarget(renderer, NULL);
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
@@ -165,21 +125,20 @@ static void render_final_screen(void) {
 
     SDL_RenderPresent(renderer);
 }
-// -----------------------------------------------------------------------------
 
 
-// EXPORTED FUNCTIONS ----------------------------------------------------------
+
 int RENDERER_start(char* base_path) {
     if (start_graphics_pipeline()) return 1;
-    if (load_graphical_assets(base_path)) return 1;
+    if (SPRITES_start(base_path, renderer)) return 1;
     return 0;
 }
 
 
 void RENDERER_stop(void) {
-    SDL_DestroyTexture(spritesheet);
     SDL_DestroyTexture(base_screen);
     SDL_DestroyRenderer(renderer);
+    SPRITES_stop();
     SDL_DestroyWindow(window);
 }
 
@@ -187,13 +146,4 @@ void RENDERER_stop(void) {
 void RENDERER_update(void) {
     render_base_screen();
     render_final_screen();
-
-    // SDL_SetRenderDrawColor(renderer, COL_BLACK);
-    // SDL_RenderClear(renderer);
-    //
-    // SDL_FRect dstrect = {100, 100, 32, 32};
-    // SDL_RenderTexture(renderer, spritesheet, NULL, &dstrect);
-    //
-    // SDL_RenderPresent(renderer);
 }
-// -----------------------------------------------------------------------------

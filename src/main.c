@@ -1,5 +1,5 @@
 #define SDL_MAIN_USE_CALLBACKS
-#include "game_manager.h"
+#include "game-manager.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_log.h>

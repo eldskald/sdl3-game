@@ -15,6 +15,9 @@
 #define RES_PATH "res/"
 #define RES_TEXTURES_PATH RES_PATH "textures/"
 
+#define SPRITESHEET_CELL_X 8
+#define SPRITESHEET_CELL_Y 8
+
 #define COL_BLACK 0, 0, 0, 255
 #define COL_WHITE 255, 255, 255, 255
 
