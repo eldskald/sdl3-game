@@ -3,13 +3,6 @@
 #include "inputs.h"
 #include "renderer.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_hints.h>
-#include <SDL3/SDL_init.h>
-#include <SDL3/SDL_log.h>
-#include <SDL3/SDL_stdinc.h>
-#include <SDL3/SDL_thread.h>
-#include <SDL3/SDL_timer.h>
-#include <SDL3/SDL_video.h>
 
 #ifdef DEV
 #include "dev/dev.h"
@@ -131,6 +124,13 @@ void GAME_MANAGER_update(void) {
 
 void GAME_MANAGER_quit(void) {
     running = false;
+}
+
+
+float GAME_MANAGER_get_current_dt(void) {
+    SDL_ThreadID fixed = SDL_GetThreadID(fixed_t);
+    if (fixed == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fixed_dt();
+    return GAME_MANAGER_get_main_dt();
 }
 
 

@@ -2,20 +2,7 @@
 #include "defs.h"
 #include "sprites.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_error.h>
-#include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_init.h>
-#include <SDL3/SDL_log.h>
-#include <SDL3/SDL_pixels.h>
-#include <SDL3/SDL_rect.h>
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_stdinc.h>
-#include <SDL3/SDL_surface.h>
-#include <SDL3/SDL_video.h>
-
-#ifdef DEV
-#include "game-manager.h"
-#endif
 
 static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
@@ -26,7 +13,7 @@ static SDL_Texture* base_screen = NULL;
 static int start_graphics_pipeline() {
 
     // Initialize video
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
                      "Failed to initialize video! %s",
                      SDL_GetError());
@@ -140,6 +127,7 @@ void RENDERER_stop(void) {
     SDL_DestroyRenderer(renderer);
     SPRITES_stop();
     SDL_DestroyWindow(window);
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
 

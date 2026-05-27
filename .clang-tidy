@@ -17,11 +17,10 @@ Checks: >
     -clang-analyzer-security.insecureAPI.*,
     -misc-no-recursion,
     -modernize-redundant-void-arg,
+    -misc-include-cleaner,
 
 WarningsAsErrors: true
 
 CheckOptions:
   - key:             bugprone-assert-side-effect.AssertMacros
     value:           'ASSERT'
-
-ExtraArgs: [-std=c99,-DDEBUG]

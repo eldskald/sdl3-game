@@ -1,7 +1,5 @@
 #pragma once
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_init.h>
 
 // Initializes game. Call on SDL_AppInit(). Returns 0 when successful, 1
 // otherwise.
@@ -19,6 +17,9 @@ void GAME_MANAGER_stop(void);
 
 // Requests to quit the game.
 void GAME_MANAGER_quit(void);
+
+// Current thread's delta time.
+float GAME_MANAGER_get_current_dt(void);
 
 // Main thread's delta time.
 float GAME_MANAGER_get_main_dt(void);

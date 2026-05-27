@@ -1,5 +1,4 @@
 #pragma once
-#include <SDL3/SDL.h>
 
 // Loads textures, shaders, etc. Returns 0 when successful, 1 otherwise.
 int RENDERER_start(char* base_path);

@@ -1,6 +1,5 @@
 #pragma once
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_stdinc.h>
 
 #define SPRITES_ANIM_MAX_KEYFRAMES 8
 
@@ -61,8 +60,8 @@ typedef struct {
 
 
 // Adds sprite data to the rendering pipeline. Fills sprite_id with its id if
-// successful, returning 0. Otherwise, returns 3 if sprite buffer is full or 2
-// if data is invalid (coords w and h must be 0 or more).
+// successful, returning 0. Otherwise, returns is 2 if data is invalid (coords w
+// and h must be 0 or more).
 int SPRITES_new_sprite(sprite data, int* sprite_id);
 
 // Removes sprite from the rendering pipeline. Returns 0 if everything went

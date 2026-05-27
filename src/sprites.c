@@ -3,19 +3,54 @@
 #include "defs.h"
 #include "game-manager.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_log.h>
-#include <SDL3/SDL_render.h>
 
-#define SPRITE_ARR_LENGTH 2048
+#define STARTING_DYN_ARRS_LENGTH 1048576 // 1024 * 1024
 #define Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -127 to 127
 
-static sprite sprites[SPRITE_ARR_LENGTH] = {{0}};
-static animation animations[SPRITE_ARR_LENGTH] = {{0}};
-static float anim_times[SPRITE_ARR_LENGTH] = {0.0f};
-static bool anim_playing[SPRITE_ARR_LENGTH] = {0};
+static int dynarrs_size = STARTING_DYN_ARRS_LENGTH;
+static sprite* sprites = NULL;
+static animation* animations = NULL;
+static float* anim_times = NULL;
+static bool* anim_playing = NULL;
 static list z_index_map[Z_INDEX_TOTAL] = {{NULL}};
 
 static SDL_Texture* spritesheet = NULL;
+
+
+
+static void start_dyn_arrs(void) {
+    sprites = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(sprite));
+    animations = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(animation));
+    anim_times = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(float));
+    anim_playing = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(bool));
+}
+
+
+static void stop_dyn_arrs(void) {
+    SDL_free(sprites);
+    SDL_free(animations);
+    SDL_free(anim_times);
+    SDL_free(anim_playing);
+}
+
+
+static void double_dyn_arrs(void) {
+    sprite* new_sprites = SDL_calloc(2 * dynarrs_size, sizeof(sprite));
+    animation* new_animations = SDL_calloc(2 * dynarrs_size, sizeof(animation));
+    float* new_anim_times = SDL_calloc(2 * dynarrs_size, sizeof(float));
+    bool* new_anim_playing = SDL_calloc(2 * dynarrs_size, sizeof(bool));
+    for (int i = 0; i < dynarrs_size; i++) {
+        new_sprites[i] = sprites[i];
+        new_animations[i] = animations[i];
+        new_anim_times[i] = anim_times[i];
+        new_anim_playing[i] = anim_playing[i];
+    }
+    SDL_free(sprites);
+    SDL_free(animations);
+    SDL_free(anim_times);
+    SDL_free(anim_playing);
+    dynarrs_size = 2 * dynarrs_size;
+}
 
 
 
@@ -41,7 +76,7 @@ int SPRITES_new_sprite(sprite data, int* sprite_id) {
                     data.coords_h);
         return 2;
     }
-    for (int i = 0; i < SPRITE_ARR_LENGTH; i++) {
+    for (int i = 0; i < dynarrs_size; i++) {
         if (sprites[i].coords_w == 0) {
             sprites[i] = data;
             add_to_z_index_map(i);
@@ -49,14 +84,17 @@ int SPRITES_new_sprite(sprite data, int* sprite_id) {
             return 0;
         }
     }
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                "Tried to create sprite but sprite buffer is full.");
-    return 3;
+    double_dyn_arrs();
+    int index = dynarrs_size / 2 + 1;
+    sprites[index] = data;
+    add_to_z_index_map(index);
+    *sprite_id = index;
+    return 0;
 }
 
 
 int SPRITES_del_sprite(int sprite_id) {
-    if (sprite_id >= SPRITE_ARR_LENGTH || sprite_id < 0) {
+    if (sprite_id >= dynarrs_size || sprite_id < 0) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to delete sprite_id=%d but this is outside the buffer range",
@@ -76,7 +114,7 @@ int SPRITES_del_sprite(int sprite_id) {
 
 
 int SPRITES_get_sprite(int sprite_id, sprite* data) {
-    if (sprite_id >= SPRITE_ARR_LENGTH) {
+    if (sprite_id >= dynarrs_size) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to get sprite_id=%d but this is outside the buffer range",
@@ -96,7 +134,7 @@ int SPRITES_get_sprite(int sprite_id, sprite* data) {
 
 
 int SPRITES_update_sprite(int sprite_id, sprite data) {
-    if (sprite_id >= SPRITE_ARR_LENGTH || sprite_id < 0) {
+    if (sprite_id >= dynarrs_size || sprite_id < 0) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to update sprite_id=%d but this is outside the buffer range",
@@ -145,13 +183,14 @@ int SPRITES_start(char* base_path, SDL_Renderer* renderer) {
     spritesheet = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_DestroySurface(surface);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
+    start_dyn_arrs();
     return 0;
 }
 
 
 
 int SPRITES_play_anim(int sprite_id, animation anim) {
-    if (sprite_id >= SPRITE_ARR_LENGTH || sprite_id < 0) {
+    if (sprite_id >= dynarrs_size || sprite_id < 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to animate sprite_id=%d but this is outside the "
                     "buffer range",
@@ -172,7 +211,7 @@ int SPRITES_play_anim(int sprite_id, animation anim) {
 }
 
 int SPRITES_stop_anim(int sprite_id) {
-    if (sprite_id >= SPRITE_ARR_LENGTH || sprite_id < 0) {
+    if (sprite_id >= dynarrs_size || sprite_id < 0) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to stop animation in sprite_id=%d but this is outside the "
@@ -194,7 +233,7 @@ int SPRITES_stop_anim(int sprite_id) {
 }
 
 int SPRITES_anim_finished(int sprite_id, bool* finished) {
-    if (sprite_id >= SPRITE_ARR_LENGTH || sprite_id < 0) {
+    if (sprite_id >= dynarrs_size || sprite_id < 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check animation end in sprite_id=%d but this is "
                     "outside the buffer range",
@@ -274,4 +313,5 @@ void SPRITES_stop(void) {
     for (int i = 0; i < Z_INDEX_TOTAL; i++) {
         clear_list(&z_index_map[i]);
     }
+    stop_dyn_arrs();
 }
