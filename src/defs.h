@@ -23,3 +23,9 @@
 
 #define GPU_BLACK {0.0f, 0.0f, 0.0f, 1.0f}
 #define GPU_WHITE {1.0f, 1.0f, 1.0f, 1.0f}
+
+#define STARTING_DYN_ARRS_LENGTH 1024
+#define Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -127 to 127
+
+#define TILEMAP_SIZE_X 1024
+#define TILEMAP_SIZE_Y 1024

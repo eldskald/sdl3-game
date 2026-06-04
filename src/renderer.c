@@ -1,12 +1,13 @@
 #include "renderer.h"
 #include "defs.h"
 #include "sprites.h"
+#include "tilemap.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_init.h>
 
 static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
 static SDL_Texture* base_screen = NULL;
+static SDL_Texture* spritesheet = NULL;
 
 
 
@@ -63,6 +64,25 @@ static int start_graphics_pipeline() {
     return 0;
 }
 
+static int load_graphics_files(char* base_path) {
+    char* sheet_path = NULL;
+    SDL_asprintf(
+        &sheet_path, "%s%sspritesheet.png", base_path, RES_TEXTURES_PATH);
+    SDL_Surface* surface = SDL_LoadPNG(sheet_path);
+    if (!surface) {
+        SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
+                     "Couldn't load spritesheet: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_free(sheet_path);
+    spritesheet = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_DestroySurface(surface);
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
+
+    return 0;
+}
+
 
 
 static void render_base_screen(void) {
@@ -70,7 +90,8 @@ static void render_base_screen(void) {
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
 
-    SPRITES_update(renderer);
+    SPRITES_update(renderer, spritesheet);
+    TILEMAP_draw(renderer, spritesheet);
 
     SDL_RenderPresent(renderer);
 }
@@ -117,7 +138,8 @@ static void render_final_screen(void) {
 
 int RENDERER_start(char* base_path) {
     if (start_graphics_pipeline()) return 1;
-    if (SPRITES_start(base_path, renderer)) return 1;
+    if (load_graphics_files(base_path)) return 1;
+    if (SPRITES_start()) return 1;
     return 0;
 }
 

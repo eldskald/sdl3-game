@@ -4,17 +4,12 @@
 #include "game-manager.h"
 #include <SDL3/SDL.h>
 
-#define STARTING_DYN_ARRS_LENGTH 1048576 // 1024 * 1024
-#define Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -127 to 127
-
 static int dynarrs_size = STARTING_DYN_ARRS_LENGTH;
 static sprite* sprites = NULL;
 static animation* animations = NULL;
 static float* anim_times = NULL;
 static bool* anim_playing = NULL;
 static list z_index_map[Z_INDEX_TOTAL] = {{NULL}};
-
-static SDL_Texture* spritesheet = NULL;
 
 
 
@@ -168,21 +163,7 @@ int SPRITES_update_sprite(int sprite_id, sprite data) {
 
 
 
-int SPRITES_start(char* base_path, SDL_Renderer* renderer) {
-    char* sheet_path = NULL;
-    SDL_asprintf(
-        &sheet_path, "%s%sspritesheet.png", base_path, RES_TEXTURES_PATH);
-    SDL_Surface* surface = SDL_LoadPNG(sheet_path);
-    if (!surface) {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
-                     "Couldn't load spritesheet: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_free(sheet_path);
-    spritesheet = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_DestroySurface(surface);
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
+int SPRITES_start(void) {
     start_dyn_arrs();
     return 0;
 }
@@ -254,7 +235,7 @@ int SPRITES_anim_finished(int sprite_id, bool* finished) {
 
 
 
-void SPRITES_update(SDL_Renderer* renderer) {
+void SPRITES_update(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
     for (int i = 0; i < Z_INDEX_TOTAL; i++) {
         node* curr = z_index_map[i].head;
         while (curr) {
@@ -309,7 +290,6 @@ void SPRITES_update(SDL_Renderer* renderer) {
 
 
 void SPRITES_stop(void) {
-    SDL_DestroyTexture(spritesheet);
     for (int i = 0; i < Z_INDEX_TOTAL; i++) {
         clear_list(&z_index_map[i]);
     }

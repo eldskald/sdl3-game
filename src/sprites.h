@@ -97,12 +97,12 @@ int SPRITES_anim_finished(int sprite_id, bool* finished);
 
 
 
-// Loads the spritesheet and other textures. Returns 0 when successful, 1
-// otherwise. Call on start of the game.
-int SPRITES_start(char* base_path, SDL_Renderer* renderer);
+// Allocates memory and other stuff. Returns 0 when successful, 1 otherwise.
+// Call on start of the game.
+int SPRITES_start(void);
 
-// Unloads the spritesheet and other textures. Call when quitting the game.
+// Frees allocated memory. Call when quitting the game.
 void SPRITES_stop(void);
 
 // Updates the sprites state and renders them. Call on renderer update.
-void SPRITES_update(SDL_Renderer* renderer);
+void SPRITES_update(SDL_Renderer* renderer, SDL_Texture* spritesheet);

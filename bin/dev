@@ -3,5 +3,5 @@
 source .env
 
 make dev GAME_NAME=.dev
-$DEV_RUN_OPTS.dev.*
+eval "$DEV_RUN_CMD"
 rm .dev.*
