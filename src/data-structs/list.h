@@ -1,10 +1,13 @@
-typedef struct node node;
+#pragma once
+#include <SDL3/SDL.h>
 
 // A node of the list.
+//
 // struct node {
 //     int val;
 //     node* next;
 // };
+typedef struct node node;
 struct node {
     int val;
     node* next;
@@ -12,6 +15,7 @@ struct node {
 
 // List of int types. Use push_to_list(), remove_from_list() and clear_list() to
 // manipulate it. Always call clear_list() when done, or else memory leaks.
+//
 // struct list {
 //     node* head;
 // };
@@ -22,8 +26,14 @@ typedef struct {
 // Pushes val to be the new head.
 void push_to_list(int val, list* l);
 
+// Removes the list's head and returns its value.
+int pop_from_list(list* l);
+
 // Iterates from head until it finds val and remove it.
 void remove_from_list(int val, list* l);
+
+// Returns the length of the list.
+size_t get_list_len(list* l);
 
 // Clear all nodes, freeing all memory.
 void clear_list(list* l);

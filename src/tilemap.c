@@ -164,6 +164,8 @@ void TILEMAP_clear(void) {
 }
 
 void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
+    if (!map) return;
+
     for (int i = 0; i < TILEMAP_SIZE_X; i++) {
         for (int j = 0; j < TILEMAP_SIZE_Y; j++) {
             if ((*map)[i][j].mat == null) continue;
