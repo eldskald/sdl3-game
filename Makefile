@@ -5,6 +5,8 @@ export
 # File/directory names
 GAME_NAME	?= game
 SRC_FILES	= $(shell find src -type f -name '*.c')
+TEST_SRC_FILES  = $(shell find src -type f -name '*.c' -not -name 'main.c')
+TEST_FILES = $(shell find tests -type f -name '*.c')
 
 # Compilers
 LINUX_CC := gcc
@@ -41,6 +43,9 @@ clean:
 
 dev:
 	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o $(GAME_NAME)$(EXT)
+
+test:
+	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o test -DTEST -fsanitize=address
 
 windows:
 	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe

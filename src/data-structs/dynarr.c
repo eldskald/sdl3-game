@@ -28,7 +28,7 @@ void remove_at_from_dynarr(size_t at, dynarr* arr) {
     if (!arr) return;
     if (at < 0 || at >= arr->len) return;
     for (size_t i = at; i < arr->len; i++) {
-        arr[i] = arr[i + 1];
+        arr->at[i] = arr->at[i + 1];
     }
     arr->len--;
 }
@@ -36,6 +36,7 @@ void remove_at_from_dynarr(size_t at, dynarr* arr) {
 void clear_dynarr(dynarr* arr) {
     if (!arr) return;
     SDL_free(arr->at);
+    arr->at = NULL;
     arr->len = 0;
     arr->cap = 0;
 }
