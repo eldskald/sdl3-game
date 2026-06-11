@@ -7,4 +7,10 @@
 #define BLUE "\x1b[34m"
 #define RESET "\x1b[0m"
 
-void expect(int *errors, bool expectation);
+#define MAX_EXPECTATIONS 32
+#define FAIL_MESSAGE_MAX 256
+#define NUM_TO_STR_MAX 16
+
+void expect(const char* desc, size_t n, bool expectations[n]);
+
+bool get_tests_result(void);

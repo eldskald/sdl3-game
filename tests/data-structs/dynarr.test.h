@@ -1,3 +1,3 @@
 #pragma once
 
-void dynarr_test(int* errors);
+void test_dynarr(void);

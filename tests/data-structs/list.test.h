@@ -1,3 +1,3 @@
 #pragma once
 
-void list_test(int *errors);
+void test_list(void);

@@ -1,28 +1,43 @@
 #include "tests.h"
-#include "data-structs/list.test.h"
-#include "data-structs/dynarr.test.h"
-#include <stdio.h>
 #include <SDL3/SDL.h>
+#include <stdio.h>
+#include <string.h>
 
-void expect(int *errors, bool expectation) {
-    if (expectation) {
-        printf(GREEN " Passed\n" RESET);
+static int errors = 0;
+
+void expect(const char* desc, size_t n, bool expectations[n]) {
+    printf("%s", desc);
+
+    size_t misses_n = 0;
+    size_t misses[MAX_EXPECTATIONS] = {0};
+    for (size_t i = 0; i < n; i++) {
+        if (!expectations[i]) {
+            misses[misses_n] = i;
+            misses_n++;
+            errors++;
+        }
+    }
+    if (misses_n > 0) {
+        char msg[FAIL_MESSAGE_MAX] = "";
+        if (misses_n > 1) {
+            sprintf(msg, "At checks %lu", misses[0]);
+            for (size_t i = 1; i < misses_n - 1; i++) {
+                char str[NUM_TO_STR_MAX] = "";
+                sprintf(str, ", %lu", misses[i]);
+                strcat(msg, str);
+            }
+            char str[NUM_TO_STR_MAX] = "";
+            sprintf(str, " and %lu", misses[misses_n - 1]);
+            strcat(msg, str);
+        } else {
+            sprintf(msg, "At check %lu", misses[0]);
+        }
+        printf(RED " Failed - %s" RESET "\n", msg);
     } else {
-        printf(RED " Failed\n" RESET);
-        (*errors)++;
+        printf(GREEN " Passed" RESET "\n");
     }
 }
 
-int main() {
-    printf(BLUE "RUNNING TESTS\n" RESET);
-
-    int errors = 0;
-
-    list_test(&errors);
-    dynarr_test(&errors);
-
-    if (errors) printf(RED "\nFAILED\n" RESET);
-    else printf(GREEN "\nPASSED\n" RESET);
-
+bool get_tests_result(void) {
     return errors > 0;
 }
