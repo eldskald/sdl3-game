@@ -40,7 +40,8 @@ void remove_from_list(int val, list* l) {
 
 size_t get_list_len(list* l) {
     size_t len = 0;
-    for (node* i = l->head; i; i = i->next) len++;
+    for (node* i = l->head; i; i = i->next)
+        len++;
     return len;
 }
 

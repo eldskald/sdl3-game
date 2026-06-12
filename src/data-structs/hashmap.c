@@ -23,7 +23,6 @@ static void* insert_in_lists(void* val,
                              size_t cap) {
     // Only works when cap is a power of 2
     size_t index = (size_t)(hash_key(key) & (Uint64)(cap - 1));
-    SDL_Log("%lu - %s", index, key);
 
     // Linear probing
     while (values[index] != NULL) {
@@ -45,7 +44,6 @@ static void* insert_in_lists(void* val,
     keys[index] = SDL_calloc(KEY_MAX_SIZE + 1, sizeof(char));
     SDL_strlcpy(keys[index], key, KEY_MAX_SIZE);
     push_to_list(index, indexes);
-    SDL_Log("%p - %s", keys[index], keys[index]);
     return val;
 }
 
@@ -111,6 +109,8 @@ void clear_hashmap(hashmap* map) {
     SDL_free(map->values);
     SDL_free(map->keys);
     clear_list(&map->indexes);
+    map->keys = NULL;
+    map->values = NULL;
     map->cap = 0;
     map->len = 0;
 }

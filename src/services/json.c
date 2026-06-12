@@ -4,7 +4,6 @@
 #include "../data-structs/list.h"
 #include "servicedefs.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_stdinc.h>
 
 typedef enum {
     elemarr,
@@ -93,10 +92,11 @@ jsondata* JSON_parse(const char* string) {
         // When parsing the first digit, figure out what the data type is.
         if (!parsing) {
             parsing = true;
-            if (curr >= '0' && curr <= '9') {
+            if ((curr >= '0' && curr <= '9') || curr == '-' || curr == '.') {
                 parsing_type = num;
                 val[val_i] = curr;
                 val_i++;
+                if (curr == '.') parsing_num_found_dot = true;
                 continue;
             }
             switch (curr) {
@@ -250,7 +250,7 @@ jsondata* JSON_parse(const char* string) {
                         return NULL;
                     }
                     push_to_dynarr(elem, &arrval);
-                    reset_val(&val, &val_i, &val_size);
+                    SDL_free(val);
                     parsing_arr_ended = true;
                     break;
                 } else if (recursions.head->val == elemarr) {
@@ -398,7 +398,7 @@ jsondata* JSON_parse(const char* string) {
                     };
                     set_on_hashmap(elem, parsing_obj_curr_key, &objval);
                     SDL_free(parsing_obj_curr_key);
-                    reset_val(&val, &val_i, &val_size);
+                    SDL_free(val);
                     parsing_obj_ended = true;
                     parsing_obj_val = false;
                     break;

@@ -14,12 +14,12 @@ Checks: >
     bugprone-signed-char-misuse,
     bugprone-sizeof-expression,
     bugprone-branch-clone,
-    -clang-analyzer-security.insecureAPI.*,
     -misc-no-recursion,
+    -clang-analyzer-security.insecureAPI.*,
     -modernize-redundant-void-arg,
     -misc-include-cleaner,
 
-WarningsAsErrors: true
+WarningsAsErrors: '*' 
 
 CheckOptions:
   - key:             bugprone-assert-side-effect.AssertMacros
