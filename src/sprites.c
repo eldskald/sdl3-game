@@ -4,59 +4,51 @@
 #include "game-manager.h"
 #include <SDL3/SDL.h>
 
-static int dynarrs_size = STARTING_DYN_ARRS_LENGTH;
-static sprite* sprites = NULL;
-static animation* animations = NULL;
-static float* anim_times = NULL;
-static bool* anim_playing = NULL;
+#ifdef TEST
+#include "../tests/stubs.h"
+#endif
+
+// This is how we're doing it: we have this huge sprites array of sprite_data to
+// represent all current sprites rendering. It is just a big block of memory.
+// When SPRITES_new_sprite() is called, we iterate through it to find the
+// smallest unoccupied index and place the sprite there, where it shall remain
+// so that its sprite_id always points to it in the array. If the array gets
+// full, we double its size like a dynamic array but hopefully it shouldn't need
+// to.
+typedef struct {
+    sprite sprite;
+    animation anim;
+    float anim_time;
+    bool anim_playing;
+} sprite_data;
+
+static sprite_data* sprites = NULL;
+static size_t sprites_size = 0;
+
+static void double_dynarr(void) {
+    sprite_data* new_sprites =
+        SDL_calloc(sprites_size << 1, sizeof(sprite_data));
+    SDL_memcpy(new_sprites, sprites, sprites_size);
+    SDL_free(sprites);
+    sprites_size = sprites_size << 1;
+    sprites = new_sprites;
+}
+
+
+
+// The z_index map is our data structure to order sprite ids in order of z_index
+// that we should iterate through to draw them in z_index order. Each z_index is
+// mapped to z_index + Z_INDEX_TOTAL / 2, so they all fit in the array. We need
+// to update the map whenever a new sprite is added, removed or updated.
 static list z_index_map[Z_INDEX_TOTAL] = {{NULL}};
 
-
-
-static void start_dyn_arrs(void) {
-    sprites = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(sprite));
-    animations = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(animation));
-    anim_times = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(float));
-    anim_playing = SDL_calloc(STARTING_DYN_ARRS_LENGTH, sizeof(bool));
-}
-
-
-static void stop_dyn_arrs(void) {
-    SDL_free(sprites);
-    SDL_free(animations);
-    SDL_free(anim_times);
-    SDL_free(anim_playing);
-}
-
-
-static void double_dyn_arrs(void) {
-    sprite* new_sprites = SDL_calloc(2 * dynarrs_size, sizeof(sprite));
-    animation* new_animations = SDL_calloc(2 * dynarrs_size, sizeof(animation));
-    float* new_anim_times = SDL_calloc(2 * dynarrs_size, sizeof(float));
-    bool* new_anim_playing = SDL_calloc(2 * dynarrs_size, sizeof(bool));
-    for (int i = 0; i < dynarrs_size; i++) {
-        new_sprites[i] = sprites[i];
-        new_animations[i] = animations[i];
-        new_anim_times[i] = anim_times[i];
-        new_anim_playing[i] = anim_playing[i];
-    }
-    SDL_free(sprites);
-    SDL_free(animations);
-    SDL_free(anim_times);
-    SDL_free(anim_playing);
-    dynarrs_size = 2 * dynarrs_size;
-}
-
-
-
 static void add_to_z_index_map(int sprite_id) {
-    int map_index = sprites[sprite_id].z_index + Z_INDEX_TOTAL / 2;
+    int map_index = sprites[sprite_id].sprite.z_index + (Z_INDEX_TOTAL >> 1);
     push_to_list(sprite_id, &z_index_map[map_index]);
 }
 
-
 static void remove_from_z_index_map(int sprite_id) {
-    int map_index = sprites[sprite_id].z_index + Z_INDEX_TOTAL / 2;
+    int map_index = sprites[sprite_id].sprite.z_index + (Z_INDEX_TOTAL >> 1);
     remove_from_list(sprite_id, &z_index_map[map_index]);
 }
 
@@ -71,17 +63,17 @@ int SPRITES_new_sprite(sprite data, int* sprite_id) {
                     data.coords_h);
         return 2;
     }
-    for (int i = 0; i < dynarrs_size; i++) {
-        if (sprites[i].coords_w == 0) {
-            sprites[i] = data;
+    for (int i = 0; i < sprites_size; i++) {
+        if (sprites[i].sprite.coords_w == 0) {
+            sprites[i].sprite = data;
             add_to_z_index_map(i);
             *sprite_id = i;
             return 0;
         }
     }
-    double_dyn_arrs();
-    int index = dynarrs_size / 2 + 1;
-    sprites[index] = data;
+    double_dynarr();
+    int index = sprites_size / 2 + 1;
+    sprites[index].sprite = data;
     add_to_z_index_map(index);
     *sprite_id = index;
     return 0;
@@ -89,51 +81,51 @@ int SPRITES_new_sprite(sprite data, int* sprite_id) {
 
 
 int SPRITES_del_sprite(int sprite_id) {
-    if (sprite_id >= dynarrs_size || sprite_id < 0) {
-        SDL_LogWarn(
-            SDL_LOG_CATEGORY_APPLICATION,
-            "Tried to delete sprite_id=%d but this is outside the buffer range",
-            sprite_id);
+    if (sprite_id >= sprites_size || sprite_id < 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to delete sprite_id=%d but this is outside the "
+                    "buffer range",
+                    sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].coords_w == 0) {
+    if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to delete inexistent sprite at sprite_id=%d",
                     sprite_id);
         return 1;
     }
     remove_from_z_index_map(sprite_id);
-    sprites[sprite_id] = (sprite){0};
+    sprites[sprite_id].sprite = (sprite){0};
     return 0;
 }
 
 
 int SPRITES_get_sprite(int sprite_id, sprite* data) {
-    if (sprite_id >= dynarrs_size) {
+    if (sprite_id >= sprites_size) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to get sprite_id=%d but this is outside the buffer range",
             sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].coords_w == 0) {
+    if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get inexistent sprite at sprite_id=%d",
                     sprite_id);
         return 1;
     }
 
-    *data = sprites[sprite_id];
+    *data = sprites[sprite_id].sprite;
     return 0;
 }
 
 
 int SPRITES_update_sprite(int sprite_id, sprite data) {
-    if (sprite_id >= dynarrs_size || sprite_id < 0) {
-        SDL_LogWarn(
-            SDL_LOG_CATEGORY_APPLICATION,
-            "Tried to update sprite_id=%d but this is outside the buffer range",
-            sprite_id);
+    if (sprite_id >= sprites_size || sprite_id < 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to update sprite_id=%d but this is outside the "
+                    "buffer range",
+                    sprite_id);
         return 3;
     }
     if (data.coords_w == 0 || data.coords_h == 0) {
@@ -144,19 +136,19 @@ int SPRITES_update_sprite(int sprite_id, sprite data) {
                     data.coords_h);
         return 2;
     }
-    if (sprites[sprite_id].coords_w == 0) {
+    if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to update inexistent sprite at sprite_id=%d",
                     sprite_id);
         return 1;
     }
 
-    if (data.z_index != sprites[sprite_id].z_index) {
+    if (data.z_index != sprites[sprite_id].sprite.z_index) {
         remove_from_z_index_map(sprite_id);
-        sprites[sprite_id] = data;
+        sprites[sprite_id].sprite = data;
         add_to_z_index_map(sprite_id);
     } else {
-        sprites[sprite_id] = data;
+        sprites[sprite_id].sprite = data;
     }
     return 0;
 }
@@ -164,35 +156,36 @@ int SPRITES_update_sprite(int sprite_id, sprite data) {
 
 
 int SPRITES_start(void) {
-    start_dyn_arrs();
+    sprites = SDL_calloc(STARTING_SPRITES_DYNARR_CAP, sizeof(sprite_data));
+    sprites_size = STARTING_SPRITES_DYNARR_CAP;
     return 0;
 }
 
 
 
 int SPRITES_play_anim(int sprite_id, animation anim) {
-    if (sprite_id >= dynarrs_size || sprite_id < 0) {
+    if (sprite_id >= sprites_size || sprite_id < 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to animate sprite_id=%d but this is outside the "
                     "buffer range",
                     sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].coords_w == 0) {
+    if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to animate inexistent sprite at sprite_id=%d",
                     sprite_id);
         return 1;
     }
 
-    animations[sprite_id] = anim;
-    anim_playing[sprite_id] = true;
-    anim_times[sprite_id] = 0.0f;
+    sprites[sprite_id].anim = anim;
+    sprites[sprite_id].anim_playing = true;
+    sprites[sprite_id].anim_time = 0.0f;
     return 0;
 }
 
 int SPRITES_stop_anim(int sprite_id) {
-    if (sprite_id >= dynarrs_size || sprite_id < 0) {
+    if (sprite_id >= sprites_size || sprite_id < 0) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to stop animation in sprite_id=%d but this is outside the "
@@ -200,7 +193,7 @@ int SPRITES_stop_anim(int sprite_id) {
             sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].coords_w == 0) {
+    if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to stop animation in inexistent sprite at sprite_id=%d",
@@ -208,28 +201,28 @@ int SPRITES_stop_anim(int sprite_id) {
         return 1;
     }
 
-    anim_playing[sprite_id] = false;
-    anim_times[sprite_id] = 0.0f;
+    sprites[sprite_id].anim_playing = false;
+    sprites[sprite_id].anim_time = 0.0f;
     return 0;
 }
 
 int SPRITES_anim_finished(int sprite_id, bool* finished) {
-    if (sprite_id >= dynarrs_size || sprite_id < 0) {
+    if (sprite_id >= sprites_size || sprite_id < 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check animation end in sprite_id=%d but this is "
                     "outside the buffer range",
                     sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].coords_w == 0) {
-        SDL_LogWarn(
-            SDL_LOG_CATEGORY_APPLICATION,
-            "Tried to check animation end in inexistent sprite at sprite_id=%d",
-            sprite_id);
+    if (sprites[sprite_id].sprite.coords_w == 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to check animation end in inexistent sprite at "
+                    "sprite_id=%d",
+                    sprite_id);
         return 1;
     }
 
-    *finished = anim_times[sprite_id] == -1.0f;
+    *finished = sprites[sprite_id].anim_time == -1.0f;
     return 0;
 }
 
@@ -242,47 +235,55 @@ void SPRITES_update(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
             int id = curr->val;
 
             // Update animation status
-            if (anim_playing[id]) {
-                anim_times[id] += GAME_MANAGER_get_main_dt();
-                animation anim = animations[id];
+            if (sprites[id].anim_playing) {
+                sprites[id].anim_time += GAME_MANAGER_get_current_dt();
+                animation anim = sprites[id].anim;
                 int i = 0;
-                float time = anim_times[id];
+                float time = sprites[id].anim_time;
                 while (time >= 0.0f && anim.frames[i].duration > 0.0f) {
-                    sprites[curr->val].coords_x = anim.frames[i].coords_x;
-                    sprites[curr->val].coords_y = anim.frames[i].coords_y;
+                    sprites[curr->val].sprite.coords_x =
+                        anim.frames[i].coords_x;
+                    sprites[curr->val].sprite.coords_y =
+                        anim.frames[i].coords_y;
                     time -= anim.frames[i].duration;
                     i++;
                 }
                 if (anim.looped && time >= 0.0f) {
-                    anim_times[id] = time;
-                    sprites[curr->val].coords_x = anim.frames[0].coords_x;
-                    sprites[curr->val].coords_y = anim.frames[0].coords_y;
+                    sprites[id].anim_time = time;
+                    sprites[curr->val].sprite.coords_x =
+                        anim.frames[0].coords_x;
+                    sprites[curr->val].sprite.coords_y =
+                        anim.frames[0].coords_y;
 
                     // Non looping animations when they end, we leave them with
-                    // anim_times == -1.0f for one frame to trigger
+                    // anim_time == -1.0f for one frame to trigger
                     // SPRITES_anim_finished() once
                 } else if (!anim.looped && time >= 0.0f) {
-                    anim_playing[id] = false;
-                    anim_times[id] = -1.0f;
+                    sprites[id].anim_playing = false;
+                    sprites[id].anim_time = -1.0f;
                 }
-            } else if (anim_times[id] == -1.0f) {
-                anim_times[id] = 0.0f;
+            } else if (sprites[id].anim_time == -1.0f) {
+                sprites[id].anim_time = 0.0f;
             }
 
             // Render sprite
             SDL_FRect srcrect = (SDL_FRect){
-                .x = SPRITESHEET_CELL_X * sprites[curr->val].coords_x,
-                .y = SPRITESHEET_CELL_Y * sprites[curr->val].coords_y,
-                .w = SPRITESHEET_CELL_X * sprites[curr->val].coords_w,
-                .h = SPRITESHEET_CELL_Y * sprites[curr->val].coords_h,
+                .x = SPRITESHEET_CELL_X * sprites[curr->val].sprite.coords_x,
+                .y = SPRITESHEET_CELL_Y * sprites[curr->val].sprite.coords_y,
+                .w = SPRITESHEET_CELL_X * sprites[curr->val].sprite.coords_w,
+                .h = SPRITESHEET_CELL_Y * sprites[curr->val].sprite.coords_h,
             };
             SDL_FRect dstrect = (SDL_FRect){
-                .x = sprites[curr->val].pos_x,
-                .y = sprites[curr->val].pos_y,
-                .w = SPRITESHEET_CELL_X * sprites[curr->val].coords_w,
-                .h = SPRITESHEET_CELL_Y * sprites[curr->val].coords_h,
+                .x = sprites[curr->val].sprite.pos_x,
+                .y = sprites[curr->val].sprite.pos_y,
+                .w = SPRITESHEET_CELL_X * sprites[curr->val].sprite.coords_w,
+                .h = SPRITESHEET_CELL_Y * sprites[curr->val].sprite.coords_h,
             };
+#ifndef TEST
             SDL_RenderTexture(renderer, spritesheet, &srcrect, &dstrect);
+#else
+            stubbed_SDL_RenderTexture(&srcrect, &dstrect);
+#endif
             curr = curr->next;
         }
     }
@@ -293,5 +294,7 @@ void SPRITES_stop(void) {
     for (int i = 0; i < Z_INDEX_TOTAL; i++) {
         clear_list(&z_index_map[i]);
     }
-    stop_dyn_arrs();
+    SDL_free(sprites);
+    sprites = NULL;
+    sprites_size = 0;
 }

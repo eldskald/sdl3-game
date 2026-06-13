@@ -2,6 +2,10 @@
 #include "defs.h"
 #include <SDL3/SDL.h>
 
+#ifdef TEST
+#include "../tests/stubs.h"
+#endif
+
 static const Uint8 DIRT_AUTOTILE[256][2] = {
     {1, 0},  {1, 0},  {2, 4},  {2, 4}, // 0
     {1, 0},  {1, 0},  {2, 4},  {2, 4},
@@ -161,6 +165,7 @@ int TILEMAP_get_at(int x, int y, tile* data) {
 
 void TILEMAP_clear(void) {
     SDL_free(map);
+    map = NULL;
 }
 
 void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
@@ -181,7 +186,11 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
                 .w = SPRITESHEET_CELL_X,
                 .h = SPRITESHEET_CELL_Y,
             };
+#ifndef TEST
             SDL_RenderTexture(renderer, spritesheet, &srcrect, &dstrect);
+#else
+            stubbed_SDL_RenderTexture(&srcrect, &dstrect);
+#endif
         }
     }
 }

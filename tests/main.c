@@ -1,6 +1,7 @@
 #include "data-structs/dynarr.test.h"
 #include "data-structs/hashmap.test.h"
 #include "data-structs/list.test.h"
+#include "graphics/drawing.test.h"
 #include "services/json.test.h"
 #include "tests.h"
 #include <SDL3/SDL.h>
@@ -14,6 +15,8 @@ int main() {
     test_hashmap();
 
     test_json();
+
+    test_drawing();
 
     bool failed = get_tests_result();
 

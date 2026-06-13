@@ -1,8 +1,9 @@
 #pragma once
 
+// Main settings
+#define WINDOW_TITLE "Game"
 #define WINDOW_SIZE_X 320
 #define WINDOW_SIZE_Y 180
-#define WINDOW_TITLE "Game"
 
 #define MAIN_T_TARGET_FPS 60
 #define FIXED_T_TARGET_FPS 60
@@ -12,6 +13,9 @@
 #define MIN_WINDOW_SIZE_X 640
 #define MIN_WINDOW_SIZE_Y 360
 
+
+
+// Renderer
 #define RES_PATH "res/"
 #define RES_TEXTURES_PATH RES_PATH "textures/"
 
@@ -21,11 +25,14 @@
 #define COL_BLACK 0, 0, 0, 255
 #define COL_WHITE 255, 255, 255, 255
 
-#define GPU_BLACK {0.0f, 0.0f, 0.0f, 1.0f}
-#define GPU_WHITE {1.0f, 1.0f, 1.0f, 1.0f}
 
-#define STARTING_DYN_ARRS_LENGTH 1024
+
+// Sprites
+#define STARTING_SPRITES_DYNARR_CAP 1024
 #define Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -127 to 127
 
+
+
+// Tilemaps
 #define TILEMAP_SIZE_X 1024
 #define TILEMAP_SIZE_Y 1024

@@ -4,15 +4,17 @@
 #include "tilemap.h"
 #include <SDL3/SDL.h>
 
+#ifndef TEST
 static SDL_Window* window = NULL;
-static SDL_Renderer* renderer = NULL;
 static SDL_Texture* base_screen = NULL;
+#endif
+static SDL_Renderer* renderer = NULL;
 static SDL_Texture* spritesheet = NULL;
 
 
 
 static int start_graphics_pipeline() {
-
+#ifndef TEST
     // Initialize video
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
@@ -61,10 +63,13 @@ static int start_graphics_pipeline() {
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture base_screen created successfully.");
 
+#endif
+
     return 0;
 }
 
 static int load_graphics_files(char* base_path) {
+#ifndef TEST
     char* sheet_path = NULL;
     SDL_asprintf(
         &sheet_path, "%s%sspritesheet.png", base_path, RES_TEXTURES_PATH);
@@ -79,6 +84,7 @@ static int load_graphics_files(char* base_path) {
     spritesheet = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_DestroySurface(surface);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
+#endif
 
     return 0;
 }
@@ -86,19 +92,24 @@ static int load_graphics_files(char* base_path) {
 
 
 static void render_base_screen(void) {
+#ifndef TEST
     SDL_SetRenderTarget(renderer, base_screen);
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
+#endif
 
     SPRITES_update(renderer, spritesheet);
     TILEMAP_draw(renderer, spritesheet);
 
+#ifndef TEST
     SDL_RenderPresent(renderer);
+#endif
 }
 
 
 
 static void render_final_screen(void) {
+#ifndef TEST
     SDL_SetRenderTarget(renderer, NULL);
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
@@ -132,6 +143,7 @@ static void render_final_screen(void) {
     SDL_RenderTexture(renderer, base_screen, NULL, &dstrect);
 
     SDL_RenderPresent(renderer);
+#endif
 }
 
 
@@ -145,11 +157,15 @@ int RENDERER_start(char* base_path) {
 
 
 void RENDERER_stop(void) {
+#ifndef TEST
     SDL_DestroyTexture(base_screen);
     SDL_DestroyRenderer(renderer);
+#endif
     SPRITES_stop();
+#ifndef TEST
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
+#endif
 }
 
 
