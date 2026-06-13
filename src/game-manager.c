@@ -128,17 +128,29 @@ void GAME_MANAGER_quit(void) {
 
 
 float GAME_MANAGER_get_current_dt(void) {
+#ifndef TEST
     SDL_ThreadID fixed = SDL_GetThreadID(fixed_t);
     if (fixed == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fixed_dt();
     return GAME_MANAGER_get_main_dt();
+#else
+    return 1.0f / 60.0f;
+#endif
 }
 
 
 float GAME_MANAGER_get_fixed_dt() {
+#ifndef TEST
     return (float)fixed_t_diff / (float)SEC2NANOSEC;
+#else
+    return 1.0f / 60.0f;
+#endif
 }
 
 
 float GAME_MANAGER_get_main_dt() {
+#ifndef TEST
     return (float)main_t_diff / (float)SEC2NANOSEC;
+#else
+    return 1.0f / 60.0f;
+#endif
 }

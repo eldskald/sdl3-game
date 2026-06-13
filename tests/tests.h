@@ -10,6 +10,7 @@
 #define MAX_EXPECTATIONS 32
 #define FAIL_MESSAGE_MAX 256
 #define NUM_TO_STR_MAX 16
+#define SUB_CALLS_MAX 256
 
 void expect(const char* desc, size_t n, bool expectations[n]);
 
