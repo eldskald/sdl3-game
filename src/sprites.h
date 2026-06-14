@@ -97,9 +97,8 @@ int SPRITES_anim_finished(int sprite_id, bool* finished);
 
 
 
-// Allocates memory and other stuff. Returns 0 when successful, 1 otherwise.
-// Call on start of the game.
-int SPRITES_start(void);
+// Allocates memory and other stuff. Call on start of the game.
+void SPRITES_start(void);
 
 // Frees allocated memory. Call when quitting the game.
 void SPRITES_stop(void);

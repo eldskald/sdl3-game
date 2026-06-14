@@ -13,8 +13,8 @@ LINUX_CC := gcc
 WIN_CC	 := x86_64-w64-mingw32-gcc
 
 # Compile flags
-LINUX_COMP_FLAGS	= -std=c99 -Wall -I./src
-WIN_COMP_FLAGS		= -std=c99 -Wall -I./src -I./SDL3/include
+LINUX_COMP_FLAGS	= -std=c23 -Wall -Isrc --embed-dir=./
+WIN_COMP_FLAGS		= -std=c23 -Wall -Isrc -ISDL3/include --embed-dir=./
 
 # Linker flags
 LINUX_LINK_FLAGS	= -lSDL3

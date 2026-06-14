@@ -155,10 +155,9 @@ int SPRITES_update_sprite(int sprite_id, sprite data) {
 
 
 
-int SPRITES_start(void) {
+void SPRITES_start(void) {
     sprites = SDL_calloc(STARTING_SPRITES_DYNARR_CAP, sizeof(sprite_data));
     sprites_size = STARTING_SPRITES_DYNARR_CAP;
-    return 0;
 }
 
 

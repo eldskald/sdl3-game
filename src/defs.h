@@ -16,11 +16,21 @@
 
 
 // Renderer
-#define RES_PATH "res/"
-#define RES_TEXTURES_PATH RES_PATH "textures/"
+#define SPRITESHEET_PATH "res/textures/spritesheet.png"
 
+#define SPRITESHEET_X 256
+#define SPRITESHEET_Y 256
 #define SPRITESHEET_CELL_X 8
 #define SPRITESHEET_CELL_Y 8
+
+#define SPRITESHEET_DIRT_MIN_X 0
+#define SPRITESHEET_DIRT_MAX_X 3
+#define SPRITESHEET_WOOD_MIN_X 4
+#define SPRITESHEET_WOOD_MAX_X 7
+#define SPRITESHEET_STONE_MIN_X 8
+#define SPRITESHEET_STONE_MAX_X 11
+#define SPRITESHEET_METAL_MIN_X 12
+#define SPRITESHEET_METAL_MAX_X 15
 
 #define COL_BLACK 0, 0, 0, 255
 #define COL_WHITE 255, 255, 255, 255
@@ -36,3 +46,7 @@
 // Tilemaps
 #define TILEMAP_SIZE_X 1024
 #define TILEMAP_SIZE_Y 1024
+
+#define CHUNK_MEM_BUFFER_SIZE 1048576 // 2^20
+#define CHUNK_TOTAL 1
+#define CHUNK_001_PATH "data/chunks/001.json"
