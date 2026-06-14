@@ -129,7 +129,8 @@ jsondata* JSON_parse(const char* string) {
                 SDL_free(val);
                 clear_list(&recursions);
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                             "JSON ERROR: invalid first char");
+                             "JSON ERROR: invalid first char: %c",
+                             curr);
                 return NULL;
             }
         }

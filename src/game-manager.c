@@ -1,4 +1,5 @@
 #include "game-manager.h"
+#include "chunks.h"
 #include "defs.h"
 #include "inputs.h"
 #include "renderer.h"
@@ -64,6 +65,7 @@ int GAME_MANAGER_start(void) {
     const char* base_path = SDL_GetBasePath();
 
     if (RENDERER_start((char*)base_path)) return 1;
+    CHUNKS_start();
 
 #ifdef DEV
     DEV_start();
@@ -82,6 +84,7 @@ void GAME_MANAGER_stop(void) {
     SDL_WaitThread(fixed_t, NULL);
 
     RENDERER_stop();
+    CHUNKS_stop();
 
 #ifdef DEV
     DEV_stop();

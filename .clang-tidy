@@ -18,9 +18,11 @@ Checks: >
     -clang-analyzer-security.insecureAPI.*,
     -modernize-redundant-void-arg,
     -misc-include-cleaner,
+    -clang-diagnostics-c23-extensions,
 
 WarningsAsErrors: '*' 
 
 CheckOptions:
   - key:             bugprone-assert-side-effect.AssertMacros
     value:           'ASSERT'
+

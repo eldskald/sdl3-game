@@ -71,8 +71,7 @@ static int start_graphics_pipeline() {
 static int load_graphics_files(char* base_path) {
 #ifndef TEST
     char* sheet_path = NULL;
-    SDL_asprintf(
-        &sheet_path, "%s%sspritesheet.png", base_path, RES_TEXTURES_PATH);
+    SDL_asprintf(&sheet_path, "%s%s", base_path, SPRITESHEET_PATH);
     SDL_Surface* surface = SDL_LoadPNG(sheet_path);
     if (!surface) {
         SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
@@ -151,7 +150,7 @@ static void render_final_screen(void) {
 int RENDERER_start(char* base_path) {
     if (start_graphics_pipeline()) return 1;
     if (load_graphics_files(base_path)) return 1;
-    if (SPRITES_start()) return 1;
+    SPRITES_start();
     return 0;
 }
 
