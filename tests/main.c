@@ -1,11 +1,11 @@
-#include "data-structs/dynarr.test.h"
-#include "data-structs/hashmap.test.h"
-#include "data-structs/list.test.h"
-#include "graphics/drawing.test.h"
-#include "services/json.test.h"
-#include "tests.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
+#include <tests.h>
+#include <tests/data-structs/dynarr.test.h>
+#include <tests/data-structs/hashmap.test.h>
+#include <tests/data-structs/list.test.h>
+#include <tests/graphics/drawing.test.h>
+#include <tests/services/json.test.h>
 
 int main() {
     printf(BLUE "\nRUNNING TESTS\n" RESET);

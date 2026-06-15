@@ -1,7 +1,7 @@
-#include "dev.h"
-#include "chunks.h"
-#include "tilemap.h"
 #include <SDL3/SDL.h>
+#include <chunks.h>
+#include <dev/dev.h>
+#include <tilemap.h>
 
 void DEV_start(void) {
     chunk data = (chunk){0};

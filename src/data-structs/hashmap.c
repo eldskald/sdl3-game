@@ -1,6 +1,6 @@
-#include "hashmap.h"
-#include "list.h"
 #include <SDL3/SDL.h>
+#include <data-structs/hashmap.h>
+#include <data-structs/list.h>
 
 // Return 64-bit FNV-1a hash for key (NUL-terminated). See description:
 // https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function

@@ -1,7 +1,7 @@
-#include "dynarr.test.h"
-#include "../../src/data-structs/dynarr.h"
-#include "../tests.h"
+#include <data-structs/dynarr.h>
 #include <stdio.h>
+#include <tests.h>
+#include <tests/data-structs/dynarr.test.h>
 
 void test_dynarr(void) {
     printf(YELLOW "\nTesting dynarrs...\n" RESET);

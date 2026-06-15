@@ -1,5 +1,5 @@
-#include "list.h"
 #include <SDL3/SDL.h>
+#include <data-structs/list.h>
 
 void push_to_list(int val, list* l) {
     node* n = SDL_malloc(sizeof(node));
