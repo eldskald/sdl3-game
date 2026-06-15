@@ -1,7 +1,7 @@
-#include "tests.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
+#include <tests.h>
 
 static int errors = 0;
 

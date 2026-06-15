@@ -1,9 +1,9 @@
-#include "chunks.h"
-#include "data-structs/dynarr.h"
-#include "data-structs/hashmap.h"
-#include "defs.h"
-#include "services/json.h"
 #include <SDL3/SDL.h>
+#include <chunks.h>
+#include <data-structs/dynarr.h>
+#include <data-structs/hashmap.h>
+#include <defs.h>
+#include <services/json.h>
 #include <tilemap.h>
 
 static chunk* chunks = NULL;

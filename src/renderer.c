@@ -1,8 +1,8 @@
-#include "renderer.h"
-#include "defs.h"
-#include "sprites.h"
-#include "tilemap.h"
 #include <SDL3/SDL.h>
+#include <defs.h>
+#include <renderer.h>
+#include <sprites.h>
+#include <tilemap.h>
 
 #ifndef TEST
 static SDL_Window* window = NULL;

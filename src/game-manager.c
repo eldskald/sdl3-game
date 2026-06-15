@@ -1,12 +1,12 @@
-#include "game-manager.h"
-#include "chunks.h"
-#include "defs.h"
-#include "inputs.h"
-#include "renderer.h"
 #include <SDL3/SDL.h>
+#include <chunks.h>
+#include <defs.h>
+#include <game-manager.h>
+#include <inputs.h>
+#include <renderer.h>
 
 #ifdef DEV
-#include "dev/dev.h"
+#include <dev/dev.h>
 #endif
 
 #undef SDL_HINT_MAIN_CALLBACK_RATE

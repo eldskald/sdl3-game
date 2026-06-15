@@ -1,9 +1,9 @@
-#include "tilemap.h"
-#include "defs.h"
 #include <SDL3/SDL.h>
+#include <defs.h>
+#include <tilemap.h>
 
 #ifdef TEST
-#include "../tests/stubs.h"
+#include <tests/stubs.h>
 #endif
 
 static const Uint8 DIRT_AUTOTILE[256][2] = {

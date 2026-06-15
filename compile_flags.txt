@@ -3,5 +3,5 @@
 -g
 -DDEV
 -Isrc
--lSDL3
+-Itests
 --embed-dir=./

@@ -1,5 +1,5 @@
-#include "dynarr.h"
 #include <SDL3/SDL.h>
+#include <data-structs/dynarr.h>
 
 void init_dynarr(dynarr* arr) {
     if (!arr) return;

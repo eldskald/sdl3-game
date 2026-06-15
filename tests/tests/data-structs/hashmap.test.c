@@ -1,7 +1,7 @@
-#include "hashmap.test.h"
-#include "../../src/data-structs/hashmap.h"
-#include "../tests.h"
+#include <data-structs/hashmap.h>
 #include <stdio.h>
+#include <tests.h>
+#include <tests/data-structs/hashmap.test.h>
 
 void test_hashmap(void) {
     printf(YELLOW "\nTesting hashmaps...\n" RESET);

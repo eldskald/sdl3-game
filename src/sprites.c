@@ -1,11 +1,11 @@
-#include "sprites.h"
-#include "data-structs/list.h"
-#include "defs.h"
-#include "game-manager.h"
 #include <SDL3/SDL.h>
+#include <data-structs/list.h>
+#include <defs.h>
+#include <game-manager.h>
+#include <sprites.h>
 
 #ifdef TEST
-#include "../tests/stubs.h"
+#include <tests/stubs.h>
 #endif
 
 // This is how we're doing it: we have this huge sprites array of sprite_data to

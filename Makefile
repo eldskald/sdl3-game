@@ -45,7 +45,7 @@ dev:
 	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o $(GAME_NAME)$(EXT)
 
 test:
-	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o test -DTEST -fsanitize=address
+	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -Itests -o test -DTEST -fsanitize=address
 
 windows:
 	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe

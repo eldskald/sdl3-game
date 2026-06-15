@@ -1,8 +1,8 @@
 #pragma once
-#include "../data-structs/dynarr.h"
-#include "../data-structs/hashmap.h"
-#include "servicedefs.h"
 #include <SDL3/SDL.h>
+#include <data-structs/dynarr.h>
+#include <data-structs/hashmap.h>
+#include <services/servicedefs.h>
 
 // Type of data in a jsondata struct.
 typedef enum {
