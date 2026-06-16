@@ -2,9 +2,9 @@
 #include <renderer.h>
 #include <sprites.h>
 #include <stdio.h>
+#include <stubs.h>
 #include <tests.h>
-#include <tests/graphics/drawing.test.h>
-#include <tests/stubs.h>
+#include <tests/drawing.h>
 #include <tilemap.h>
 
 void test_drawing(void) {

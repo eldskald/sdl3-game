@@ -1,7 +1,7 @@
 #include <data-structs/hashmap.h>
 #include <stdio.h>
 #include <tests.h>
-#include <tests/data-structs/hashmap.test.h>
+#include <tests/hashmap.h>
 
 void test_hashmap(void) {
     printf(YELLOW "\nTesting hashmaps...\n" RESET);
@@ -44,21 +44,24 @@ void test_hashmap(void) {
                     strcmp(map.keys[i1], "test1") == 0,
                     map.len == 2});
 
+    int db[HASHMAP_INITIAL_CAP] = {0};
     for (int i = 0; i <= HASHMAP_INITIAL_CAP >> 1; i++) {
         char c[2] = {'a' + i, '\0'};
-        set_on_hashmap(&map, c, &map);
+        set_on_hashmap(&db[i], c, &map);
     }
     expect("Inserted values until reaching half cap, checking if cap was "
            "doubled...",
            1,
            (bool[]){map.cap == HASHMAP_INITIAL_CAP << 1});
 
-    expect("Cheking previous values before doubling...",
-           2,
-           (bool[]){
-               get_from_hashmap("test1", &map) == &val2,
-               get_from_hashmap("test2", &map) == &val2,
-           });
+    bool check = true;
+    if (get_from_hashmap("test1", &map) != &val2) check = false;
+    if (get_from_hashmap("test2", &map) != &val2) check = false;
+    for (int i = 0; i <= HASHMAP_INITIAL_CAP >> 1; i++) {
+        char c[2] = {'a' + i, '\0'};
+        if (get_from_hashmap(c, &map) != &db[i]) check = false;
+    }
+    expect("Cheking values after doubling...", 1, (bool[]){check});
 
     clear_hashmap(&map);
     expect("Cleared hashmap, checking length, cap, indexes and pointers...",

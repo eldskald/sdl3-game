@@ -1,7 +1,7 @@
 #include <data-structs/dynarr.h>
 #include <stdio.h>
 #include <tests.h>
-#include <tests/data-structs/dynarr.test.h>
+#include <tests/dynarr.h>
 
 void test_dynarr(void) {
     printf(YELLOW "\nTesting dynarrs...\n" RESET);
@@ -29,15 +29,18 @@ void test_dynarr(void) {
            (bool[]){
                arr.at[0] == &arr, arr.len == 1, arr.cap == DYNARR_INITIAL_CAP});
 
+    int db[DYNARR_INITIAL_CAP] = {0};
     for (int i = 0; i < DYNARR_INITIAL_CAP; i++)
-        push_to_dynarr(&test, &arr);
+        push_to_dynarr(&db[i], &arr);
     expect("Pushed values until reaching cap, checking if cap was doubled...",
            1,
            (bool[]){arr.cap == DYNARR_INITIAL_CAP << 1});
 
-    expect("Checking previous values before doubling...",
-           1,
-           (bool[]){arr.at[0] == &arr});
+    bool check = true;
+    if (arr.at[0] != &arr)
+        for (int i = 0; i < DYNARR_INITIAL_CAP; i++)
+            if (arr.at[i + 1] != &db[i]) check = false;
+    expect("Checking values after doubling...", 1, (bool[]){check});
 
     clear_dynarr(&arr);
     expect("Cleared dynarr, checking length, cap and at pointer...",

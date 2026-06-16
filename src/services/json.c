@@ -14,7 +14,7 @@ typedef enum {
 
 static char* double_str_cap(char* str, size_t* cap) {
     char* new_str = SDL_calloc(*cap << 1, sizeof(char));
-    SDL_memcpy(new_str, str, *cap);
+    SDL_memcpy(new_str, str, *cap * sizeof(char));
     SDL_free(str);
     *cap = *cap << 1;
     return new_str;
@@ -71,6 +71,7 @@ jsondata* JSON_parse(const char* string) {
     dynarr arrval = (dynarr){0};
     hashmap objval = (hashmap){0};
 
+    bool parsed_true = false;
     bool parsing_num_found_dot = false;
     int parsing_str_found_dquotes = 0;
     bool parsing_arr_ended = false;
@@ -84,9 +85,9 @@ jsondata* JSON_parse(const char* string) {
     for (const char* p = string; *p; p++) {
         char curr = *p;
 
-        // Ignore whitespaces when not parsing strings
+        // Ignore whitespaces when not parsing strings or numbers
         if ((curr == ' ' || curr == '\t' || curr == '\n') && !is_parsing_str &&
-            !parsing_obj_key)
+            !parsing_obj_key && parsing_type != num)
             continue;
 
         // When parsing the first digit, figure out what the data type is.
@@ -100,6 +101,46 @@ jsondata* JSON_parse(const char* string) {
                 continue;
             }
             switch (curr) {
+            case 't':
+                // has to be 'true', check for next chars
+                p++;
+                if (*p == 'r') {
+                    p++;
+                    if (*p == 'u') {
+                        p++;
+                        if (*p == 'e') {
+                            parsing_type = bln;
+                            parsed_true = true;
+                            SDL_free(val);
+                            continue;
+                        }
+                    }
+                }
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                             "JSON ERROR: invalid entry");
+                SDL_free(val);
+                return NULL;
+            case 'f':
+                // has to be 'false', check for next chars
+                p++;
+                if (*p == 'a') {
+                    p++;
+                    if (*p == 'l') {
+                        p++;
+                        if (*p == 's') {
+                            p++;
+                            if (*p == 'e') {
+                                parsing_type = bln;
+                                SDL_free(val);
+                                continue;
+                            }
+                        }
+                    }
+                }
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                             "JSON ERROR: invalid entry");
+                SDL_free(val);
+                return NULL;
             case '"':
                 parsing_type = str;
                 is_parsing_str = true;
@@ -451,6 +492,11 @@ jsondata* JSON_parse(const char* string) {
     res->str = NULL;
     res->arr = arrval;
     res->obj = objval;
+    res->bln = false;
+
+    if (parsing_type == bln) {
+        res->bln = parsed_true;
+    }
 
     if (parsing_type == num) {
         res->num = SDL_strtod(val, NULL);

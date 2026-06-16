@@ -9,7 +9,7 @@
 // struct chunk {
 //     int w;
 //     int h;
-//     tile*** map; // cast it to tile tile(*)[w][h]
+//     tile*** map; // cast it to tile(*)[w][h]
 // }
 // ```
 typedef struct {

@@ -22,26 +22,28 @@ static chunk load_from_json(const char* json) {
     jsondata* data = JSON_parse(json);
     int w = (int)((jsondata*)get_from_hashmap("width", &data->obj))->num;
     int h = (int)((jsondata*)get_from_hashmap("height", &data->obj))->num;
-    tile*** map = SDL_calloc(w * h, sizeof(tile));
+    tile(*map)[w][h] = SDL_calloc(w * h, sizeof(tile));
     dynarr layers = ((jsondata*)get_from_hashmap("layers", &data->obj))->arr;
     dynarr tiles =
         ((jsondata*)get_from_hashmap("data", &((jsondata*)layers.at[0])->obj))
             ->arr;
     for (int i = 0; i < w; i++) {
         for (int j = 0; j < h; j++) {
-            int curr = (int)((jsondata*)tiles.at[i + w * j])->num;
+            int curr = (int)((jsondata*)tiles.at[i + w * j])->num - 1;
+            if (curr == -1) continue;
             (*map)[i][j].coords_x = curr % (SPRITESHEET_X / SPRITESHEET_CELL_X);
             (*map)[i][j].coords_y = curr / (SPRITESHEET_X / SPRITESHEET_CELL_X);
             (*map)[i][j].mat = get_material_from_coords((*map)[i][j].coords_x);
         }
     }
     JSON_free(data);
-    return (chunk){.w = w, .h = h, .map = map};
+    return (chunk){.w = w, .h = h, .map = (tile***)map};
 }
 
 void CHUNKS_start(void) {
     chunks = SDL_calloc(CHUNK_TOTAL, sizeof(chunk));
 
+#ifndef TEST
     Uint8 mem001[] = {
 #embed CHUNK_001_PATH
     };
@@ -50,6 +52,16 @@ void CHUNKS_start(void) {
     SDL_ReadIO(stream, json, sizeof(mem001));
     SDL_CloseIO(stream);
     chunks[0] = load_from_json(json);
+#else
+    Uint8 mem001[] = {
+#embed "tests/mocks/001.json"
+    };
+    SDL_IOStream* stream = SDL_IOFromConstMem(mem001, sizeof(mem001));
+    char json[sizeof(mem001) + 1] = "";
+    SDL_ReadIO(stream, json, sizeof(mem001));
+    SDL_CloseIO(stream);
+    chunks[0] = load_from_json(json);
+#endif
 }
 
 void CHUNKS_stop(void) {
