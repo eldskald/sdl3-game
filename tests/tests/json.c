@@ -2,7 +2,7 @@
 #include <services/json.h>
 #include <stdio.h>
 #include <tests.h>
-#include <tests/services/json.test.h>
+#include <tests/json.h>
 
 void test_json(void) {
     printf(YELLOW "\nTesting JSON parser...\n" RESET);
@@ -13,10 +13,14 @@ void test_json(void) {
            (bool[]){test->type == num, test->num == 42.175});
     JSON_free(test);
 
-    test = JSON_parse("42 12    5");
-    expect("Parsing 42 12    5...",
-           2,
-           (bool[]){test->type == num, test->num == 42125});
+    test = JSON_parse("true");
+    expect(
+        "Parsing true...", 2, (bool[]){test->type == bln, test->bln == true});
+    JSON_free(test);
+
+    test = JSON_parse("false");
+    expect(
+        "Parsing false...", 2, (bool[]){test->type == bln, test->bln == false});
     JSON_free(test);
 
     test = JSON_parse("-33.5");
@@ -93,16 +97,15 @@ void test_json(void) {
             strcmp(((jsondata*)test->arr.at[2])->str, "recursion") == 0});
     JSON_free(test);
 
-    test = JSON_parse("{\"test\":42,\"key\":\"val\"}");
-    expect(
-        "Parsing {\"test\":42,\"key\":\"val\"}...",
-        5,
-        (bool[]){test->type == obj,
-                 ((jsondata*)get_from_hashmap("test", &test->obj))->type == num,
-                 ((jsondata*)get_from_hashmap("test", &test->obj))->num == 42,
-                 ((jsondata*)get_from_hashmap("key", &test->obj))->type == str,
-                 strcmp(((jsondata*)get_from_hashmap("key", &test->obj))->str,
-                        "val") == 0});
+    test = JSON_parse("{\"test\":42,\"key\":true}");
+    expect("Parsing {\"test\":42,\"key\":true}...",
+           5,
+           (bool[]){
+               test->type == obj,
+               ((jsondata*)get_from_hashmap("test", &test->obj))->type == num,
+               ((jsondata*)get_from_hashmap("test", &test->obj))->num == 42,
+               ((jsondata*)get_from_hashmap("key", &test->obj))->type == bln,
+               ((jsondata*)get_from_hashmap("key", &test->obj))->bln == true});
     JSON_free(test);
 
     test = JSON_parse("{\"array\": [33, .5], \"object\": {\"key\": \"val\"}}");

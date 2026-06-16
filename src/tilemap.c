@@ -3,7 +3,7 @@
 #include <tilemap.h>
 
 #ifdef TEST
-#include <tests/stubs.h>
+#include <stubs.h>
 #endif
 
 static const Uint8 DIRT_AUTOTILE[256][2] = {

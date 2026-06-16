@@ -5,6 +5,7 @@
 
 void DEV_start(void) {
     chunk data = (chunk){0};
+    CHUNKS_get(0, &data);
     TILEMAP_set_at(0, 0, data.w, data.h, (tile(*)[data.w][data.h])data.map);
 }
 

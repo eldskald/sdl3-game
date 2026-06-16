@@ -1,7 +1,7 @@
 #include <data-structs/list.h>
 #include <stdio.h>
 #include <tests.h>
-#include <tests/data-structs/list.test.h>
+#include <tests/list.h>
 
 void test_list(void) {
     printf(YELLOW "\nTesting lists...\n" RESET);

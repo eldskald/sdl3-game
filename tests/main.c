@@ -1,11 +1,12 @@
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <tests.h>
-#include <tests/data-structs/dynarr.test.h>
-#include <tests/data-structs/hashmap.test.h>
-#include <tests/data-structs/list.test.h>
-#include <tests/graphics/drawing.test.h>
-#include <tests/services/json.test.h>
+#include <tests/chunks.h>
+#include <tests/drawing.h>
+#include <tests/dynarr.h>
+#include <tests/hashmap.h>
+#include <tests/json.h>
+#include <tests/list.h>
 
 int main() {
     printf(BLUE "\nRUNNING TESTS\n" RESET);
@@ -16,6 +17,7 @@ int main() {
 
     test_json();
 
+    test_chunks();
     test_drawing();
 
     bool failed = get_tests_result();

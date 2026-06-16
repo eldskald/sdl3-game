@@ -15,7 +15,7 @@ void push_to_dynarr(void* val, dynarr* arr) {
     if (arr->len == arr->cap) {
         size_t new_cap = arr->cap << 1;
         void** new = SDL_calloc(new_cap, sizeof(void*));
-        SDL_memcpy(new, arr->at, new_cap);
+        SDL_memcpy(new, arr->at, arr->cap * sizeof(void*));
         SDL_free(arr->at);
         arr->at = new;
         arr->cap = new_cap;

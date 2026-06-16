@@ -1,0 +1,39 @@
+{ "compressionlevel":-1,
+ "height":8,
+ "infinite":false,
+ "layers":[
+        {
+         "data":[33, 34, 35, 36, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            197, 198, 199, 200, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            201, 202, 203, 204, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            13, 14, 15, 16, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0],
+         "height":8,
+         "id":1,
+         "name":"Tile Layer 1",
+         "opacity":1,
+         "type":"tilelayer",
+         "visible":true,
+         "width":8,
+         "x":0,
+         "y":0
+        }],
+ "nextlayerid":2,
+ "nextobjectid":1,
+ "orientation":"orthogonal",
+ "renderorder":"right-down",
+ "tiledversion":"1.12.2",
+ "tileheight":8,
+ "tilesets":[
+        {
+         "firstgid":1,
+         "source":"..\/..\/spritesheet.tsx"
+        }],
+ "tilewidth":8,
+ "type":"map",
+ "version":"1.10",
+ "width":8
+}

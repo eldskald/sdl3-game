@@ -5,7 +5,7 @@
 #include <sprites.h>
 
 #ifdef TEST
-#include <tests/stubs.h>
+#include <stubs.h>
 #endif
 
 // This is how we're doing it: we have this huge sprites array of sprite_data to
@@ -28,7 +28,7 @@ static size_t sprites_size = 0;
 static void double_dynarr(void) {
     sprite_data* new_sprites =
         SDL_calloc(sprites_size << 1, sizeof(sprite_data));
-    SDL_memcpy(new_sprites, sprites, sprites_size);
+    SDL_memcpy(new_sprites, sprites, sprites_size * sizeof(sprite_data));
     SDL_free(sprites);
     sprites_size = sprites_size << 1;
     sprites = new_sprites;
