@@ -1,4 +1,6 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_iostream.h>
+#include <SDL3/SDL_surface.h>
 #include <defs.h>
 #include <renderer.h>
 #include <sprites.h>
@@ -68,24 +70,17 @@ static int start_graphics_pipeline() {
     return 0;
 }
 
-static int load_graphics_files(char* base_path) {
+static void load_graphics_files(void) {
 #ifndef TEST
-    char* sheet_path = NULL;
-    SDL_asprintf(&sheet_path, "%s%s", base_path, SPRITESHEET_PATH);
-    SDL_Surface* surface = SDL_LoadPNG(sheet_path);
-    if (!surface) {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
-                     "Couldn't load spritesheet: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_free(sheet_path);
+    Uint8 mem[] = {
+#embed SPRITESHEET_PATH
+    };
+    SDL_IOStream* stream = SDL_IOFromConstMem(mem, sizeof(mem));
+    SDL_Surface* surface = SDL_LoadPNG_IO(stream, true);
     spritesheet = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_DestroySurface(surface);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
 #endif
-
-    return 0;
 }
 
 
@@ -147,9 +142,9 @@ static void render_final_screen(void) {
 
 
 
-int RENDERER_start(char* base_path) {
+int RENDERER_start(void) {
     if (start_graphics_pipeline()) return 1;
-    if (load_graphics_files(base_path)) return 1;
+    load_graphics_files();
     SPRITES_start();
     return 0;
 }

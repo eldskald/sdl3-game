@@ -52,6 +52,8 @@ void CHUNKS_start(void) {
     SDL_ReadIO(stream, json, sizeof(mem001));
     SDL_CloseIO(stream);
     chunks[0] = load_from_json(json);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Chunks loaded successfully.");
 #else
     Uint8 mem001[] = {
 #embed "tests/mocks/001.json"

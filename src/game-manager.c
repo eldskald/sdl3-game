@@ -62,9 +62,7 @@ int GAME_MANAGER_start(void) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_AUDIO, SDL_LOG_PRIORITY_INFO);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_INPUT, SDL_LOG_PRIORITY_INFO);
 
-    const char* base_path = SDL_GetBasePath();
-
-    if (RENDERER_start((char*)base_path)) return 1;
+    if (RENDERER_start()) return 1;
     CHUNKS_start();
 
 #ifdef DEV

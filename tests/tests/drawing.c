@@ -10,7 +10,7 @@
 void test_drawing(void) {
     printf(YELLOW "\nTesting render texture calls...\n" RESET);
 
-    RENDERER_start("");
+    RENDERER_start();
 
     int id0 = 0;
     int id1 = 0;
