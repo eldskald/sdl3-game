@@ -76,14 +76,15 @@ static const Uint8 DIRT_AUTOTILE[256][2] = {
 static tile (*map)[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = NULL;
 
 
+// These args must be int because they can be -1
 static bool offset(int x, int y, int u, int v) {
     if (x + u < 0 || x + u >= TILEMAP_SIZE_X || y + v < 0 ||
         y + v >= TILEMAP_SIZE_Y)
         return true;
-    return (*map)[x + u][y + v].mat == dirt;
+    return (*map)[x + u][y + v].mat == tile_dirt;
 }
 
-static Uint8 check_adjacent_dirt(int x, int y) {
+static Uint8 check_adjacent_dirt(Uint16 x, Uint16 y) {
     Uint8 val = 0;
     if (offset(x, y, -1, -1)) val += 1; ///////  1  2  4
     if (offset(x, y, 0, -1)) val += 2;  ///////  8     16
@@ -96,17 +97,17 @@ static Uint8 check_adjacent_dirt(int x, int y) {
     return val;
 }
 
-static int update_dirt_tile(int x, int y, bool suppress_warnings) {
+static int update_dirt_tile(Uint16 x, Uint16 y, bool suppress_warnings) {
     if (x < 0 || y < 0 || x >= TILEMAP_SIZE_X || y >= TILEMAP_SIZE_Y) {
         if (!suppress_warnings)
-            SDL_LogWarn(
-                SDL_LOG_CATEGORY_APPLICATION,
-                "Tried to get tile at %d, %d, which is outside map range",
-                x,
-                y);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Tried to update dirt tile at %d, %d, which is outside "
+                        "map range",
+                        x,
+                        y);
         return 1;
     }
-    if ((*map)[x][y].mat != dirt) {
+    if ((*map)[x][y].mat != tile_dirt) {
         if (!suppress_warnings)
             SDL_LogWarn(
                 SDL_LOG_CATEGORY_APPLICATION,
@@ -124,7 +125,7 @@ static int update_dirt_tile(int x, int y, bool suppress_warnings) {
 
 
 
-int TILEMAP_set_at(int x, int y, int w, int h, tile (*data)[w][h]) {
+int TILEMAP_set_at(Uint16 x, Uint16 y, Uint16 w, Uint16 h, tile (*data)[w][h]) {
     if (x < 0 || y < 0 || x + w >= TILEMAP_SIZE_X || y + h >= TILEMAP_SIZE_Y) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set dataset of size %d, %d at %d, %d which is "
@@ -151,7 +152,7 @@ int TILEMAP_set_at(int x, int y, int w, int h, tile (*data)[w][h]) {
     return 0;
 }
 
-int TILEMAP_get_at(int x, int y, tile* data) {
+int TILEMAP_get_at(Uint16 x, Uint16 y, tile* data) {
     if (x < 0 || y < 0 || x >= TILEMAP_SIZE_X || y >= TILEMAP_SIZE_Y) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get tile at %d, %d, which is outside map range",
@@ -173,7 +174,7 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
 
     for (int i = 0; i < TILEMAP_SIZE_X; i++) {
         for (int j = 0; j < TILEMAP_SIZE_Y; j++) {
-            if ((*map)[i][j].mat == null) continue;
+            if ((*map)[i][j].mat == tile_null) continue;
             SDL_FRect srcrect = (SDL_FRect){
                 .x = SPRITESHEET_CELL_X * (*map)[i][j].coords_x,
                 .y = SPRITESHEET_CELL_Y * (*map)[i][j].coords_y,

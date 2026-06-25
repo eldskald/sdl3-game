@@ -50,3 +50,9 @@
 #define CHUNK_MEM_BUFFER_SIZE 1048576 // 2^20
 #define CHUNK_TOTAL 1
 #define CHUNK_001_PATH "data/chunks/001.json"
+
+
+
+// Physics
+#define STARTING_BODIES_DYNARR_CAP 1024
+#define FABS_ZERO_DIFF 0.001f

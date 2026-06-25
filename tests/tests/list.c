@@ -11,32 +11,33 @@ void test_list(void) {
            1,
            (bool[]){get_list_len(&l) == 0});
 
-    push_to_list(13, &l);
-    push_to_list(17, &l);
-    push_to_list(31, &l);
-    push_to_list(39, &l);
-    expect("Pushed 13, 17, 31 and 39, checking the values and length...",
+    int ptrs[] = {0, 0, 0, 0};
+    push_to_list(&ptrs[0], &l);
+    push_to_list(&ptrs[1], &l);
+    push_to_list(&ptrs[2], &l);
+    push_to_list(&ptrs[3], &l);
+    expect("Pushed four pointers, checking values and length...",
            5,
-           (bool[]){l.head->val == 39,
-                    l.head->next->val == 31,
-                    l.head->next->next->val == 17,
-                    l.head->next->next->next->val == 13,
+           (bool[]){l.head->val == &ptrs[3],
+                    l.head->next->val == &ptrs[2],
+                    l.head->next->next->val == &ptrs[1],
+                    l.head->next->next->next->val == &ptrs[0],
                     get_list_len(&l) == 4});
 
-    int top = pop_from_list(&l);
+    void* top = pop_from_list(&l);
     expect("Popped from list, checking the values and length...",
            5,
-           (bool[]){top == 39,
-                    l.head->next->next->val == 13,
-                    l.head->next->val == 17,
-                    l.head->val == 31,
+           (bool[]){top == &ptrs[3],
+                    l.head->next->next->val == &ptrs[0],
+                    l.head->next->val == &ptrs[1],
+                    l.head->val == &ptrs[2],
                     get_list_len(&l) == 3});
 
-    remove_from_list(17, &l);
-    expect("Removed 17 from list, checking values and length...",
+    remove_from_list(&ptrs[1], &l);
+    expect("Removed a pointer from list, checking values and length...",
            3,
-           (bool[]){l.head->next->val == 13,
-                    l.head->val == 31,
+           (bool[]){l.head->next->val == &ptrs[0],
+                    l.head->val == &ptrs[2],
                     get_list_len(&l) == 2});
 
     clear_list(&l);

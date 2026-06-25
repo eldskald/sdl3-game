@@ -4,14 +4,14 @@
 // Material types, for interactions, properties, etc.
 //
 // ```
-// enum {null, dirt, stone, wood, metal};
+// enum {tile_null, tile_dirt, tile_stone, tile_wood, tile_metal};
 // ```
 typedef enum {
-    null,
-    dirt,
-    stone,
-    wood,
-    metal,
+    tile_null,
+    tile_dirt,
+    tile_stone,
+    tile_wood,
+    tile_metal,
 } material;
 
 // Tile information. The `coords_x` and `coords_y` mean this tile's sprite
@@ -34,12 +34,12 @@ typedef struct {
 // Sets `(*data)[w][h]` at coords `x`, `y` on the tilemap. Returns `0` when
 // successful, `1` when `x,y,w,h` reach a tile outside the tilemap's range.
 // Keep in mind the tilemap is a 2D array of tiles.
-int TILEMAP_set_at(int x, int y, int w, int h, tile (*data)[w][h]);
+int TILEMAP_set_at(Uint16 x, Uint16 y, Uint16 w, Uint16 h, tile (*data)[w][h]);
 
 // Gets the tile data at coords `x`, `y` on the tilemap. Returns `0` when
 // successful, `1` when `x,y` is out of range. Keep in mind the tilemap is a 2D
 // array of tiles.
-int TILEMAP_get_at(int x, int y, tile* data);
+int TILEMAP_get_at(Uint16 x, Uint16 y, tile* data);
 
 // Draws the tilemap. Call on renderer update.
 void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet);

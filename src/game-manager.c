@@ -1,8 +1,10 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_log.h>
 #include <chunks.h>
 #include <defs.h>
 #include <game-manager.h>
 #include <inputs.h>
+#include <physics.h>
 #include <renderer.h>
 
 #ifdef DEV
@@ -34,6 +36,8 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     while (running) {
         // Fixed thread loop
 
+        PHYSICS_update();
+
 #ifdef DEV
         DEV_update();
 #endif
@@ -64,6 +68,7 @@ int GAME_MANAGER_start(void) {
 
     if (RENDERER_start()) return 1;
     CHUNKS_start();
+    PHYSICS_start();
 
 #ifdef DEV
     DEV_start();
@@ -83,6 +88,7 @@ void GAME_MANAGER_stop(void) {
 
     RENDERER_stop();
     CHUNKS_stop();
+    PHYSICS_stop();
 
 #ifdef DEV
     DEV_stop();
@@ -128,7 +134,7 @@ void GAME_MANAGER_quit(void) {
 }
 
 
-float GAME_MANAGER_get_current_dt(void) {
+double GAME_MANAGER_get_current_dt(void) {
 #ifndef TEST
     SDL_ThreadID fixed = SDL_GetThreadID(fixed_t);
     if (fixed == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fixed_dt();
@@ -139,18 +145,18 @@ float GAME_MANAGER_get_current_dt(void) {
 }
 
 
-float GAME_MANAGER_get_fixed_dt() {
+double GAME_MANAGER_get_fixed_dt() {
 #ifndef TEST
-    return (float)fixed_t_diff / (float)SEC2NANOSEC;
+    return (double)fixed_t_diff / (double)SEC2NANOSEC;
 #else
     return 1.0f / 60.0f;
 #endif
 }
 
 
-float GAME_MANAGER_get_main_dt() {
+double GAME_MANAGER_get_main_dt() {
 #ifndef TEST
-    return (float)main_t_diff / (float)SEC2NANOSEC;
+    return (double)main_t_diff / (double)SEC2NANOSEC;
 #else
     return 1.0f / 60.0f;
 #endif
