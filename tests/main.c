@@ -1,4 +1,5 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_log.h>
 #include <stdio.h>
 #include <tests.h>
 #include <tests/chunks.h>
@@ -7,8 +8,15 @@
 #include <tests/hashmap.h>
 #include <tests/json.h>
 #include <tests/list.h>
+#include <tests/physics.h>
 
 int main() {
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_COUNT);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_VIDEO, SDL_LOG_PRIORITY_COUNT);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_GPU, SDL_LOG_PRIORITY_COUNT);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_AUDIO, SDL_LOG_PRIORITY_COUNT);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_INPUT, SDL_LOG_PRIORITY_COUNT);
+
     printf(BLUE "\nRUNNING TESTS\n" RESET);
 
     test_list();
@@ -17,6 +25,7 @@ int main() {
 
     test_json();
 
+    test_physics();
     test_chunks();
     test_drawing();
 

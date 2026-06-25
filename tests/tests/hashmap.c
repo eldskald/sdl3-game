@@ -26,8 +26,8 @@ void test_hashmap(void) {
            (bool[]){get_from_hashmap("test1", &map) == &val1,
                     get_from_hashmap("test2", &map) == &val2});
 
-    int i1 = map.indexes.head->next->val;
-    int i2 = map.indexes.head->val;
+    size_t i1 = (size_t)map.indexes.head->next->val;
+    size_t i2 = (size_t)map.indexes.head->val;
     expect("Checking indexes and len...",
            4,
            (bool[]){map.values[i1] == &val1,

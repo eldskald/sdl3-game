@@ -43,7 +43,7 @@ static void* insert_in_lists(void* val,
     values[index] = val;
     keys[index] = SDL_calloc(KEY_MAX_SIZE + 1, sizeof(char));
     SDL_strlcpy(keys[index], key, KEY_MAX_SIZE);
-    push_to_list(index, indexes);
+    push_to_list((void*)index, indexes);
     return val;
 }
 
@@ -68,13 +68,13 @@ void* set_on_hashmap(void* value, char* key, hashmap* map) {
         char** new_keys = SDL_calloc(new_cap, sizeof(char*));
         list new_indexes = (list){0};
         for (node* i = map->indexes.head; i; i = i->next) {
-            insert_in_lists(map->values[i->val],
-                            map->keys[i->val],
+            insert_in_lists(map->values[(size_t)i->val],
+                            map->keys[(size_t)i->val],
                             new_values,
                             new_keys,
                             &new_indexes,
                             new_cap);
-            SDL_free(map->keys[i->val]);
+            SDL_free(map->keys[(size_t)i->val]);
         }
         SDL_free(map->values);
         SDL_free(map->keys);
@@ -105,7 +105,7 @@ void* get_from_hashmap(char* key, hashmap* map) {
 
 void clear_hashmap(hashmap* map) {
     for (node* i = map->indexes.head; i; i = i->next)
-        SDL_free(map->keys[i->val]);
+        SDL_free(map->keys[(size_t)i->val]);
     SDL_free(map->values);
     SDL_free(map->keys);
     clear_list(&map->indexes);

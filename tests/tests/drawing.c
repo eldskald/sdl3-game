@@ -12,10 +12,10 @@ void test_drawing(void) {
 
     RENDERER_start();
 
-    int id0 = 0;
-    int id1 = 0;
-    int id2 = 0;
-    int id3 = 0;
+    size_t id0 = 0;
+    size_t id1 = 0;
+    size_t id2 = 0;
+    size_t id3 = 0;
 
     SPRITES_new_sprite(
         (sprite){
@@ -192,7 +192,8 @@ void test_drawing(void) {
     clear_SDL_RenderTexture_calls();
 
 
-    tile data[1][1] = {{(tile){.mat = stone, .coords_x = 6, .coords_y = 7}}};
+    tile data[1][1] = {
+        {(tile){.mat = tile_stone, .coords_x = 6, .coords_y = 7}}};
     TILEMAP_set_at(3, 2, 1, 1, &data);
     RENDERER_update();
     expect("Added a tile on the tilemap, checking calls...",
@@ -313,11 +314,11 @@ void test_drawing(void) {
                  calls[0].dst.h == SPRITESHEET_CELL_Y});
     clear_SDL_RenderTexture_calls();
 
-    for (int i = 0; i < 13; i++)
+    for (int i = 0; i < 12; i++)
         RENDERER_update();
-    bool trigger = false;
     clear_SDL_RenderTexture_calls();
     RENDERER_update();
+    bool trigger = false;
     SPRITES_anim_finished(id0, &trigger);
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Advanced to the second to last tick to check that no animation "

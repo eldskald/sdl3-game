@@ -9,13 +9,15 @@
 static chunk* chunks = NULL;
 
 static material get_material_from_coords(Uint8 x) {
-    if (x >= SPRITESHEET_DIRT_MIN_X && x <= SPRITESHEET_DIRT_MAX_X) return dirt;
-    if (x >= SPRITESHEET_WOOD_MIN_X && x <= SPRITESHEET_WOOD_MAX_X) return wood;
+    if (x >= SPRITESHEET_DIRT_MIN_X && x <= SPRITESHEET_DIRT_MAX_X)
+        return tile_dirt;
+    if (x >= SPRITESHEET_WOOD_MIN_X && x <= SPRITESHEET_WOOD_MAX_X)
+        return tile_wood;
     if (x >= SPRITESHEET_STONE_MIN_X && x <= SPRITESHEET_STONE_MAX_X)
-        return stone;
+        return tile_stone;
     if (x >= SPRITESHEET_METAL_MIN_X && x <= SPRITESHEET_METAL_MAX_X)
-        return metal;
-    return null;
+        return tile_metal;
+    return tile_null;
 }
 
 static chunk load_from_json(const char* json) {

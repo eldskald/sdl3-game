@@ -19,10 +19,10 @@ void GAME_MANAGER_stop(void);
 void GAME_MANAGER_quit(void);
 
 // Current thread's delta time.
-float GAME_MANAGER_get_current_dt(void);
+double GAME_MANAGER_get_current_dt(void);
 
 // Main thread's delta time.
-float GAME_MANAGER_get_main_dt(void);
+double GAME_MANAGER_get_main_dt(void);
 
 // Fixed thread's delta time.
-float GAME_MANAGER_get_fixed_dt(void);
+double GAME_MANAGER_get_fixed_dt(void);

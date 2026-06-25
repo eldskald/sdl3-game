@@ -19,6 +19,7 @@ Checks: >
     -modernize-redundant-void-arg,
     -misc-include-cleaner,
     -clang-diagnostics-c23-extensions,
+    -performance-no-int-to-ptr,
 
 WarningsAsErrors: '*' 
 

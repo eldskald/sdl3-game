@@ -29,7 +29,7 @@ static void reset_val(char** val, size_t* i, size_t* cap) {
 
 static void free_obj(hashmap* obj) {
     for (node* i = obj->indexes.head; i; i = i->next) {
-        JSON_free(obj->values[i->val]);
+        JSON_free(obj->values[(size_t)i->val]);
     }
     clear_hashmap(obj);
 }
@@ -245,7 +245,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list(elemobj, &recursions);
+                push_to_list((void*)elemobj, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -255,7 +255,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list(elemarr, &recursions);
+                push_to_list((void*)elemarr, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -265,7 +265,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (recursions.head->val == elemobj) {
+                if (recursions.head->val == (void*)elemobj) {
                     pop_from_list(&recursions);
                     val[val_i] = curr;
                     val_i++;
@@ -300,7 +300,7 @@ jsondata* JSON_parse(const char* string) {
                     val[val_i] = curr;
                     val_i++;
                     break;
-                } else if (recursions.head->val == elemobj) {
+                } else if (recursions.head->val == (void*)elemobj) {
                     error_arr(
                         &arrval, val, &recursions, "JSON ERROR: invalid array");
                     return NULL;
@@ -409,7 +409,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list(elemobj, &recursions);
+                push_to_list((void*)elemobj, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -419,7 +419,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list(elemarr, &recursions);
+                push_to_list((void*)elemarr, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -444,7 +444,7 @@ jsondata* JSON_parse(const char* string) {
                     parsing_obj_ended = true;
                     parsing_obj_val = false;
                     break;
-                } else if (recursions.head->val == elemobj) {
+                } else if (recursions.head->val == (void*)elemobj) {
                     pop_from_list(&recursions);
                     val[val_i] = curr;
                     val_i++;
@@ -463,7 +463,8 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (!recursions.head || recursions.head->val == elemobj) {
+                if (!recursions.head ||
+                    recursions.head->val == (void*)elemobj) {
                     error_obj(&objval,
                               val,
                               &recursions,
