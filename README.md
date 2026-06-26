@@ -8,6 +8,6 @@ We are dynamically linking with SDL3 and compiling with MinGW-w64 and gcc. You w
 
 You also need to setup your `.env` file. Just do `cp .env.sample .env` and change its values if necessary.
 
-After everything is setup, run a dev build with `bin/dev`.
+After everything is setup, run a dev build with `bin/dev`. You can also run `bin/test` to run tests.
 
 You can lint with `bin/lint` and format with `bin/format` if you have clang-tidy and clang-format.
