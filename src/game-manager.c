@@ -36,7 +36,7 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     while (running) {
         // Fixed thread loop
 
-        INPUTS_update_held_times();
+        INPUTS_update();
         PHYSICS_update();
 
 #ifdef DEV
@@ -68,6 +68,7 @@ int GAME_MANAGER_start(void) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_INPUT, SDL_LOG_PRIORITY_INFO);
 
     if (RENDERER_start()) return 1;
+    if (INPUTS_start()) return 1;
     CHUNKS_start();
     PHYSICS_start();
 
@@ -87,6 +88,7 @@ void GAME_MANAGER_stop(void) {
 
     SDL_WaitThread(fixed_t, NULL);
 
+    INPUTS_stop();
     RENDERER_stop();
     CHUNKS_stop();
     PHYSICS_stop();

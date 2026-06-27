@@ -54,6 +54,10 @@
 
 
 
+// Inputs
+
+
+
 // Physics
 #define STARTING_BODIES_DYNARR_CAP 1024
 #define FABS_ZERO_DIFF 0.001f
