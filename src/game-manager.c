@@ -36,6 +36,7 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     while (running) {
         // Fixed thread loop
 
+        INPUTS_update_held_times();
         PHYSICS_update();
 
 #ifdef DEV

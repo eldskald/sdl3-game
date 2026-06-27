@@ -40,6 +40,7 @@
 // Sprites
 #define STARTING_SPRITES_DYNARR_CAP 1024
 #define Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -127 to 127
+#define SPRITES_ANIM_MAX_KEYFRAMES 8
 
 
 
