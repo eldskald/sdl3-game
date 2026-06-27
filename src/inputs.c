@@ -1,9 +1,12 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_log.h>
 #include <defs.h>
 #include <game-manager.h>
 #include <inputs.h>
 
 #define ACTION_NODE_MAX_INPUTS 16
+#define AXIS_MAX_VALUE 32678
+#define ANALOG_STICK_DEADZONE 1024
 
 typedef struct {
     action action;
@@ -12,6 +15,14 @@ typedef struct {
     Uint8 keyboard_count;
     Uint8 gamepad_count;
 } action_node;
+
+typedef struct {
+    action_state state;
+    bool just_just_pressed;
+    bool just_just_released;
+} state_wrapper;
+
+
 
 static action_node map[] = {
     (action_node){
@@ -51,54 +62,53 @@ static action_node map[] = {
     },
 };
 
-static action_state states[] = {
-    (action_state){.action = action_up},
-    (action_state){.action = action_left},
-    (action_state){.action = action_down},
-    (action_state){.action = action_right},
-    (action_state){.action = action_jump},
+static state_wrapper states[] = {
+    (state_wrapper){.state = (action_state){0}},
+    (state_wrapper){.state = (action_state){0}},
+    (state_wrapper){.state = (action_state){0}},
+    (state_wrapper){.state = (action_state){0}},
+    (state_wrapper){.state = (action_state){0}},
 };
-
-
 
 static SDL_Gamepad* gamepad = NULL;
 
+static Sint8 x_dir = 0;
+static Sint8 y_dir = 0;
+
+
+
 void INPUTS_process(SDL_Event* event) {
-    // Resetting just_pressed and just_released values
-    for (int i = 0; i < sizeof(states) / sizeof(action_state); i++) {
-        states[i].just_released = false;
-        states[i].just_pressed = true;
-    }
-
-    // Counting time held
-    for (int i = 0; i < sizeof(states) / sizeof(action_state); i++)
-        if (states[i].held)
-            states[i].time_held += GAME_MANAGER_get_current_dt();
-
     // Handling key presses
-    for (int i = 0; i < sizeof(map) / sizeof(action_node); i++) {
-        for (int j = 0; j < map[i].keyboard_count; j++) {
-            if (map[i].keyboard[j] == event->key.key) {
-                if (states[i].held == false &&
-                    event->type == SDL_EVENT_KEY_DOWN)
-                    states[i].just_pressed = true;
-                if (states[i].held == true && event->type == SDL_EVENT_KEY_UP) {
-                    states[i].just_released = true;
-                    states[i].time_held = 0.0f;
+    if (event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) {
+        for (int i = 0; i < sizeof(map) / sizeof(action_node); i++) {
+            for (int j = 0; j < map[i].keyboard_count; j++) {
+                if (map[i].keyboard[j] == event->key.key) {
+                    if (states[i].state.held == false &&
+                        event->type == SDL_EVENT_KEY_DOWN) {
+                        states[i].state.just_pressed = true;
+                        states[i].just_just_pressed = true;
+                    }
+                    if (states[i].state.held == true &&
+                        event->type == SDL_EVENT_KEY_UP) {
+                        states[i].state.just_released = true;
+                        states[i].just_just_released = true;
+                        states[i].state.time_held = 0.0f;
+                    }
+                    states[i].state.held = event->type == SDL_EVENT_KEY_DOWN;
                 }
-                states[i].held = event->type == SDL_EVENT_KEY_DOWN;
             }
         }
     }
 
     // Handling gamepad connection
-    if (event->type == SDL_EVENT_GAMEPAD_ADDED) {
+    else if (event->type == SDL_EVENT_GAMEPAD_ADDED) {
         if (gamepad == NULL) {
             gamepad = SDL_OpenGamepad(event->gdevice.which);
             if (!gamepad) {
-                SDL_Log("Failed to open gamepad ID %u: %s",
-                        (unsigned int)event->gdevice.which,
-                        SDL_GetError());
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "Failed to open gamepad ID %u: %s",
+                            (unsigned int)event->gdevice.which,
+                            SDL_GetError());
             }
         }
     } else if (event->type == SDL_EVENT_GAMEPAD_REMOVED) {
@@ -109,30 +119,98 @@ void INPUTS_process(SDL_Event* event) {
     }
 
     // Handling button presses
-    for (int i = 0; i < sizeof(map) / sizeof(action_node); i++) {
-        for (int j = 0; j < map[i].gamepad_count; j++) {
-            if (map[i].gamepad[j] == event->key.key) {
-                if (states[i].held == false &&
-                    event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN)
-                    states[i].just_pressed = true;
-                if (states[i].held == true &&
-                    event->type == SDL_EVENT_GAMEPAD_BUTTON_UP)
-                    states[i].just_released = true;
-                states[i].held = event->type == SDL_EVENT_KEY_DOWN;
+    else if (event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ||
+             event->type == SDL_EVENT_GAMEPAD_BUTTON_UP) {
+        for (int i = 0; i < sizeof(map) / sizeof(action_node); i++) {
+            for (int j = 0; j < map[i].gamepad_count; j++) {
+                if (map[i].gamepad[j] == event->gbutton.button) {
+                    if (states[i].state.held == false &&
+                        event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                        states[i].state.just_pressed = true;
+                        states[i].just_just_pressed = true;
+                    }
+                    if (states[i].state.held == true &&
+                        event->type == SDL_EVENT_GAMEPAD_BUTTON_UP) {
+                        states[i].state.just_released = true;
+                        states[i].just_just_released = true;
+                        states[i].state.time_held = 0.0f;
+                    }
+                    states[i].state.held =
+                        event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+                }
             }
+        }
+    }
+
+    x_dir = 0;
+    y_dir = 0;
+    if (states[action_up].state.held) y_dir += -1;
+    if (states[action_down].state.held) y_dir += 1;
+    if (states[action_left].state.held) x_dir += -1;
+    if (states[action_right].state.held) x_dir += 1;
+
+    if (event->type == SDL_EVENT_GAMEPAD_AXIS_MOTION) {
+        switch (event->gaxis.axis) {
+        case SDL_GAMEPAD_AXIS_LEFTX:
+            if (event->gaxis.value >= ANALOG_STICK_DEADZONE) x_dir = 1;
+            if (event->gaxis.value <= -ANALOG_STICK_DEADZONE) x_dir = -1;
+            break;
+        case SDL_GAMEPAD_AXIS_LEFTY:
+            if (event->gaxis.value >= ANALOG_STICK_DEADZONE) y_dir = 1;
+            if (event->gaxis.value <= -ANALOG_STICK_DEADZONE) y_dir = -1;
+            break;
         }
     }
 }
 
 action_state INPUTS_get_action_state(action action) {
-    return states[action];
+    return states[action].state;
 }
 
-void INPUTS_update_held_times(void) {
-    for (int i = 0; i < sizeof(states) / sizeof(action_state); i++) {
-        if (states[i].held)
-            states[i].time_held += GAME_MANAGER_get_current_dt();
+void INPUTS_update(void) {
+    // Resetting just_pressed and just_released values
+    for (int i = 0; i < sizeof(states) / sizeof(state_wrapper); i++) {
+        if (states[i].just_just_pressed)
+            states[i].just_just_pressed = false;
         else
-            states[i].time_held = 0.0f;
+            states[i].state.just_pressed = false;
+        if (states[i].just_just_released)
+            states[i].just_just_released = false;
+        else
+            states[i].state.just_released = false;
     }
+
+    for (int i = 0; i < sizeof(states) / sizeof(state_wrapper); i++) {
+        if (states[i].state.held)
+            states[i].state.time_held += GAME_MANAGER_get_current_dt();
+        else
+            states[i].state.time_held = 0.0f;
+    }
+}
+
+
+
+Sint8 INPUTS_get_x_dir(void) {
+    return x_dir;
+}
+
+Sint8 INPUTS_get_y_dir(void) {
+    return y_dir;
+}
+
+
+
+int INPUTS_start(void) {
+    if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "Failed to initialize gamepad! %s",
+                     SDL_GetError());
+        return 1;
+    }
+    return 0;
+}
+
+void INPUTS_stop(void) {
+    if (gamepad) SDL_CloseGamepad(gamepad);
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
