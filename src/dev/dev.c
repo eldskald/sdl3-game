@@ -1,15 +1,15 @@
 #include <SDL3/SDL.h>
-#include <chunks.h>
 #include <dev/dev.h>
-#include <tilemap.h>
+#include <inputs.h>
 
 void DEV_start(void) {
-    chunk data = (chunk){0};
-    CHUNKS_get(0, &data);
-    TILEMAP_set_at(0, 0, data.w, data.h, (tile(*)[data.w][data.h])data.map);
 }
 
 void DEV_update(void) {
+    if (INPUTS_get_action_state(action_jump).held) {
+        SDL_Log("jump being held for: %f",
+                INPUTS_get_action_state(action_jump).time_held);
+    }
 }
 
 void DEV_stop(void) {
