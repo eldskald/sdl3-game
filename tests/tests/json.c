@@ -1,3 +1,4 @@
+#include <SDL3/SDL.h>
 #include <data-structs/hashmap.h>
 #include <services/json.h>
 #include <stdio.h>
@@ -39,20 +40,21 @@ void test_json(void) {
     test = JSON_parse("\"test\"");
     expect("Parsing \"test\"...",
            2,
-           (bool[]){test->type == str, strcmp(test->str, "test") == 0});
+           (bool[]){test->type == str, SDL_strcmp(test->str, "test") == 0});
     JSON_free(test);
 
     test = JSON_parse("\"test with, space, and commas\"");
-    expect("Parsing \"test with, space, and commas\"...",
-           2,
-           (bool[]){test->type == str,
-                    strcmp(test->str, "test with, space, and commas") == 0});
+    expect(
+        "Parsing \"test with, space, and commas\"...",
+        2,
+        (bool[]){test->type == str,
+                 SDL_strcmp(test->str, "test with, space, and commas") == 0});
     JSON_free(test);
 
     test = JSON_parse("\"[24, 17]\"");
     expect("Parsing \"[24, 17]\"...",
            2,
-           (bool[]){test->type == str, strcmp(test->str, "[24, 17]") == 0});
+           (bool[]){test->type == str, SDL_strcmp(test->str, "[24, 17]") == 0});
     JSON_free(test);
 
     test = JSON_parse("[24, 17]");
@@ -68,13 +70,14 @@ void test_json(void) {
     JSON_free(test);
 
     test = JSON_parse("[24.3, \"array\"]");
-    expect("Parsing [24.3, \"array\"]...",
-           5,
-           (bool[]){test->type == arr,
-                    ((jsondata*)test->arr.at[0])->type == num,
-                    ((jsondata*)test->arr.at[0])->num == 24.3,
-                    ((jsondata*)test->arr.at[1])->type == str,
-                    strcmp(((jsondata*)test->arr.at[1])->str, "array") == 0});
+    expect(
+        "Parsing [24.3, \"array\"]...",
+        5,
+        (bool[]){test->type == arr,
+                 ((jsondata*)test->arr.at[0])->type == num,
+                 ((jsondata*)test->arr.at[0])->num == 24.3,
+                 ((jsondata*)test->arr.at[1])->type == str,
+                 SDL_strcmp(((jsondata*)test->arr.at[1])->str, "array") == 0});
     JSON_free(test);
 
     test = JSON_parse("[[0, 1], [0, 2], \"recursion\"]");
@@ -94,7 +97,7 @@ void test_json(void) {
             ((jsondata*)((jsondata*)test->arr.at[1])->arr.at[1])->type == num,
             ((jsondata*)((jsondata*)test->arr.at[1])->arr.at[1])->num == 2,
             ((jsondata*)test->arr.at[2])->type == str,
-            strcmp(((jsondata*)test->arr.at[2])->str, "recursion") == 0});
+            SDL_strcmp(((jsondata*)test->arr.at[2])->str, "recursion") == 0});
     JSON_free(test);
 
     test = JSON_parse("{\"test\":42,\"key\":true}");
@@ -111,19 +114,19 @@ void test_json(void) {
     test = JSON_parse("{\"array\": [33, .5], \"object\": {\"key\": \"val\"}}");
     jsondata* arrv = (jsondata*)get_from_hashmap("array", &test->obj);
     jsondata* objv = (jsondata*)get_from_hashmap("object", &test->obj);
-    expect(
-        "Parsing {\"array\": [33, .5], \"object\": {\"key\": \"val\"}}...",
-        9,
-        (bool[]){test->type == obj,
-                 arrv->type == arr,
-                 ((jsondata*)arrv->arr.at[0])->type == num,
-                 ((jsondata*)arrv->arr.at[0])->num == 33,
-                 ((jsondata*)arrv->arr.at[1])->type == num,
-                 ((jsondata*)arrv->arr.at[1])->num == 0.5,
-                 objv->type == obj,
-                 ((jsondata*)get_from_hashmap("key", &objv->obj))->type == str,
-                 strcmp(((jsondata*)get_from_hashmap("key", &objv->obj))->str,
-                        "val") == 0});
+    expect("Parsing {\"array\": [33, .5], \"object\": {\"key\": \"val\"}}...",
+           9,
+           (bool[]){
+               test->type == obj,
+               arrv->type == arr,
+               ((jsondata*)arrv->arr.at[0])->type == num,
+               ((jsondata*)arrv->arr.at[0])->num == 33,
+               ((jsondata*)arrv->arr.at[1])->type == num,
+               ((jsondata*)arrv->arr.at[1])->num == 0.5,
+               objv->type == obj,
+               ((jsondata*)get_from_hashmap("key", &objv->obj))->type == str,
+               SDL_strcmp(((jsondata*)get_from_hashmap("key", &objv->obj))->str,
+                          "val") == 0});
     JSON_free(test);
 
     test = JSON_parse(
