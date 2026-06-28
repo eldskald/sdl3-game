@@ -1,8 +1,8 @@
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_log.h>
 #include <stdio.h>
 #include <tests.h>
 #include <tests/chunks.h>
+#include <tests/csv.h>
 #include <tests/drawing.h>
 #include <tests/dynarr.h>
 #include <tests/hashmap.h>
@@ -25,6 +25,7 @@ int main() {
     test_hashmap();
 
     test_json();
+    test_csv();
 
     test_physics();
     test_chunks();
