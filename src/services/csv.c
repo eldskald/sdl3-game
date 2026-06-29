@@ -77,13 +77,14 @@ dynarr CSV_parse(const char* data) {
         }
 
         // Dealing with every other char
-        SDL_strlcat(curr_cell, &curr, CSV_STARTING_CELL_SIZE);
+        char tmp[2] = {curr, '\0'};
+        SDL_strlcat(curr_cell, tmp, CSV_STARTING_CELL_SIZE);
         last_char = curr;
         continue;
     }
 
     if (SDL_strlen(curr_cell) > 0) store_cell(&curr_cell, curr_row);
-    store_row(&curr_row, &res);
+    if (last_char != '\n') store_row(&curr_row, &res);
     SDL_free(curr_cell);
     clear_dynarr(curr_row);
     SDL_free(curr_row);

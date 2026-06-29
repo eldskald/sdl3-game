@@ -1,0 +1,7 @@
+max_speed,60
+acceleration,200
+friction,200
+gravity,600
+max_fall_speed,160
+jump_speed,160
+jump_cut,0.3

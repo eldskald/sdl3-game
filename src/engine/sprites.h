@@ -1,5 +1,6 @@
 #pragma once
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_surface.h>
 #include <defs.h>
 
 // Animation keyframes. Leaves the sprite at coords_x coords_y for duration
@@ -60,6 +61,7 @@ typedef struct {
     Uint8 coords_w;
     Uint8 coords_h;
     Sint8 z_index;
+    SDL_FlipMode flip_mode;
 } sprite;
 
 

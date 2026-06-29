@@ -61,3 +61,9 @@
 // Physics
 #define STARTING_BODIES_DYNARR_CAP 1024
 #define FABS_ZERO_DIFF 0.001f
+
+
+
+// Player
+#define PLAYER_BASE_CSV_PATH "data/player/base.csv"
+#define PLAYER_SPRITE_CSV_PATH "data/player/sprite.csv"

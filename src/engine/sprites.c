@@ -1,4 +1,6 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_rect.h>
+#include <SDL3/SDL_render.h>
 #include <data-structs/list.h>
 #include <defs.h>
 #include <engine/game-manager.h>
@@ -284,10 +286,21 @@ void SPRITES_update(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
                 .h = SPRITESHEET_CELL_Y *
                      sprites[(size_t)curr->val].sprite.coords_h,
             };
+            SDL_FPoint center = (SDL_FPoint){.x = 0.0f, .y = 0.0f};
 #ifndef TEST
-            SDL_RenderTexture(renderer, spritesheet, &srcrect, &dstrect);
+            SDL_RenderTextureRotated(
+                renderer,
+                spritesheet,
+                &srcrect,
+                &dstrect,
+                0.0f,
+                &center,
+                sprites[(size_t)curr->val].sprite.flip_mode);
 #else
-            stubbed_SDL_RenderTexture(&srcrect, &dstrect);
+            stubbed_SDL_RenderTexture(
+                &srcrect,
+                &dstrect,
+                sprites[(size_t)curr->val].sprite.flip_mode);
 #endif
             curr = curr->next;
         }

@@ -46,25 +46,17 @@ void CHUNKS_start(void) {
     chunks = SDL_calloc(CHUNK_TOTAL, sizeof(chunk));
 
 #ifndef TEST
-    Uint8 mem001[] = {
-#embed CHUNK_001_PATH
+    char chunk001[] = {
+#embed CHUNK_001_PATH suffix(, '\0')
     };
-    SDL_IOStream* stream = SDL_IOFromConstMem(mem001, sizeof(mem001));
-    char json[sizeof(mem001) + 1] = "";
-    SDL_ReadIO(stream, json, sizeof(mem001));
-    SDL_CloseIO(stream);
-    chunks[0] = load_from_json(json);
+    chunks[0] = load_from_json(chunk001);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Chunks loaded successfully.");
 #else
-    Uint8 mem001[] = {
-#embed "tests/mocks/001.json"
+    char chunk001[] = {
+#embed "tests/mocks/001.json" suffix(, '\0')
     };
-    SDL_IOStream* stream = SDL_IOFromConstMem(mem001, sizeof(mem001));
-    char json[sizeof(mem001) + 1] = "";
-    SDL_ReadIO(stream, json, sizeof(mem001));
-    SDL_CloseIO(stream);
-    chunks[0] = load_from_json(json);
+    chunks[0] = load_from_json(chunk001);
 #endif
 }
 

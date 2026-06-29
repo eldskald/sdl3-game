@@ -190,7 +190,7 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
 #ifndef TEST
             SDL_RenderTexture(renderer, spritesheet, &srcrect, &dstrect);
 #else
-            stubbed_SDL_RenderTexture(&srcrect, &dstrect);
+            stubbed_SDL_RenderTexture(&srcrect, &dstrect, SDL_FLIP_NONE);
 #endif
         }
     }

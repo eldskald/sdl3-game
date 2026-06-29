@@ -8,8 +8,8 @@
 void test_csv(void) {
     printf(YELLOW "\nTesting CSV parser...\n" RESET);
 
-    dynarr data = CSV_parse("a,b,c\n1,2,3");
-    expect("Parsing a,b,c\\n1,2,3, checking values...",
+    dynarr data = CSV_parse("a,b,c\n1,2,3\n");
+    expect("Parsing a,b,c\\n1,2,3\\n, checking values...",
            9,
            (bool[]){
                data.len == 2,
@@ -65,9 +65,10 @@ void test_csv(void) {
            });
     CSV_free(&data);
 
-    data = CSV_parse("a,,\"bit,of\"\n,\neverything,,\n\n,");
+    data = CSV_parse("a,,\"bit,of\"\n,\neverything,,\n\n,\n");
     expect(
-        "Parsing a,,\"bit,of\"\\n,\\neverything,,\\n\\n,, checking values...",
+        "Parsing a,,\"bit,of\"\\n,\\neverything,,\\n\\n,\\n, checking "
+        "values...",
         12,
         (bool[]){
             data.len == 4,

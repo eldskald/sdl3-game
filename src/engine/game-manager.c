@@ -6,6 +6,7 @@
 #include <engine/inputs.h>
 #include <engine/physics.h>
 #include <engine/renderer.h>
+#include <player/player.h>
 
 #ifdef DEV
 #include <dev/dev.h>
@@ -38,6 +39,7 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
 
         INPUTS_update();
         PHYSICS_update();
+        PLAYER_update();
 
 #ifdef DEV
         DEV_update();
@@ -71,11 +73,11 @@ int GAME_MANAGER_start(void) {
     if (INPUTS_start()) return 1;
     CHUNKS_start();
     PHYSICS_start();
+    PLAYER_start();
 
 #ifdef DEV
     DEV_start();
 #endif
-
 
     fixed_t = SDL_CreateThread(fixed_thread, "fixed", NULL);
 
