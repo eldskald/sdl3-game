@@ -1,8 +1,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_log.h>
 #include <defs.h>
-#include <game-manager.h>
-#include <inputs.h>
+#include <engine/game-manager.h>
+#include <engine/inputs.h>
 
 #define ACTION_NODE_MAX_INPUTS 16
 #define AXIS_MAX_VALUE 32678

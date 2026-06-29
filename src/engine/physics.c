@@ -1,9 +1,9 @@
 #include <SDL3/SDL.h>
 #include <data-structs/dynarr.h>
 #include <defs.h>
-#include <game-manager.h>
-#include <physics.h>
-#include <tilemap.h>
+#include <engine/game-manager.h>
+#include <engine/physics.h>
+#include <engine/tilemap.h>
 
 
 

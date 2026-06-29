@@ -1,11 +1,11 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_log.h>
-#include <chunks.h>
 #include <defs.h>
-#include <game-manager.h>
-#include <inputs.h>
-#include <physics.h>
-#include <renderer.h>
+#include <engine/chunks.h>
+#include <engine/game-manager.h>
+#include <engine/inputs.h>
+#include <engine/physics.h>
+#include <engine/renderer.h>
 
 #ifdef DEV
 #include <dev/dev.h>

@@ -1,11 +1,11 @@
 #include <defs.h>
-#include <renderer.h>
-#include <sprites.h>
+#include <engine/renderer.h>
+#include <engine/sprites.h>
+#include <engine/tilemap.h>
 #include <stdio.h>
 #include <stubs.h>
 #include <tests.h>
 #include <tests/drawing.h>
-#include <tilemap.h>
 
 void test_drawing(void) {
     printf(YELLOW "\nTesting render texture calls...\n" RESET);
