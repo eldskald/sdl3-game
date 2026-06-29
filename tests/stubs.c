@@ -5,9 +5,12 @@
 static SDL_RenderTexture_call calls[SUB_CALLS_MAX] = {0};
 static int calls_size = 0;
 
-void stubbed_SDL_RenderTexture(SDL_FRect* srcrect, SDL_FRect* dstrect) {
+void stubbed_SDL_RenderTexture(SDL_FRect* srcrect,
+                               SDL_FRect* dstrect,
+                               SDL_FlipMode flip_mode) {
     calls[calls_size].src = *srcrect;
     calls[calls_size].dst = *dstrect;
+    calls[calls_size].flip_mode = flip_mode;
     calls_size++;
 }
 

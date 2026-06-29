@@ -1,3 +1,5 @@
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_surface.h>
 #include <defs.h>
 #include <engine/renderer.h>
 #include <engine/sprites.h>
@@ -26,6 +28,7 @@ void test_drawing(void) {
             .coords_w = 1,
             .coords_h = 1,
             .z_index = 5,
+            .flip_mode = SDL_FLIP_NONE,
         },
         &id0);
     SPRITES_new_sprite(
@@ -37,6 +40,7 @@ void test_drawing(void) {
             .coords_w = 1,
             .coords_h = 1,
             .z_index = 4,
+            .flip_mode = SDL_FLIP_HORIZONTAL,
         },
         &id1);
     SPRITES_new_sprite(
@@ -48,6 +52,7 @@ void test_drawing(void) {
             .coords_w = 1,
             .coords_h = 1,
             .z_index = 11,
+            .flip_mode = SDL_FLIP_VERTICAL,
         },
         &id2);
     SPRITES_new_sprite(
@@ -59,6 +64,7 @@ void test_drawing(void) {
             .coords_w = 1,
             .coords_h = 1,
             .z_index = -3,
+            .flip_mode = SDL_FLIP_HORIZONTAL_AND_VERTICAL,
         },
         &id3);
 
@@ -67,7 +73,7 @@ void test_drawing(void) {
     SDL_RenderTexture_call* calls = NULL;
     int calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Added 4 sprites, should draw them correctly...",
-           33,
+           37,
            (bool[]){
                calls_n == 4,
                calls[0].src.x == 2 * SPRITESHEET_CELL_X,
@@ -78,6 +84,7 @@ void test_drawing(void) {
                calls[0].dst.y == 10,
                calls[0].dst.w == SPRITESHEET_CELL_X,
                calls[0].dst.h == SPRITESHEET_CELL_Y,
+               calls[0].flip_mode == SDL_FLIP_HORIZONTAL_AND_VERTICAL,
                calls[1].src.x == 8 * SPRITESHEET_CELL_X,
                calls[1].src.y == 5 * SPRITESHEET_CELL_Y,
                calls[1].src.w == SPRITESHEET_CELL_X,
@@ -86,6 +93,7 @@ void test_drawing(void) {
                calls[1].dst.y == 30,
                calls[1].dst.w == SPRITESHEET_CELL_X,
                calls[1].dst.h == SPRITESHEET_CELL_Y,
+               calls[1].flip_mode == SDL_FLIP_HORIZONTAL,
                calls[2].src.x == 3 * SPRITESHEET_CELL_X,
                calls[2].src.y == 10 * SPRITESHEET_CELL_Y,
                calls[2].src.w == SPRITESHEET_CELL_X,
@@ -94,6 +102,7 @@ void test_drawing(void) {
                calls[2].dst.y == 80,
                calls[2].dst.w == SPRITESHEET_CELL_X,
                calls[2].dst.h == SPRITESHEET_CELL_Y,
+               calls[2].flip_mode == SDL_FLIP_NONE,
                calls[3].src.x == 5 * SPRITESHEET_CELL_X,
                calls[3].src.y == 6 * SPRITESHEET_CELL_Y,
                calls[3].src.w == SPRITESHEET_CELL_X,
@@ -102,6 +111,7 @@ void test_drawing(void) {
                calls[3].dst.y == 20,
                calls[3].dst.w == SPRITESHEET_CELL_X,
                calls[3].dst.h == SPRITESHEET_CELL_Y,
+               calls[3].flip_mode == SDL_FLIP_VERTICAL,
            });
     clear_SDL_RenderTexture_calls();
 
@@ -115,11 +125,12 @@ void test_drawing(void) {
                               .coords_w = 1,
                               .coords_h = 1,
                               .z_index = 10,
+                              .flip_mode = SDL_FLIP_NONE,
                           });
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Updated a sprite, checking calls...",
-           33,
+           37,
            (bool[]){
                calls_n == 4,
                calls[0].src.x == 8 * SPRITESHEET_CELL_X,
@@ -130,6 +141,7 @@ void test_drawing(void) {
                calls[0].dst.y == 30,
                calls[0].dst.w == SPRITESHEET_CELL_X,
                calls[0].dst.h == SPRITESHEET_CELL_Y,
+               calls[0].flip_mode == SDL_FLIP_HORIZONTAL,
                calls[1].src.x == 3 * SPRITESHEET_CELL_X,
                calls[1].src.y == 10 * SPRITESHEET_CELL_Y,
                calls[1].src.w == SPRITESHEET_CELL_X,
@@ -138,6 +150,7 @@ void test_drawing(void) {
                calls[1].dst.y == 80,
                calls[1].dst.w == SPRITESHEET_CELL_X,
                calls[1].dst.h == SPRITESHEET_CELL_Y,
+               calls[1].flip_mode == SDL_FLIP_NONE,
                calls[2].src.x == 2 * SPRITESHEET_CELL_X,
                calls[2].src.y == 1 * SPRITESHEET_CELL_Y,
                calls[2].src.w == SPRITESHEET_CELL_X,
@@ -146,6 +159,7 @@ void test_drawing(void) {
                calls[2].dst.y == 12,
                calls[2].dst.w == SPRITESHEET_CELL_X,
                calls[2].dst.h == SPRITESHEET_CELL_Y,
+               calls[2].flip_mode == SDL_FLIP_NONE,
                calls[3].src.x == 5 * SPRITESHEET_CELL_X,
                calls[3].src.y == 6 * SPRITESHEET_CELL_Y,
                calls[3].src.w == SPRITESHEET_CELL_X,
@@ -154,16 +168,18 @@ void test_drawing(void) {
                calls[3].dst.y == 20,
                calls[3].dst.w == SPRITESHEET_CELL_X,
                calls[3].dst.h == SPRITESHEET_CELL_Y,
+               calls[3].flip_mode == SDL_FLIP_VERTICAL,
            });
     clear_SDL_RenderTexture_calls();
 
 
     SPRITES_del_sprite(id0);
     RENDERER_update();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Deleted a sprite, checking calls...",
-           25,
+           28,
            (bool[]){
-               calls_n == 4,
+               calls_n == 3,
                calls[0].src.x == 8 * SPRITESHEET_CELL_X,
                calls[0].src.y == 5 * SPRITESHEET_CELL_Y,
                calls[0].src.w == SPRITESHEET_CELL_X,
@@ -172,6 +188,7 @@ void test_drawing(void) {
                calls[0].dst.y == 30,
                calls[0].dst.w == SPRITESHEET_CELL_X,
                calls[0].dst.h == SPRITESHEET_CELL_Y,
+               calls[0].flip_mode == SDL_FLIP_HORIZONTAL,
                calls[1].src.x == 2 * SPRITESHEET_CELL_X,
                calls[1].src.y == 1 * SPRITESHEET_CELL_Y,
                calls[1].src.w == SPRITESHEET_CELL_X,
@@ -180,6 +197,7 @@ void test_drawing(void) {
                calls[1].dst.y == 12,
                calls[1].dst.w == SPRITESHEET_CELL_X,
                calls[1].dst.h == SPRITESHEET_CELL_Y,
+               calls[1].flip_mode == SDL_FLIP_NONE,
                calls[2].src.x == 5 * SPRITESHEET_CELL_X,
                calls[2].src.y == 6 * SPRITESHEET_CELL_Y,
                calls[2].src.w == SPRITESHEET_CELL_X,
@@ -188,6 +206,7 @@ void test_drawing(void) {
                calls[2].dst.y == 20,
                calls[2].dst.w == SPRITESHEET_CELL_X,
                calls[2].dst.h == SPRITESHEET_CELL_Y,
+               calls[2].flip_mode == SDL_FLIP_VERTICAL,
            });
     clear_SDL_RenderTexture_calls();
 
@@ -196,8 +215,9 @@ void test_drawing(void) {
         {(tile){.mat = tile_stone, .coords_x = 6, .coords_y = 7}}};
     TILEMAP_set_at(3, 2, 1, 1, &data);
     RENDERER_update();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Added a tile on the tilemap, checking calls...",
-           33,
+           37,
            (bool[]){
                calls_n == 4,
                calls[0].src.x == 8 * SPRITESHEET_CELL_X,
@@ -208,6 +228,7 @@ void test_drawing(void) {
                calls[0].dst.y == 30,
                calls[0].dst.w == SPRITESHEET_CELL_X,
                calls[0].dst.h == SPRITESHEET_CELL_Y,
+               calls[0].flip_mode == SDL_FLIP_HORIZONTAL,
                calls[1].src.x == 2 * SPRITESHEET_CELL_X,
                calls[1].src.y == 1 * SPRITESHEET_CELL_Y,
                calls[1].src.w == SPRITESHEET_CELL_X,
@@ -216,6 +237,7 @@ void test_drawing(void) {
                calls[1].dst.y == 12,
                calls[1].dst.w == SPRITESHEET_CELL_X,
                calls[1].dst.h == SPRITESHEET_CELL_Y,
+               calls[1].flip_mode == SDL_FLIP_NONE,
                calls[2].src.x == 5 * SPRITESHEET_CELL_X,
                calls[2].src.y == 6 * SPRITESHEET_CELL_Y,
                calls[2].src.w == SPRITESHEET_CELL_X,
@@ -224,6 +246,7 @@ void test_drawing(void) {
                calls[2].dst.y == 20,
                calls[2].dst.w == SPRITESHEET_CELL_X,
                calls[2].dst.h == SPRITESHEET_CELL_Y,
+               calls[2].flip_mode == SDL_FLIP_VERTICAL,
                calls[3].src.x == 6 * SPRITESHEET_CELL_X,
                calls[3].src.y == 7 * SPRITESHEET_CELL_Y,
                calls[3].src.w == SPRITESHEET_CELL_X,
@@ -232,6 +255,7 @@ void test_drawing(void) {
                calls[3].dst.y == 2 * SPRITESHEET_CELL_Y,
                calls[3].dst.w == SPRITESHEET_CELL_X,
                calls[3].dst.h == SPRITESHEET_CELL_Y,
+               calls[3].flip_mode == SDL_FLIP_NONE,
            });
     clear_SDL_RenderTexture_calls();
 
