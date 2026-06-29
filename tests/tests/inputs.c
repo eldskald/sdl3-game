@@ -2,7 +2,7 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gamepad.h>
 #include <defs.h>
-#include <inputs.h>
+#include <engine/inputs.h>
 #include <stdio.h>
 #include <tests.h>
 #include <tests/inputs.h>

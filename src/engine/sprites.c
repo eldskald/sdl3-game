@@ -1,8 +1,8 @@
 #include <SDL3/SDL.h>
 #include <data-structs/list.h>
 #include <defs.h>
-#include <game-manager.h>
-#include <sprites.h>
+#include <engine/game-manager.h>
+#include <engine/sprites.h>
 
 #ifdef TEST
 #include <stubs.h>

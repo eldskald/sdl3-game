@@ -1,6 +1,6 @@
 #include <SDL3/SDL.h>
 #include <defs.h>
-#include <tilemap.h>
+#include <engine/tilemap.h>
 
 #ifdef TEST
 #include <stubs.h>
