@@ -64,11 +64,11 @@ static void move_body_horizontally(body* b, double d) {
     double tl_x = SDL_round(b->x);
     double tl_y = SDL_round(b->y);
     double tr_x = SDL_round(b->x + b->w);
-    // double tr_y = SDL_round(b.y);
-    // double bl_x = SDL_round(b.x);
+    // double tr_y = SDL_round(b->y);
+    // double bl_x = SDL_round(b->x);
     double bl_y = SDL_round(b->y + b->h);
-    // double br_x = SDL_round(b.x + b.w);
-    // double br_y = SDL_round(b.y + b.h);
+    // double br_x = SDL_round(b->x + b->w);
+    // double br_y = SDL_round(b->y + b->h);
 
     // when moving right
     if (d >= 0.0f) {
@@ -392,4 +392,82 @@ dynarr PHYSICS_get_intersecting_bodies(SDL_Rect rect) {
             push_to_dynarr((void*)i, &arr);
     }
     return arr;
+}
+
+int PHYSICS_is_on_floor(size_t body_id, bool* check) {
+    if (body_id >= bodies_cap || body_id < 0) {
+        SDL_LogWarn(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "Tried to check body_id=%lu but this is outside the buffer range",
+            body_id);
+        return 3;
+    }
+    if (bodies[body_id].w == 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to check inexistent body at body_id=%lu",
+                    body_id);
+        return 1;
+    }
+    body b = bodies[body_id];
+    double by = SDL_round(b.y + b.h);
+    if ((int)by % SPRITESHEET_CELL_Y != 0) {
+        *check = false;
+        return 0;
+    }
+    double bl = SDL_round(b.x);
+    double br = SDL_round(b.x + b.w);
+    Uint16 ytile = pos_to_tile_y(by);
+    Uint16 from = pos_to_tile_x(bl);
+    Uint16 to = pos_to_tile_x(br) - ((int)br % SPRITESHEET_CELL_X == 0 ? 1 : 0);
+    for (Uint16 i = from; i <= to; i++) {
+        tile data = (tile){0};
+        int r = TILEMAP_get_at(i, ytile, &data);
+        if (r == 1 || data.mat != tile_null) {
+            *check = true;
+            return 0;
+        }
+    }
+    *check = false;
+    return 0;
+}
+
+int PHYSICS_is_on_ceiling(size_t body_id, bool* check) {
+    if (body_id >= bodies_cap || body_id < 0) {
+        SDL_LogWarn(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "Tried to check body_id=%lu but this is outside the buffer range",
+            body_id);
+        return 3;
+    }
+    if (bodies[body_id].w == 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to check inexistent body at body_id=%lu",
+                    body_id);
+        return 1;
+    }
+    body b = bodies[body_id];
+    double by = SDL_round(b.y);
+    if (by == 0.0f) {
+        *check = true;
+        return 0;
+    }
+    if ((int)by % SPRITESHEET_CELL_Y != 0) {
+        *check = false;
+        return 0;
+    }
+    double bl = SDL_round(b.x);
+    double br = SDL_round(b.x + b.w);
+    Uint16 ytile = pos_to_tile_y(by) - 1;
+    Uint16 from = pos_to_tile_x(bl);
+    Uint16 to = pos_to_tile_x(br) - ((int)br % SPRITESHEET_CELL_X == 0 ? 1 : 0);
+    for (Uint16 i = from; i <= to; i++) {
+        tile data = (tile){0};
+        int r = TILEMAP_get_at(i, ytile, &data);
+        if (r == 1 || data.mat != tile_null) {
+            *check = true;
+            return 0;
+        }
+    }
+    *check = false;
+    return 0;
 }

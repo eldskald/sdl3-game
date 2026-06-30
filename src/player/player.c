@@ -97,12 +97,25 @@ static void update_body(body b, Sint8 dir) {
         }
     }
     // The player is not pressing any direction
-    else {
+    else if (new_x != 0.0f) {
         new_x += new_x > 0.0f ? -data.friction * dt : data.friction * dt;
         if (new_x * b.vel_x < 0.0f) new_x = 0.0f;
     }
 
-    // Move vertically
+    // Jumping
+    bool is_on_floor = false;
+    PHYSICS_is_on_floor(state.body_id, &is_on_floor);
+    if (is_on_floor && INPUTS_get_action_state(action_jump).just_pressed) {
+        state.jumping = true;
+        new_y = -data.jump_speed;
+    } else if (state.jumping &&
+               INPUTS_get_action_state(action_jump).just_released) {
+        state.jumping = false;
+        new_y = b.vel_y * data.jump_cut;
+    } else if (state.jumping && (-b.vel_y <= FABS_ZERO_DIFF || is_on_floor))
+        state.jumping = false;
+
+    // Gravity
     new_y += data.gravity * dt;
     if (new_y >= data.max_fall_speed) new_y = data.max_fall_speed;
 

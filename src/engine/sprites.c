@@ -286,8 +286,8 @@ void SPRITES_update(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
                 .h = SPRITESHEET_CELL_Y *
                      sprites[(size_t)curr->val].sprite.coords_h,
             };
-            SDL_FPoint center = (SDL_FPoint){.x = 0.0f, .y = 0.0f};
 #ifndef TEST
+            SDL_FPoint center = (SDL_FPoint){.x = 0.0f, .y = 0.0f};
             SDL_RenderTextureRotated(
                 renderer,
                 spritesheet,
