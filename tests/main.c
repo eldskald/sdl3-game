@@ -11,7 +11,7 @@
 #include <tests/list.h>
 #include <tests/physics.h>
 
-int main() {
+int main(int argc, char* argv[]) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_COUNT);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_VIDEO, SDL_LOG_PRIORITY_COUNT);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_GPU, SDL_LOG_PRIORITY_COUNT);
@@ -20,17 +20,17 @@ int main() {
 
     printf(BLUE "\nRUNNING TESTS\n" RESET);
 
-    test_list();
-    test_dynarr();
-    test_hashmap();
+    if (argc == 1 || SDL_strcmp(argv[1], "list") == 0) test_list();
+    if (argc == 1 || SDL_strcmp(argv[1], "dynarr") == 0) test_dynarr();
+    if (argc == 1 || SDL_strcmp(argv[1], "hashmap") == 0) test_hashmap();
 
-    test_json();
-    test_csv();
+    if (argc == 1 || SDL_strcmp(argv[1], "json") == 0) test_json();
+    if (argc == 1 || SDL_strcmp(argv[1], "csv") == 0) test_csv();
 
-    test_physics();
-    test_chunks();
-    test_drawing();
-    test_inputs();
+    if (argc == 1 || SDL_strcmp(argv[1], "physics") == 0) test_physics();
+    if (argc == 1 || SDL_strcmp(argv[1], "chunks") == 0) test_chunks();
+    if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
+    if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();
 
     bool failed = get_tests_result();
 
@@ -38,6 +38,5 @@ int main() {
         printf(RED "\nFAILED\n" RESET);
     else
         printf(GREEN "\nPASSED\n" RESET);
-
     return failed;
 }
