@@ -3,5 +3,5 @@
 source .env
 
 make test
-./test
+./test $1
 rm test
