@@ -82,6 +82,18 @@ int PHYSICS_update_body(size_t body_id, body data);
 // Get all bodies intersecting `rect`.
 dynarr PHYSICS_get_intersecting_bodies(SDL_Rect rect);
 
+// Checks if the body at `body_id` is touching tiles below, setting `check` to
+// true if that's the case. Returns `3` when `body_id` is outside the array's
+// range, `1` when there is no body at that index, `0` when everything went
+// right.
+int PHYSICS_is_on_floor(size_t body_id, bool* check);
+
+// Checks if the body at `body_id` is touching tiles above, setting `check` to
+// true if that's the case. Returns `3` when `body_id` is outside the array's
+// range, `1` when there is no body at that index, `0` when everything went
+// right.
+int PHYSICS_is_on_ceiling(size_t body_id, bool* check);
+
 
 
 // Initiates the body array. Call at the start of the game.

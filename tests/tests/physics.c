@@ -214,5 +214,131 @@ void test_physics(void) {
                     data.vel_y - -4.0f * SPRITESHEET_CELL_Y <= FABS_ZERO_DIFF});
 
     TILEMAP_clear();
+
+    tile map2[5][5] = {
+        {
+            (tile){.mat = tile_dirt},
+            (tile){.mat = tile_dirt},
+            (tile){0},
+            (tile){.mat = tile_dirt},
+            (tile){.mat = tile_dirt},
+        },
+        {
+            (tile){.mat = tile_dirt},
+            (tile){0},
+            (tile){0},
+            (tile){0},
+            (tile){.mat = tile_dirt},
+        },
+        {
+            (tile){0},
+            (tile){0},
+            (tile){0},
+            (tile){0},
+            (tile){0},
+        },
+        {
+            (tile){.mat = tile_dirt},
+            (tile){0},
+            (tile){0},
+            (tile){0},
+            (tile){.mat = tile_dirt},
+        },
+        {
+            (tile){.mat = tile_dirt},
+            (tile){.mat = tile_dirt},
+            (tile){0},
+            (tile){.mat = tile_dirt},
+            (tile){.mat = tile_dirt},
+        },
+    };
+    TILEMAP_set_at(0, 0, 5, 5, &map2);
+
+    size_t last_id = 0;
+    PHYSICS_new_body(
+        (body){
+            .type = physics_actor,
+            .x = SPRITESHEET_CELL_X * 2.0f,
+            .y = SPRITESHEET_CELL_Y * 2.0f,
+            .w = SPRITESHEET_CELL_X,
+            .h = SPRITESHEET_CELL_Y,
+            .vel_x = 0.0f,
+            .vel_y = 0.0f,
+        },
+        &last_id);
+    bool check = false;
+    PHYSICS_is_on_floor(last_id, &check);
+    expect(
+        "Recreated tiles and body, body in the middle, checking is on floor...",
+        1,
+        (bool[]){check == false});
+
+    PHYSICS_set_position(
+        last_id, 1.0f * SPRITESHEET_CELL_X, 3.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_floor(last_id, &check);
+    expect("Teleporting body to a full floor, checking is on floor...",
+           1,
+           (bool[]){check == true});
+
+    PHYSICS_set_position(
+        last_id, 1.5f * SPRITESHEET_CELL_X, 3.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_floor(last_id, &check);
+    expect("Teleporting body to half floor half out, checking is on floor...",
+           1,
+           (bool[]){check == true});
+
+    PHYSICS_set_position(
+        last_id, 2.0f * SPRITESHEET_CELL_X, 3.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_floor(last_id, &check);
+    expect("Teleporting body to one tile gap, checking is on floor...",
+           1,
+           (bool[]){check == false});
+
+    PHYSICS_set_position(
+        last_id, 1.0f * SPRITESHEET_CELL_X, 3.0f * SPRITESHEET_CELL_Y - 1.0f);
+    PHYSICS_is_on_floor(last_id, &check);
+    expect("Teleporting body to a full floor but one pixel away, checking is "
+           "on floor...",
+           1,
+           (bool[]){check == false});
+
+    PHYSICS_set_position(
+        last_id, 2.0f * SPRITESHEET_CELL_X, 2.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_ceiling(last_id, &check);
+    expect("Teleporting body to middle, checking is on ceiling...",
+           1,
+           (bool[]){check == false});
+
+    PHYSICS_set_position(
+        last_id, 1.0f * SPRITESHEET_CELL_X, 1.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_ceiling(last_id, &check);
+    expect("Teleporting body to a full ceiling, checking is on ceiling...",
+           1,
+           (bool[]){check == true});
+
+    PHYSICS_set_position(
+        last_id, 1.5f * SPRITESHEET_CELL_X, 1.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_ceiling(last_id, &check);
+    expect(
+        "Teleporting body to half ceiling half out, checking is on ceiling...",
+        1,
+        (bool[]){check == true});
+
+    PHYSICS_set_position(
+        last_id, 2.0f * SPRITESHEET_CELL_X, 1.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_ceiling(last_id, &check);
+    expect("Teleporting body to one tile gap, checking is on ceiling...",
+           1,
+           (bool[]){check == false});
+
+    PHYSICS_set_position(
+        last_id, 1.0f * SPRITESHEET_CELL_X, 1.0f * SPRITESHEET_CELL_Y + 1.0f);
+    PHYSICS_is_on_ceiling(last_id, &check);
+    expect("Teleporting body to a full ceiling but one pixel away, checking is "
+           "on ceiling...",
+           1,
+           (bool[]){check == false});
+
+    TILEMAP_clear();
     PHYSICS_stop();
 }
