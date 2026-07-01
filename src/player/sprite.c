@@ -11,6 +11,8 @@ typedef enum {
     state_idle,
     state_moving,
     state_airborne,
+    state_crouch_idle,
+    state_crouch_moving,
 } states_machine_state;
 
 typedef struct {
@@ -23,6 +25,8 @@ typedef struct {
     animation idle_anim;
     animation moving_anim;
     animation airborne_anim;
+    animation crouch_idle_anim;
+    animation crouch_moving_anim;
 } sprite_data;
 
 typedef struct {
@@ -47,6 +51,37 @@ static void state_changed(states_machine_state new_state) {
     case state_airborne:
         SPRITES_play_anim(state.sprite_id, data.airborne_anim);
         break;
+    case state_crouch_idle:
+        SPRITES_play_anim(state.sprite_id, data.crouch_idle_anim);
+        break;
+    case state_crouch_moving:
+        SPRITES_play_anim(state.sprite_id, data.crouch_moving_anim);
+    }
+}
+
+static void update_states_machine(player_state player, body player_body) {
+    states_machine_state new_state = state.state;
+    bool is_on_floor = false;
+    bool is_on_ceiling = false;
+    PHYSICS_is_on_floor(player.body_id, &is_on_floor);
+    PHYSICS_is_on_ceiling(player.body_id, &is_on_ceiling);
+
+    if (is_on_floor && !is_on_ceiling &&
+        SDL_abs(player_body.vel_x) < FABS_ZERO_DIFF)
+        new_state = state_idle;
+    else if (is_on_floor && !is_on_ceiling)
+        new_state = state_moving;
+    else if (is_on_floor && is_on_ceiling &&
+             SDL_abs(player_body.vel_x) < FABS_ZERO_DIFF)
+        new_state = state_crouch_idle;
+    else if (is_on_floor && is_on_ceiling)
+        new_state = state_crouch_moving;
+    else if (!is_on_floor)
+        new_state = state_airborne;
+
+    if (new_state != state.state) {
+        state.state = new_state;
+        state_changed(new_state);
     }
 }
 
@@ -77,6 +112,8 @@ void PLAYER_SPRITE_start(void) {
             data.offset_x = SDL_strtol(x, NULL, 10);
             data.offset_y = SDL_strtol(y, NULL, 10);
         }
+
+        // Idle animation
         data.idle_anim.looped = true;
         if (SDL_strcmp(key, "idle_anim_x") == 0) {
             for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
@@ -96,6 +133,8 @@ void PLAYER_SPRITE_start(void) {
                 data.idle_anim.frames[j].duration = SDL_strtod(val, NULL);
             }
         }
+
+        // Moving animation
         data.moving_anim.looped = true;
         if (SDL_strcmp(key, "moving_anim_x") == 0) {
             for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
@@ -115,6 +154,8 @@ void PLAYER_SPRITE_start(void) {
                 data.moving_anim.frames[j].duration = SDL_strtod(val, NULL);
             }
         }
+
+        // Airborne animation
         data.airborne_anim.looped = true;
         if (SDL_strcmp(key, "airborne_anim_x") == 0) {
             for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
@@ -134,6 +175,54 @@ void PLAYER_SPRITE_start(void) {
             for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
                 char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
                 data.airborne_anim.frames[j].duration = SDL_strtod(val, NULL);
+            }
+        }
+
+        // Crouch idle animation
+        data.crouch_idle_anim.looped = true;
+        if (SDL_strcmp(key, "crouch_idle_anim_x") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.crouch_idle_anim.frames[j].coords_x =
+                    SDL_strtol(val, NULL, 10);
+            }
+        }
+        if (SDL_strcmp(key, "crouch_idle_anim_y") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.crouch_idle_anim.frames[j].coords_y =
+                    SDL_strtol(val, NULL, 10);
+            }
+        }
+        if (SDL_strcmp(key, "crouch_idle_anim_dur") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.crouch_idle_anim.frames[j].duration =
+                    SDL_strtod(val, NULL);
+            }
+        }
+
+        // Crouch moving animation
+        data.crouch_moving_anim.looped = true;
+        if (SDL_strcmp(key, "crouch_moving_anim_x") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.crouch_moving_anim.frames[j].coords_x =
+                    SDL_strtol(val, NULL, 10);
+            }
+        }
+        if (SDL_strcmp(key, "crouch_moving_anim_y") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.crouch_moving_anim.frames[j].coords_y =
+                    SDL_strtol(val, NULL, 10);
+            }
+        }
+        if (SDL_strcmp(key, "crouch_moving_anim_dur") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.crouch_moving_anim.frames[j].duration =
+                    SDL_strtod(val, NULL);
             }
         }
     }
@@ -178,17 +267,5 @@ void PLAYER_SPRITE_update(player_state player) {
 
     SPRITES_update_sprite(state.sprite_id, s);
 
-    states_machine_state new_state = state.state;
-    bool is_on_floor = false;
-    PHYSICS_is_on_floor(player.body_id, &is_on_floor);
-    if (is_on_floor && SDL_abs(b.vel_x) < FABS_ZERO_DIFF)
-        new_state = state_idle;
-    else if (is_on_floor)
-        new_state = state_moving;
-    else if (!is_on_floor)
-        new_state = state_airborne;
-    if (new_state != state.state) {
-        state.state = new_state;
-        state_changed(new_state);
-    }
+    update_states_machine(player, b);
 }
