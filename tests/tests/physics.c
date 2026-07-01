@@ -1,9 +1,10 @@
-#include <defs.h>
-#include <engine/physics.h>
-#include <engine/tilemap.h>
+#include "engine/physics.h"
+#include "defs.h"
+#include "engine/tilemap.h"
+#include "tests.h"
+#include "tests/physics.h"
+#include <SDL3/SDL.h>
 #include <stdio.h>
-#include <tests.h>
-#include <tests/physics.h>
 
 void test_physics(void) {
     printf(YELLOW "\nTesting physics...\n" RESET);

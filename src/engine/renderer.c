@@ -1,10 +1,8 @@
+#include "engine/renderer.h"
+#include "defs.h"
+#include "engine/sprites.h"
+#include "engine/tilemap.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_iostream.h>
-#include <SDL3/SDL_surface.h>
-#include <defs.h>
-#include <engine/renderer.h>
-#include <engine/sprites.h>
-#include <engine/tilemap.h>
 
 #ifndef TEST
 static SDL_Window* window = NULL;

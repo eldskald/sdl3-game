@@ -1,7 +1,7 @@
+#include "services/csv.h"
+#include "data-structs/dynarr.h"
+#include "services/servicedefs.h"
 #include <SDL3/SDL.h>
-#include <data-structs/dynarr.h>
-#include <services/csv.h>
-#include <services/servicedefs.h>
 
 // This file is a port of https://github.com/eldskald/csvparse, my other project
 // for parsing csv files. I did this to keep not importing any other library

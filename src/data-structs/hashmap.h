@@ -1,6 +1,6 @@
 #pragma once
+#include "data-structs/list.h"
 #include <SDL3/SDL.h>
-#include <data-structs/list.h>
 
 #define KEY_MAX_SIZE 256
 #define HASHMAP_INITIAL_CAP 64 // Keep it a power of 2

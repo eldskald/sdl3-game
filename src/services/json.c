@@ -1,9 +1,9 @@
+#include "services/json.h"
+#include "data-structs/dynarr.h"
+#include "data-structs/hashmap.h"
+#include "data-structs/list.h"
+#include "services/servicedefs.h"
 #include <SDL3/SDL.h>
-#include <data-structs/dynarr.h>
-#include <data-structs/hashmap.h>
-#include <data-structs/list.h>
-#include <services/json.h>
-#include <services/servicedefs.h>
 
 typedef enum {
     elemarr,

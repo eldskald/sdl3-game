@@ -1,8 +1,9 @@
-#include <engine/chunks.h>
-#include <engine/tilemap.h>
+#include "engine/chunks.h"
+#include "engine/tilemap.h"
+#include "tests.h"
+#include "tests/chunks.h"
+#include <SDL3/SDL.h>
 #include <stdio.h>
-#include <tests.h>
-#include <tests/chunks.h>
 
 void test_chunks(void) {
     printf(YELLOW "\nTesting chunks...\n" RESET);

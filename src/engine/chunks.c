@@ -1,10 +1,10 @@
+#include "engine/chunks.h"
+#include "data-structs/dynarr.h"
+#include "data-structs/hashmap.h"
+#include "defs.h"
+#include "engine/tilemap.h"
+#include "services/json.h"
 #include <SDL3/SDL.h>
-#include <data-structs/dynarr.h>
-#include <data-structs/hashmap.h>
-#include <defs.h>
-#include <engine/chunks.h>
-#include <engine/tilemap.h>
-#include <services/json.h>
 
 static chunk* chunks = NULL;
 

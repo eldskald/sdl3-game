@@ -1,7 +1,8 @@
-#include <data-structs/hashmap.h>
+#include "data-structs/hashmap.h"
+#include "tests.h"
+#include "tests/hashmap.h"
+#include <SDL3/SDL.h>
 #include <stdio.h>
-#include <tests.h>
-#include <tests/hashmap.h>
 
 void test_hashmap(void) {
     printf(YELLOW "\nTesting hashmaps...\n" RESET);

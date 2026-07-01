@@ -1,6 +1,6 @@
+#include "stubs.h"
+#include "tests.h"
 #include <SDL3/SDL.h>
-#include <stubs.h>
-#include <tests.h>
 
 static SDL_RenderTexture_call calls[SUB_CALLS_MAX] = {0};
 static int calls_size = 0;

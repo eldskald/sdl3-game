@@ -1,7 +1,5 @@
 #pragma once
-#include <engine/physics.h>
-#include <engine/sprites.h>
-#include <player/player.h>
+#include "player/player.h"
 
 void PLAYER_SPRITE_start(void);
 

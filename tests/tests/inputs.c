@@ -1,11 +1,9 @@
+#include "engine/inputs.h"
+#include "defs.h"
+#include "tests.h"
+#include "tests/inputs.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_gamepad.h>
-#include <defs.h>
-#include <engine/inputs.h>
 #include <stdio.h>
-#include <tests.h>
-#include <tests/inputs.h>
 
 void test_inputs(void) {
     printf(YELLOW "\nTesting inputs...\n" RESET);

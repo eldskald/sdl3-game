@@ -1,11 +1,11 @@
+#include "engine/sprites.h"
+#include "data-structs/list.h"
+#include "defs.h"
+#include "engine/game-manager.h"
 #include <SDL3/SDL.h>
-#include <data-structs/list.h>
-#include <defs.h>
-#include <engine/game-manager.h>
-#include <engine/sprites.h>
 
 #ifdef TEST
-#include <stubs.h>
+#include "stubs.h"
 #endif
 
 // This is how we're doing it: we have this huge sprites array of sprite_data to

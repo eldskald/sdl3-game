@@ -1,15 +1,14 @@
+#include "engine/game-manager.h"
+#include "defs.h"
+#include "engine/chunks.h"
+#include "engine/inputs.h"
+#include "engine/physics.h"
+#include "engine/renderer.h"
+#include "player/player.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_log.h>
-#include <defs.h>
-#include <engine/chunks.h>
-#include <engine/game-manager.h>
-#include <engine/inputs.h>
-#include <engine/physics.h>
-#include <engine/renderer.h>
-#include <player/player.h>
 
 #ifdef DEV
-#include <dev/dev.h>
+#include "dev/dev.h"
 #endif
 
 #undef SDL_HINT_MAIN_CALLBACK_RATE

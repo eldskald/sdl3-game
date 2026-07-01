@@ -1,15 +1,15 @@
+#include "tests.h"
+#include "tests/chunks.h"
+#include "tests/csv.h"
+#include "tests/drawing.h"
+#include "tests/dynarr.h"
+#include "tests/hashmap.h"
+#include "tests/inputs.h"
+#include "tests/json.h"
+#include "tests/list.h"
+#include "tests/physics.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
-#include <tests.h>
-#include <tests/chunks.h>
-#include <tests/csv.h>
-#include <tests/drawing.h>
-#include <tests/dynarr.h>
-#include <tests/hashmap.h>
-#include <tests/inputs.h>
-#include <tests/json.h>
-#include <tests/list.h>
-#include <tests/physics.h>
 
 int main(int argc, char* argv[]) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_COUNT);
