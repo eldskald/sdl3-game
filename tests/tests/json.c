@@ -1,9 +1,9 @@
+#include "services/json.h"
+#include "data-structs/hashmap.h"
+#include "tests.h"
+#include "tests/json.h"
 #include <SDL3/SDL.h>
-#include <data-structs/hashmap.h>
-#include <services/json.h>
 #include <stdio.h>
-#include <tests.h>
-#include <tests/json.h>
 
 void test_json(void) {
     printf(YELLOW "\nTesting JSON parser...\n" RESET);

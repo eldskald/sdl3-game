@@ -1,13 +1,12 @@
+#include "tests/drawing.h"
+#include "defs.h"
+#include "engine/renderer.h"
+#include "engine/sprites.h"
+#include "engine/tilemap.h"
+#include "stubs.h"
+#include "tests.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_surface.h>
-#include <defs.h>
-#include <engine/renderer.h>
-#include <engine/sprites.h>
-#include <engine/tilemap.h>
 #include <stdio.h>
-#include <stubs.h>
-#include <tests.h>
-#include <tests/drawing.h>
 
 void test_drawing(void) {
     printf(YELLOW "\nTesting render texture calls...\n" RESET);

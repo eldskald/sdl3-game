@@ -1,12 +1,11 @@
+#include "player/sprite.h"
+#include "data-structs/dynarr.h"
+#include "defs.h"
+#include "engine/physics.h"
+#include "engine/sprites.h"
+#include "player/player.h"
+#include "services/csv.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_surface.h>
-#include <data-structs/dynarr.h>
-#include <defs.h>
-#include <engine/physics.h>
-#include <engine/sprites.h>
-#include <player/player.h>
-#include <player/sprite.h>
-#include <services/csv.h>
 
 typedef enum {
     state_idle,

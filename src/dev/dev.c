@@ -1,8 +1,8 @@
+#include "dev/dev.h"
+#include "engine/chunks.h"
+#include "engine/tilemap.h"
+#include "player/player.h"
 #include <SDL3/SDL.h>
-#include <dev/dev.h>
-#include <engine/chunks.h>
-#include <engine/tilemap.h>
-#include <player/player.h>
 
 void DEV_start(void) {
     chunk chunk_data = (chunk){0};

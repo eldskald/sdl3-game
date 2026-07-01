@@ -1,9 +1,9 @@
-#include <SDL3/SDL_stdinc.h>
-#include <data-structs/dynarr.h>
-#include <services/csv.h>
+#include "services/csv.h"
+#include "data-structs/dynarr.h"
+#include "tests.h"
+#include "tests/csv.h"
+#include <SDL3/SDL.h>
 #include <stdio.h>
-#include <tests.h>
-#include <tests/csv.h>
 
 void test_csv(void) {
     printf(YELLOW "\nTesting CSV parser...\n" RESET);

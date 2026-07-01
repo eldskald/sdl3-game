@@ -1,6 +1,6 @@
 #pragma once
+#include "data-structs/dynarr.h"
 #include <SDL3/SDL.h>
-#include <data-structs/dynarr.h>
 
 // Physics types, for which type of physics interactions it will have.
 // `physics_actor` is for bodies that only collide with the tilemap, while

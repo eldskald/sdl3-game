@@ -1,5 +1,5 @@
 #pragma once
-#include <data-structs/dynarr.h>
+#include "data-structs/dynarr.h"
 
 // Parses a CSV string. The data returned is a dynarr of rows, each row another
 // dynarr of cells, each cell a string.

@@ -1,6 +1,6 @@
 #pragma once
+#include "defs.h"
 #include <SDL3/SDL.h>
-#include <defs.h>
 
 // Animation keyframes. Leaves the sprite at `coords_x,coords_y` for `duration`
 // seconds. A duration of `0.0f` means no frame, so leave the last frames in the
