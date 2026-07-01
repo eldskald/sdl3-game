@@ -18,6 +18,8 @@ typedef struct {
     double jump_cut;
     Uint8 w;
     Uint8 h;
+    double coyote_jump_time;
+    double jump_buffer_time;
 } player_data;
 
 static player_data data = (player_data){0};
@@ -77,17 +79,28 @@ static void update_body(Sint8 dir) {
     }
 
     // Jumping
-    bool is_on_floor = false;
-    PHYSICS_is_on_floor(state.body_id, &is_on_floor);
-    if (is_on_floor && INPUTS_get_action_state(action_jump).just_pressed) {
+    action_state jump_state = INPUTS_get_action_state(action_jump);
+    bool can_jump =
+        (state.coyote_jump_timer < data.coyote_jump_time) && !state.jumping;
+    bool pressed_jump =
+        jump_state.just_pressed ||
+        (jump_state.held && jump_state.time_held < data.jump_buffer_time);
+    if (can_jump && pressed_jump) {
         state.jumping = true;
         new_y = -data.jump_speed;
-    } else if (state.jumping &&
-               INPUTS_get_action_state(action_jump).just_released) {
+    } else if (state.jumping && jump_state.just_released) {
         state.jumping = false;
         new_y = b.vel_y * data.jump_cut;
-    } else if (state.jumping && (-b.vel_y <= FABS_ZERO_DIFF || is_on_floor))
+    } else if (state.jumping && (-b.vel_y <= FABS_ZERO_DIFF || can_jump))
         state.jumping = false;
+
+    // Coyote time
+    bool is_on_floor = false;
+    PHYSICS_is_on_floor(state.body_id, &is_on_floor);
+    if (is_on_floor)
+        state.coyote_jump_timer = 0.0f;
+    else
+        state.coyote_jump_timer += dt;
 
     // Gravity
     new_y += data.gravity * dt;
@@ -132,10 +145,14 @@ static void load_base_data_from_csv(void) {
             data.jump_speed = SDL_strtod(val, NULL);
         else if (SDL_strcmp(key, "jump_cut") == 0)
             data.jump_cut = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "w") == 0)
+        else if (SDL_strcmp(key, "width") == 0)
             data.w = SDL_strtol(val, NULL, 10);
-        else if (SDL_strcmp(key, "h") == 0)
+        else if (SDL_strcmp(key, "height") == 0)
             data.h = SDL_strtol(val, NULL, 10);
+        else if (SDL_strcmp(key, "coyote_jump_time") == 0)
+            data.coyote_jump_time = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "jump_buffer_time") == 0)
+            data.jump_buffer_time = SDL_strtod(val, NULL);
     }
 
     CSV_free(&parsed);

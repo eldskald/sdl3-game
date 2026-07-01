@@ -6,6 +6,7 @@ typedef struct {
     size_t body_id;
     Sint8 facing;
     bool jumping;
+    double coyote_jump_timer;
 } player_state;
 
 void PLAYER_start(void);
