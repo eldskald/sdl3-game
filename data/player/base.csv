@@ -5,5 +5,7 @@ gravity,600
 max_fall_speed,160
 jump_speed,160
 jump_cut,0.3
-w,4
-h,8
+width,4
+height,8
+coyote_jump_time,0.1
+jump_buffer_time,0.1
