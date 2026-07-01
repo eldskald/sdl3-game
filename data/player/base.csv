@@ -5,3 +5,5 @@ gravity,600
 max_fall_speed,160
 jump_speed,160
 jump_cut,0.3
+w,4
+h,8

@@ -1,6 +1,4 @@
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_rect.h>
-#include <SDL3/SDL_render.h>
 #include <data-structs/list.h>
 #include <defs.h>
 #include <engine/game-manager.h>

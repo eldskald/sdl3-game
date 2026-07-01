@@ -1,4 +1,5 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_stdinc.h>
 #include <data-structs/dynarr.h>
 #include <defs.h>
 #include <engine/game-manager.h>
@@ -6,10 +7,10 @@
 #include <engine/physics.h>
 #include <engine/sprites.h>
 #include <player/player.h>
+#include <player/sprite.h>
 #include <services/csv.h>
 
 typedef struct {
-    // Base data
     double max_speed;
     double acceleration;
     double friction;
@@ -17,21 +18,9 @@ typedef struct {
     double max_fall_speed;
     double jump_speed;
     double jump_cut;
-
-    // Sprite data
-    Uint8 sx;
-    Uint8 sy;
-    Uint8 sw;
-    Uint8 sh;
+    Uint8 w;
+    Uint8 h;
 } player_data;
-
-typedef struct {
-    bool loaded;
-    size_t sprite_id;
-    size_t body_id;
-    Sint8 facing;
-    bool jumping;
-} player_state;
 
 static player_data data = (player_data){0};
 static player_state state = (player_state){0};
@@ -44,40 +33,27 @@ void PLAYER_create(double at_x, double at_y) {
             .type = physics_actor,
             .x = at_x,
             .y = at_y,
-            .w = SPRITESHEET_CELL_X * data.sw,
-            .h = SPRITESHEET_CELL_Y * data.sh,
+            .w = data.w,
+            .h = data.h,
         },
         &state.body_id);
-    SPRITES_new_sprite(
-        (sprite){
-            .coords_x = data.sx,
-            .coords_y = data.sy,
-            .coords_w = data.sw,
-            .coords_h = data.sh,
-        },
-        &state.sprite_id);
-    state.loaded = true;
+    state.created = true;
+    state.facing = 1;
+    PLAYER_SPRITE_create();
 }
 
 void PLAYER_destroy(void) {
     PHYSICS_del_body(state.body_id);
-    SPRITES_del_sprite(state.sprite_id);
-    state.loaded = false;
+    PLAYER_SPRITE_destroy();
+    state.created = false;
 }
 
 
 
-static void update_sprite(sprite s, body b, Sint8 dir) {
-    if (dir && dir != state.facing) {
-        s.flip_mode = dir == 1 ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
-        state.facing = dir;
-    }
-    s.pos_x = (Uint32)SDL_roundf(b.x);
-    s.pos_y = (Uint32)SDL_roundf(b.y);
-    SPRITES_update_sprite(state.sprite_id, s);
-}
+static void update_body(Sint8 dir) {
+    body b = (body){0};
+    PHYSICS_get_body(state.body_id, &b);
 
-static void update_body(body b, Sint8 dir) {
     double dt = GAME_MANAGER_get_current_dt();
     double new_x = b.vel_x;
     double new_y = b.vel_y;
@@ -123,16 +99,13 @@ static void update_body(body b, Sint8 dir) {
 }
 
 void PLAYER_update(void) {
-    if (!state.loaded) return;
+    if (!state.created) return;
 
     Sint8 dir = INPUTS_get_x_dir();
-    body b = (body){0};
-    sprite s = (sprite){0};
-    PHYSICS_get_body(state.body_id, &b);
-    SPRITES_get_sprite(state.sprite_id, &s);
+    if (dir && dir != state.facing) state.facing = dir;
 
-    update_sprite(s, b, dir);
-    update_body(b, dir);
+    update_body(dir);
+    PLAYER_SPRITE_update(state);
 }
 
 
@@ -161,6 +134,10 @@ static void load_base_data_from_csv(void) {
             data.jump_speed = SDL_strtod(val, NULL);
         else if (SDL_strcmp(key, "jump_cut") == 0)
             data.jump_cut = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "w") == 0)
+            data.w = SDL_strtol(val, NULL, 10);
+        else if (SDL_strcmp(key, "h") == 0)
+            data.h = SDL_strtol(val, NULL, 10);
     }
 
     CSV_free(&parsed);
@@ -169,34 +146,7 @@ static void load_base_data_from_csv(void) {
                 "Player base data loaded successfully.");
 }
 
-static void load_sprite_data_from_csv(void) {
-    char csv[] = {
-#embed PLAYER_SPRITE_CSV_PATH suffix(, '\0')
-    };
-
-    dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        if (SDL_strcmp(key, "coords") == 0) {
-            char* x = (char*)((dynarr*)parsed.at[i])->at[1];
-            char* y = (char*)((dynarr*)parsed.at[i])->at[2];
-            char* w = (char*)((dynarr*)parsed.at[i])->at[3];
-            char* h = (char*)((dynarr*)parsed.at[i])->at[4];
-            data.sx = SDL_strtol(x, NULL, 10);
-            data.sy = SDL_strtol(y, NULL, 10);
-            data.sw = SDL_strtol(w, NULL, 10);
-            data.sh = SDL_strtol(h, NULL, 10);
-        }
-    }
-
-    CSV_free(&parsed);
-
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "Player sprite data loaded successfully.");
-}
-
 void PLAYER_start(void) {
     load_base_data_from_csv();
-    load_sprite_data_from_csv();
+    PLAYER_SPRITE_start();
 }

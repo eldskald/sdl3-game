@@ -1,1 +1,14 @@
-coords,10,2,1,1
+coords,28,0,1,2
+offset,-2,-8
+
+idle_anim_x,28,29
+idle_anim_y,0,0
+idle_anim_dur,0.8,0.8
+
+moving_anim_x,31,28,29,30,31
+moving_anim_y,0,2,2,2,2
+moving_anim_dur,0.1,0.1,0.1,0.1,0.1
+
+airborne_anim_x,30
+airborne_anim_y,0
+airborne_anim_dur,0.1
