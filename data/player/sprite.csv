@@ -12,3 +12,11 @@ moving_anim_dur,0.1,0.1,0.1,0.1,0.1
 airborne_anim_x,30
 airborne_anim_y,0
 airborne_anim_dur,0.1
+
+crouch_idle_anim_x,28,29
+crouch_idle_anim_y,4,4
+crouch_idle_anim_dur,0.8,0.8
+
+crouch_moving_anim_x,30,31,28,29
+crouch_moving_anim_y,4,4,6,6
+crouch_moving_anim_dur,0.1,0.1,0.1,0.1
