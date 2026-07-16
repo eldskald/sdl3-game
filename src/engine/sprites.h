@@ -112,4 +112,4 @@ void SPRITES_start(void);
 void SPRITES_stop(void);
 
 // Updates the sprites state and renders them. Call on renderer update.
-void SPRITES_update(SDL_Renderer* renderer, SDL_Texture* spritesheet);
+void SPRITES_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet);

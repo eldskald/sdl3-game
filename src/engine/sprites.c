@@ -227,7 +227,7 @@ int SPRITES_anim_finished(size_t sprite_id, bool* finished) {
 
 
 
-void SPRITES_update(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
+void SPRITES_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
     for (int i = 0; i < Z_INDEX_TOTAL; i++) {
         node* curr = z_index_map[i].head;
         while (curr) {

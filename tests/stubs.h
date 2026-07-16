@@ -7,14 +7,26 @@ typedef struct {
     SDL_FlipMode flip_mode;
 } SDL_RenderTexture_call;
 
-// Stub of SDL_RenderTexture()
+typedef struct {
+    float x;
+    float y;
+} SDL_RenderPoint_call;
+
+// Stub of `SDL_RenderTexture()`
 void stubbed_SDL_RenderTexture(SDL_FRect* srcrect,
                                SDL_FRect* dstrect,
                                SDL_FlipMode flip_mode);
 
-// Points calls to an array of all stubbed_SDL_RenderTexture calls. Returns the
-// length of said array.
-int get_SDL_RenderTexture_calls(SDL_RenderTexture_call** ptr);
+// Stub of `SDL_RenderPoint()`
+void stubbed_SDL_RenderPoint(float x, float y);
+
+// Points calls to an array of all `stubbed_SDL_RenderTexture()` calls. Returns
+// the length of said array.
+size_t get_SDL_RenderTexture_calls(SDL_RenderTexture_call** ptr);
+
+// Points calls to an array of all `stubbed_SDL_RenderPoint()` calls. Returns
+// the length of said array.
+size_t get_SDL_RenderPoint_calls(SDL_RenderPoint_call** ptr);
 
 // Erase all calls.
-void clear_SDL_RenderTexture_calls(void);
+void clear_stubbed_calls(void);

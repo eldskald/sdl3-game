@@ -1,5 +1,6 @@
 #include "engine/renderer.h"
 #include "defs.h"
+#include "engine/fluids.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
 #include <SDL3/SDL.h>
@@ -90,7 +91,8 @@ static void render_base_screen(void) {
     SDL_RenderClear(renderer);
 #endif
 
-    SPRITES_update(renderer, spritesheet);
+    FLUIDS_draw(renderer);
+    SPRITES_draw(renderer, spritesheet);
     TILEMAP_draw(renderer, spritesheet);
 
 #ifndef TEST

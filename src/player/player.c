@@ -91,7 +91,7 @@ static void update_body(Sint8 dir) {
     } else if (state.jumping && jump_state.just_released) {
         state.jumping = false;
         new_y = b.vel_y * data.jump_cut;
-    } else if (state.jumping && (-b.vel_y <= FABS_ZERO_DIFF || can_jump))
+    } else if (state.jumping && (-b.vel_y <= EPSILON || can_jump))
         state.jumping = false;
 
     // Coyote time

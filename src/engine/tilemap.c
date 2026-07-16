@@ -160,6 +160,10 @@ int TILEMAP_get_at(Uint16 x, Uint16 y, tile* data) {
                     y);
         return 1;
     }
+    if (!map) {
+        *data = (tile){0};
+        return 0;
+    }
     *data = (*map)[x][y];
     return 0;
 }
@@ -174,7 +178,7 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
 
     for (int i = 0; i < TILEMAP_SIZE_X; i++) {
         for (int j = 0; j < TILEMAP_SIZE_Y; j++) {
-            if ((*map)[i][j].mat == tile_null) continue;
+            if (!(*map)[i][j].mat) continue;
             SDL_FRect srcrect = (SDL_FRect){
                 .x = SPRITESHEET_CELL_X * (*map)[i][j].coords_x,
                 .y = SPRITESHEET_CELL_Y * (*map)[i][j].coords_y,

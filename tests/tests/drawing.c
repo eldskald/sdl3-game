@@ -1,5 +1,6 @@
 #include "tests/drawing.h"
 #include "defs.h"
+#include "engine/fluids.h"
 #include "engine/renderer.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
@@ -70,7 +71,7 @@ void test_drawing(void) {
 
     RENDERER_update();
     SDL_RenderTexture_call* calls = NULL;
-    int calls_n = get_SDL_RenderTexture_calls(&calls);
+    size_t calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Added 4 sprites, should draw them correctly...",
            37,
            (bool[]){
@@ -112,7 +113,7 @@ void test_drawing(void) {
                calls[3].dst.h == SPRITESHEET_CELL_Y,
                calls[3].flip_mode == SDL_FLIP_VERTICAL,
            });
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
 
     SPRITES_update_sprite(id3,
@@ -169,7 +170,7 @@ void test_drawing(void) {
                calls[3].dst.h == SPRITESHEET_CELL_Y,
                calls[3].flip_mode == SDL_FLIP_VERTICAL,
            });
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
 
     SPRITES_del_sprite(id0);
@@ -207,7 +208,7 @@ void test_drawing(void) {
                calls[2].dst.h == SPRITESHEET_CELL_Y,
                calls[2].flip_mode == SDL_FLIP_VERTICAL,
            });
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
 
     tile data[1][1] = {
@@ -256,11 +257,36 @@ void test_drawing(void) {
                calls[3].dst.h == SPRITESHEET_CELL_Y,
                calls[3].flip_mode == SDL_FLIP_NONE,
            });
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
+    FLUIDS_start();
+    FLUIDS_set_at(2, 2, 1, 1, fluid_water, 1.0f);
+    FLUIDS_step();
+    RENDERER_update();
+    SDL_RenderPoint_call* pt_calls = NULL;
+    size_t pt_calls_n = get_SDL_RenderPoint_calls(&pt_calls);
+    expect("Added a cell of water, checking calls...",
+           25,
+           (bool[]){
+               pt_calls_n == 12,       pt_calls[0].x == 10.0f,
+               pt_calls[0].y == 11.0f, pt_calls[1].x == 9.0f,
+               pt_calls[1].y == 11.0f, pt_calls[2].x == 11.0f,
+               pt_calls[2].y == 10.0f, pt_calls[3].x == 10.0f,
+               pt_calls[3].y == 10.0f, pt_calls[4].x == 9.0f,
+               pt_calls[4].y == 10.0f, pt_calls[5].x == 8.0f,
+               pt_calls[5].y == 10.0f, pt_calls[6].x == 11.0f,
+               pt_calls[6].y == 9.0f,  pt_calls[7].x == 10.0f,
+               pt_calls[7].y == 9.0f,  pt_calls[8].x == 9.0f,
+               pt_calls[8].y == 9.0f,  pt_calls[9].x == 8.0f,
+               pt_calls[9].y == 9.0f,  pt_calls[10].x == 10.0f,
+               pt_calls[10].y == 8.0f, pt_calls[11].x == 9.0f,
+               pt_calls[11].y == 8.0f,
+           });
+    clear_stubbed_calls();
 
-    SPRITES_stop();
     TILEMAP_clear();
+    FLUIDS_stop();
+    SPRITES_stop();
     SPRITES_start();
     SPRITES_new_sprite(
         (sprite){
@@ -297,11 +323,11 @@ void test_drawing(void) {
                     calls[0].dst.y == 0,
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
         RENDERER_update();
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
@@ -316,11 +342,11 @@ void test_drawing(void) {
                  calls[0].dst.y == 0,
                  calls[0].dst.w == SPRITESHEET_CELL_X,
                  calls[0].dst.h == SPRITESHEET_CELL_Y});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
         RENDERER_update();
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
@@ -335,11 +361,11 @@ void test_drawing(void) {
                  calls[0].dst.y == 0,
                  calls[0].dst.w == SPRITESHEET_CELL_X,
                  calls[0].dst.h == SPRITESHEET_CELL_Y});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     for (int i = 0; i < 12; i++)
         RENDERER_update();
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
     RENDERER_update();
     bool trigger = false;
     SPRITES_anim_finished(id0, &trigger);
@@ -357,7 +383,7 @@ void test_drawing(void) {
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y,
                     !trigger});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     RENDERER_update();
     SPRITES_anim_finished(id0, &trigger);
@@ -375,7 +401,7 @@ void test_drawing(void) {
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y,
                     trigger});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     RENDERER_update();
     SPRITES_anim_finished(id0, &trigger);
@@ -393,7 +419,7 @@ void test_drawing(void) {
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y,
                     !trigger});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     SPRITES_play_anim(
         id0,
@@ -417,11 +443,11 @@ void test_drawing(void) {
                     calls[0].dst.y == 0,
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
         RENDERER_update();
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
@@ -436,11 +462,11 @@ void test_drawing(void) {
                  calls[0].dst.y == 0,
                  calls[0].dst.w == SPRITESHEET_CELL_X,
                  calls[0].dst.h == SPRITESHEET_CELL_Y});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
         RENDERER_update();
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
@@ -455,11 +481,11 @@ void test_drawing(void) {
                  calls[0].dst.y == 0,
                  calls[0].dst.w == SPRITESHEET_CELL_X,
                  calls[0].dst.h == SPRITESHEET_CELL_Y});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
         RENDERER_update();
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
     RENDERER_update();
     SPRITES_anim_finished(id0, &trigger);
     calls_n = get_SDL_RenderTexture_calls(&calls);
@@ -476,12 +502,12 @@ void test_drawing(void) {
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y,
                     !trigger});
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
 
     SPRITES_stop_anim(id0);
     for (int i = 0; i < 14; i++)
         RENDERER_update();
-    clear_SDL_RenderTexture_calls();
+    clear_stubbed_calls();
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Stopped animation and ticked enough to get to what would be the "
@@ -496,8 +522,7 @@ void test_drawing(void) {
                     calls[0].dst.y == 0,
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y});
-    clear_SDL_RenderTexture_calls();
-
+    clear_stubbed_calls();
 
     RENDERER_stop();
 }
