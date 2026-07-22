@@ -53,7 +53,7 @@ static bool are_intersecting(double ax,
             .h = SDL_roundf(bh),
         },
         &inter);
-    return inter.w > FABS_ZERO_DIFF && inter.h > FABS_ZERO_DIFF;
+    return inter.w > EPSILON && inter.h > EPSILON;
 }
 
 
@@ -81,7 +81,7 @@ static void move_body_horizontally(body* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat != tile_null) {
+                if (r == 1 || data.mat) {
                     if (SDL_roundf(b->y + b->h) <= SPRITESHEET_CELL_Y * j ||
                         SDL_roundf(b->y) >= SPRITESHEET_CELL_Y * (j + 1))
                         continue;
@@ -107,7 +107,7 @@ static void move_body_horizontally(body* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat != tile_null) {
+                if (r == 1 || data.mat) {
                     if (SDL_roundf(b->y + b->h) <= SPRITESHEET_CELL_Y * j ||
                         SDL_roundf(b->y) >= SPRITESHEET_CELL_Y * (j + 1))
                         continue;
@@ -147,7 +147,7 @@ static void move_body_vertically(body* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat != tile_null) {
+                if (r == 1 || data.mat) {
                     if (SDL_roundf(b->x + b->w) <= SPRITESHEET_CELL_X * i ||
                         SDL_roundf(b->x) >= SPRITESHEET_CELL_X * (i + 1))
                         continue;
@@ -173,7 +173,7 @@ static void move_body_vertically(body* b, double d) {
             for (Uint16 j = from_y; j >= to_y; j--) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat != tile_null) {
+                if (r == 1 || data.mat) {
                     if (SDL_roundf(b->x + b->w) <= SPRITESHEET_CELL_X * i ||
                         SDL_roundf(b->x) >= SPRITESHEET_CELL_X * (i + 1))
                         continue;
@@ -353,8 +353,8 @@ void PHYSICS_update(void) {
     for (size_t i = 0; i < bodies_cap; i++) {
         if (bodies[i].w == 0 || bodies[i].h == 0) continue;
         if (bodies[i].sleeping) continue;
-        if (SDL_fabs(bodies[i].vel_x) <= FABS_ZERO_DIFF &&
-            SDL_fabs(bodies[i].vel_y) <= FABS_ZERO_DIFF)
+        if (SDL_fabs(bodies[i].vel_x) <= EPSILON &&
+            SDL_fabs(bodies[i].vel_y) <= EPSILON)
             continue;
 
         double dt = GAME_MANAGER_get_current_dt();
@@ -422,7 +422,7 @@ int PHYSICS_is_on_floor(size_t body_id, bool* check) {
     for (Uint16 i = from; i <= to; i++) {
         tile data = (tile){0};
         int r = TILEMAP_get_at(i, ytile, &data);
-        if (r == 1 || data.mat != tile_null) {
+        if (r == 1 || data.mat) {
             *check = true;
             return 0;
         }
@@ -463,7 +463,7 @@ int PHYSICS_is_on_ceiling(size_t body_id, bool* check) {
     for (Uint16 i = from; i <= to; i++) {
         tile data = (tile){0};
         int r = TILEMAP_get_at(i, ytile, &data);
-        if (r == 1 || data.mat != tile_null) {
+        if (r == 1 || data.mat) {
             *check = true;
             return 0;
         }

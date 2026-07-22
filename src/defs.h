@@ -7,6 +7,7 @@
 
 #define MAIN_T_TARGET_FPS 60
 #define FIXED_T_TARGET_FPS 60
+#define FLUIDS_T_TARGET_FPS 60
 
 #define STARTING_WINDOW_SIZE_X 1280
 #define STARTING_WINDOW_SIZE_Y 720
@@ -35,8 +36,6 @@
 #define COL_BLACK 0, 0, 0, 255
 #define COL_WHITE 255, 255, 255, 255
 
-
-
 // Sprites
 #define STARTING_SPRITES_DYNARR_CAP 1024
 #define Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -127 to 127
@@ -44,26 +43,39 @@
 
 
 
+// Chunks
+#define CHUNK_MEM_BUFFER_SIZE 1048576 // 2^20
+#define CHUNKS_TOTAL 4
+#define CHUNK_001_PATH "data/chunks/001.json"
+#define CHUNK_002_PATH "data/chunks/002.json"
+#define CHUNK_003_PATH "data/chunks/003.json"
+#define CHUNK_004_PATH "data/chunks/004.json"
+
 // Tilemaps
 #define TILEMAP_SIZE_X 1024
 #define TILEMAP_SIZE_Y 1024
-
-#define CHUNK_MEM_BUFFER_SIZE 1048576 // 2^20
-#define CHUNK_TOTAL 1
-#define CHUNK_001_PATH "data/chunks/001.json"
+#define TILES_TYPES tile_dirt = 1, tile_stone, tile_wood, tile_metal,
 
 
-
-// Inputs
-
-
+// Fluids
+#define FLUIDS_SPLIT_X 2
+#define FLUIDS_SPLIT_Y 2
+#define FLUIDS_SIMULATE_X 120
+#define FLUIDS_SIMULATE_Y 66
+#define FLUIDS_TYPES fluid_water, fluid_lava
+#define FLUIDS_TOTAL 2
+#define FLUIDS_CSV_PATH "data/simulation/fluids.csv"
 
 // Physics
 #define STARTING_BODIES_DYNARR_CAP 1024
-#define FABS_ZERO_DIFF 0.001f
 
 
 
 // Player
 #define PLAYER_BASE_CSV_PATH "data/player/base.csv"
 #define PLAYER_SPRITE_CSV_PATH "data/player/sprite.csv"
+
+
+
+// Helpers
+#define EPSILON 0.0001f

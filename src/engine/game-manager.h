@@ -26,3 +26,6 @@ double GAME_MANAGER_get_main_dt(void);
 
 // Fixed thread's delta time.
 double GAME_MANAGER_get_fixed_dt(void);
+
+// Fluids thread's delta time
+double GAME_MANAGER_get_fluids_dt(void);

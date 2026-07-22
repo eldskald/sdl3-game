@@ -1,18 +1,13 @@
 #pragma once
+#include "defs.h"
 #include <SDL3/SDL.h>
 
 // Material types, for interactions, properties, etc.
 //
 // ```
-// enum {tile_null, tile_dirt, tile_stone, tile_wood, tile_metal};
+// enum { TILES_TYPES };
 // ```
-typedef enum {
-    tile_null,
-    tile_dirt,
-    tile_stone,
-    tile_wood,
-    tile_metal,
-} material;
+typedef enum { TILES_TYPES } material;
 
 // Tile information. The `coords_x` and `coords_y` mean this tile's sprite
 // coords in the spritesheet in tiles, so if they're `0 0` it means the first

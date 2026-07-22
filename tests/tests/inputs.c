@@ -44,7 +44,7 @@ void test_inputs(void) {
            (bool[]){state.just_pressed == false,
                     state.just_released == false,
                     state.held == true,
-                    SDL_abs(state.time_held - 0.5f) < FABS_ZERO_DIFF});
+                    SDL_abs(state.time_held - 0.5f) < EPSILON});
 
     event.key = (SDL_KeyboardEvent){.key = SDLK_Z};
     event.type = SDL_EVENT_KEY_UP;
@@ -55,7 +55,7 @@ void test_inputs(void) {
            (bool[]){state.just_pressed == false,
                     state.just_released == true,
                     state.held == false,
-                    state.time_held < FABS_ZERO_DIFF});
+                    state.time_held < EPSILON});
 
     INPUTS_update();
     state = INPUTS_get_action_state(action_jump);
@@ -173,7 +173,7 @@ void test_inputs(void) {
            (bool[]){state.just_pressed == false,
                     state.just_released == false,
                     state.held == true,
-                    SDL_abs(state.time_held - 0.5f) < FABS_ZERO_DIFF});
+                    SDL_abs(state.time_held - 0.5f) < EPSILON});
 
     event.gbutton =
         (SDL_GamepadButtonEvent){.button = SDL_GAMEPAD_BUTTON_SOUTH};
@@ -185,7 +185,7 @@ void test_inputs(void) {
            (bool[]){state.just_pressed == false,
                     state.just_released == true,
                     state.held == false,
-                    state.time_held < FABS_ZERO_DIFF});
+                    state.time_held < EPSILON});
 
     INPUTS_update();
     state = INPUTS_get_action_state(action_jump);

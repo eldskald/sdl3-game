@@ -3,6 +3,7 @@
 #include "tests/csv.h"
 #include "tests/drawing.h"
 #include "tests/dynarr.h"
+#include "tests/fluids.h"
 #include "tests/hashmap.h"
 #include "tests/inputs.h"
 #include "tests/json.h"
@@ -28,6 +29,7 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "csv") == 0) test_csv();
 
     if (argc == 1 || SDL_strcmp(argv[1], "physics") == 0) test_physics();
+    if (argc == 1 || SDL_strcmp(argv[1], "fluids") == 0) test_fluids();
     if (argc == 1 || SDL_strcmp(argv[1], "chunks") == 0) test_chunks();
     if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
     if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();

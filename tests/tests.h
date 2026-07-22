@@ -7,7 +7,7 @@
 #define BLUE "\x1b[34m"
 #define RESET "\x1b[0m"
 
-#define MAX_EXPECTATIONS 32
+#define MAX_EXPECTATIONS 256
 #define FAIL_MESSAGE_MAX 256
 #define NUM_TO_STR_MAX 16
 #define SUB_CALLS_MAX 256

@@ -94,8 +94,8 @@ void test_physics(void) {
     expect("Set a diagonal velocity to the body and ticked more than enough "
            "times to have it collide with the corner, checking its position...",
            4,
-           (bool[]){data.x - SPRITESHEET_CELL_X * 3.0f <= FABS_ZERO_DIFF,
-                    data.y - SPRITESHEET_CELL_Y * 3.0f <= FABS_ZERO_DIFF,
+           (bool[]){data.x - SPRITESHEET_CELL_X * 3.0f <= EPSILON,
+                    data.y - SPRITESHEET_CELL_Y * 3.0f <= EPSILON,
                     data.vel_x == 0.0f,
                     data.vel_y == 0.0f});
 
@@ -106,8 +106,8 @@ void test_physics(void) {
     expect("Set velocity to up, checking if it will move along the wall and "
            "collide with top right corner...",
            4,
-           (bool[]){data.x - SPRITESHEET_CELL_X * 3.0f <= FABS_ZERO_DIFF,
-                    data.y - SPRITESHEET_CELL_Y * 1.0f <= FABS_ZERO_DIFF,
+           (bool[]){data.x - SPRITESHEET_CELL_X * 3.0f <= EPSILON,
+                    data.y - SPRITESHEET_CELL_Y * 1.0f <= EPSILON,
                     data.vel_x == 0.0f,
                     data.vel_y == 0.0f});
 
@@ -118,8 +118,8 @@ void test_physics(void) {
     expect("Set velocity to the left, checking if it will move along the wall "
            "and collide with the top left corner...",
            4,
-           (bool[]){data.x - SPRITESHEET_CELL_X * 1.0f <= FABS_ZERO_DIFF,
-                    data.y - SPRITESHEET_CELL_Y * 1.0f <= FABS_ZERO_DIFF,
+           (bool[]){data.x - SPRITESHEET_CELL_X * 1.0f <= EPSILON,
+                    data.y - SPRITESHEET_CELL_Y * 1.0f <= EPSILON,
                     data.vel_x == 0.0f,
                     data.vel_y == 0.0f});
 
@@ -130,10 +130,10 @@ void test_physics(void) {
     expect("Set velocity to down, checking if it will move along the wall "
            "and collide with the bottom left corner...",
            4,
-           (bool[]){data.x - SPRITESHEET_CELL_X * 1.0f <= FABS_ZERO_DIFF,
-                    data.y - SPRITESHEET_CELL_Y * 3.0f <= FABS_ZERO_DIFF,
-                    data.vel_x - 0.0f <= FABS_ZERO_DIFF,
-                    data.vel_y - 0.0f <= FABS_ZERO_DIFF});
+           (bool[]){data.x - SPRITESHEET_CELL_X * 1.0f <= EPSILON,
+                    data.y - SPRITESHEET_CELL_Y * 3.0f <= EPSILON,
+                    data.vel_x - 0.0f <= EPSILON,
+                    data.vel_y - 0.0f <= EPSILON});
 
     PHYSICS_set_velocity(id, 4.0f * SPRITESHEET_CELL_X, 0.0f);
     for (int i = 0; i < 40; i++)
@@ -142,8 +142,8 @@ void test_physics(void) {
     expect("Set velocity to the right, checking if it will move along the wall "
            "and collide with the bottom right corner...",
            4,
-           (bool[]){data.x - SPRITESHEET_CELL_X * 3.0f <= FABS_ZERO_DIFF,
-                    data.y - SPRITESHEET_CELL_Y * 3.0f <= FABS_ZERO_DIFF,
+           (bool[]){data.x - SPRITESHEET_CELL_X * 3.0f <= EPSILON,
+                    data.y - SPRITESHEET_CELL_Y * 3.0f <= EPSILON,
                     data.vel_x == 0.0f,
                     data.vel_y == 0.0f});
 
@@ -163,10 +163,10 @@ void test_physics(void) {
     PHYSICS_get_body(id, &data);
     expect("Adding velocity, checking to see if the function works properly...",
            4,
-           (bool[]){data.x - 2.0f * SPRITESHEET_CELL_X <= FABS_ZERO_DIFF,
-                    data.y - 2.0f * SPRITESHEET_CELL_Y <= FABS_ZERO_DIFF,
-                    data.vel_x - -2.0f * SPRITESHEET_CELL_X <= FABS_ZERO_DIFF,
-                    data.vel_y - -2.0f * SPRITESHEET_CELL_Y <= FABS_ZERO_DIFF});
+           (bool[]){data.x - 2.0f * SPRITESHEET_CELL_X <= EPSILON,
+                    data.y - 2.0f * SPRITESHEET_CELL_Y <= EPSILON,
+                    data.vel_x - -2.0f * SPRITESHEET_CELL_X <= EPSILON,
+                    data.vel_y - -2.0f * SPRITESHEET_CELL_Y <= EPSILON});
 
     PHYSICS_update_body(id,
                         (body){.x = 0.0f,
@@ -209,10 +209,10 @@ void test_physics(void) {
     expect("Created intangible body and moving it beyond walls, checking its "
            "position and velocity...",
            4,
-           (bool[]){data.x - 6.0f * SPRITESHEET_CELL_X <= FABS_ZERO_DIFF,
-                    data.y - -2.0f * SPRITESHEET_CELL_Y <= FABS_ZERO_DIFF,
-                    data.vel_x - 4.0f * SPRITESHEET_CELL_X <= FABS_ZERO_DIFF,
-                    data.vel_y - -4.0f * SPRITESHEET_CELL_Y <= FABS_ZERO_DIFF});
+           (bool[]){data.x - 6.0f * SPRITESHEET_CELL_X <= EPSILON,
+                    data.y - -2.0f * SPRITESHEET_CELL_Y <= EPSILON,
+                    data.vel_x - 4.0f * SPRITESHEET_CELL_X <= EPSILON,
+                    data.vel_y - -4.0f * SPRITESHEET_CELL_Y <= EPSILON});
 
     TILEMAP_clear();
 

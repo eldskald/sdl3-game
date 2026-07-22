@@ -1,6 +1,7 @@
 #include "engine/game-manager.h"
 #include "defs.h"
 #include "engine/chunks.h"
+#include "engine/fluids.h"
 #include "engine/inputs.h"
 #include "engine/physics.h"
 #include "engine/renderer.h"
@@ -17,6 +18,11 @@
 #define SEC2NANOSEC 1000000000
 
 static SDL_Thread* fixed_t = NULL;
+static SDL_Thread* fluids_t = NULL;
+
+static const Uint64 fluids_t_target_rate = SEC2NANOSEC / FLUIDS_T_TARGET_FPS;
+static Uint64 fluids_t_start = 0;
+static Uint64 fluids_t_diff = 0;
 
 static const Uint64 fixed_t_target_rate = SEC2NANOSEC / FIXED_T_TARGET_FPS;
 static Uint64 fixed_t_start = 0;
@@ -59,6 +65,29 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     return 0;
 }
 
+static int SDLCALL fluids_thread(void* _arg) { // NOLINT
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Started fluids loop thread.");
+
+    while (running) {
+        // Fluids thread loop
+
+        FLUIDS_step();
+
+        // Calculate and cap tick rate
+        if (fluids_t_target_rate > SDL_GetTicksNS() - fluids_t_start) {
+            fluids_t_diff = fluids_t_target_rate;
+            SDL_DelayPrecise(fluids_t_target_rate -
+                             (SDL_GetTicksNS() - fluids_t_start));
+        } else {
+            fluids_t_diff = SDL_GetTicksNS() - fluids_t_start;
+        }
+        fluids_t_start = SDL_GetTicksNS();
+    }
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Ending fluids loop thread.");
+    return 0;
+}
+
 
 
 int GAME_MANAGER_start(void) {
@@ -72,6 +101,7 @@ int GAME_MANAGER_start(void) {
     if (INPUTS_start()) return 1;
     CHUNKS_start();
     PHYSICS_start();
+    FLUIDS_start();
     PLAYER_start();
 
 #ifdef DEV
@@ -79,10 +109,10 @@ int GAME_MANAGER_start(void) {
 #endif
 
     fixed_t = SDL_CreateThread(fixed_thread, "fixed", NULL);
+    fluids_t = SDL_CreateThread(fluids_thread, "fluids", NULL);
 
     return 0;
 }
-
 
 void GAME_MANAGER_stop(void) {
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Closing game...");
@@ -93,6 +123,7 @@ void GAME_MANAGER_stop(void) {
     RENDERER_stop();
     CHUNKS_stop();
     PHYSICS_stop();
+    FLUIDS_stop();
 
 #ifdef DEV
     DEV_stop();
@@ -100,6 +131,7 @@ void GAME_MANAGER_stop(void) {
 
     SDL_Quit();
 }
+
 
 
 int GAME_MANAGER_events(SDL_Event* event) {
@@ -133,35 +165,41 @@ void GAME_MANAGER_update(void) {
 }
 
 
+
 void GAME_MANAGER_quit(void) {
     running = false;
 }
 
 
-double GAME_MANAGER_get_current_dt(void) {
-#ifndef TEST
-    SDL_ThreadID fixed = SDL_GetThreadID(fixed_t);
-    if (fixed == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fixed_dt();
-    return GAME_MANAGER_get_main_dt();
-#else
-    return 1.0f / 60.0f;
-#endif
-}
 
+double GAME_MANAGER_get_current_dt(void) {
+    SDL_ThreadID fixed = SDL_GetThreadID(fixed_t);
+    SDL_ThreadID fluids = SDL_GetThreadID(fluids_t);
+    if (fixed == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fixed_dt();
+    if (fluids == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fluids_dt();
+    return GAME_MANAGER_get_main_dt();
+}
 
 double GAME_MANAGER_get_fixed_dt() {
 #ifndef TEST
     return (double)fixed_t_diff / (double)SEC2NANOSEC;
 #else
-    return 1.0f / 60.0f;
+    return 1.0f / (double)FIXED_T_TARGET_FPS;
 #endif
 }
 
+double GAME_MANAGER_get_fluids_dt() {
+#ifndef TEST
+    return (double)fluids_t_diff / (double)SEC2NANOSEC;
+#else
+    return 1.0f / (double)FLUIDS_T_TARGET_FPS;
+#endif
+}
 
 double GAME_MANAGER_get_main_dt() {
 #ifndef TEST
     return (double)main_t_diff / (double)SEC2NANOSEC;
 #else
-    return 1.0f / 60.0f;
+    return 1.0f / (double)MAIN_T_TARGET_FPS;
 #endif
 }

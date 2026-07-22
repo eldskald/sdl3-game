@@ -66,13 +66,12 @@ static void update_states_machine(player_state player, body player_body) {
     PHYSICS_is_on_floor(player.body_id, &is_on_floor);
     PHYSICS_is_on_ceiling(player.body_id, &is_on_ceiling);
 
-    if (is_on_floor && !is_on_ceiling &&
-        SDL_abs(player_body.vel_x) < FABS_ZERO_DIFF)
+    if (is_on_floor && !is_on_ceiling && SDL_abs(player_body.vel_x) < EPSILON)
         new_state = state_idle;
     else if (is_on_floor && !is_on_ceiling)
         new_state = state_moving;
     else if (is_on_floor && is_on_ceiling &&
-             SDL_abs(player_body.vel_x) < FABS_ZERO_DIFF)
+             SDL_abs(player_body.vel_x) < EPSILON)
         new_state = state_crouch_idle;
     else if (is_on_floor && is_on_ceiling)
         new_state = state_crouch_moving;
