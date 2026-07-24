@@ -5,7 +5,7 @@
 #include "engine/inputs.h"
 #include "engine/physics.h"
 #include "engine/renderer.h"
-#include "player/player.h"
+#include "player/player-core.h"
 #include <SDL3/SDL.h>
 
 #ifdef DEV

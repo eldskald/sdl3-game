@@ -553,8 +553,6 @@ void FLUIDS_get_at(
 // pixel on a 4x4 grid (which is the current size of each cell) which also means
 // if we ever change sizes, we need to redraw and resize the variable.
 void FLUIDS_draw(SDL_Renderer* renderer) {
-    int cell_w = SPRITESHEET_CELL_X / FLUIDS_SPLIT_X;
-    int cell_h = SPRITESHEET_CELL_Y / FLUIDS_SPLIT_Y;
     for (fluid_type type = 0; type < FLUIDS_TOTAL; type++) {
 #ifndef TEST
         SDL_SetRenderDrawColor(renderer,
@@ -746,17 +744,35 @@ void FLUIDS_draw(SDL_Renderer* renderer) {
                     if (draw & 1)
 #ifndef TEST
                         SDL_RenderPoint(renderer,
-                                        x * cell_w + (bit & 3),
-                                        y * cell_h + (bit >> 2));
+                                        x * FLUIDS_CELL_W + (bit & 3),
+                                        y * FLUIDS_CELL_H + (bit >> 2));
 
 #else
-                        stubbed_SDL_RenderPoint(x * cell_w + (bit & 3),
-                                                y * cell_h + (bit >> 2));
+                        stubbed_SDL_RenderPoint(x * FLUIDS_CELL_W + (bit & 3),
+                                                y * FLUIDS_CELL_H + (bit >> 2));
 #endif
                     draw >>= 1;
                     bit--;
                 }
             }
         }
+    }
+}
+
+
+
+void FLUIDS_splash_at(Uint32 x, Uint32 y) {
+    if (is_solid(x, y)) return;
+    for (int type = 0; type < FLUIDS_TOTAL; type++) {
+        double total = 0.0f;
+        for (int i = -2; i < 2; i++) {
+            if (!is_solid(x + i, y + 2) &&
+                grid[x + i][y + 2].volume[type] > 0.1f) {
+                FLUIDS_clear_at(x + i, y + 2, 1, 1);
+                FLUIDS_set_at(x + i, y + 2, 1, 1, type, 0.1f);
+                total += grid[x + i][y + 2].volume[type] - 0.1f;
+            }
+        }
+        FLUIDS_set_at(x, y, 1, 1, type, total);
     }
 }

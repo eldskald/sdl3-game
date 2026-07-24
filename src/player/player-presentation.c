@@ -1,9 +1,10 @@
-#include "player/sprite.h"
+#include "player/player-presentation.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
+#include "engine/fluids.h"
 #include "engine/physics.h"
 #include "engine/sprites.h"
-#include "player/player.h"
+#include "player/player-core.h"
 #include "services/csv.h"
 #include <SDL3/SDL.h>
 
@@ -13,6 +14,7 @@ typedef enum {
     state_airborne,
     state_crouch_idle,
     state_crouch_moving,
+    state_swimming,
 } states_machine_state;
 
 typedef struct {
@@ -27,6 +29,7 @@ typedef struct {
     animation airborne_anim;
     animation crouch_idle_anim;
     animation crouch_moving_anim;
+    animation swimming_anim;
 } sprite_data;
 
 typedef struct {
@@ -40,7 +43,9 @@ static sprite_state state = (sprite_state){0};
 
 
 
-static void state_changed(states_machine_state new_state) {
+static void state_changed(states_machine_state new_state, player_state player) {
+    body b = (body){0};
+    PHYSICS_get_body(player.body_id, &b);
     switch (new_state) {
     case state_idle:
         SPRITES_play_anim(state.sprite_id, data.idle_anim);
@@ -56,6 +61,12 @@ static void state_changed(states_machine_state new_state) {
         break;
     case state_crouch_moving:
         SPRITES_play_anim(state.sprite_id, data.crouch_moving_anim);
+        break;
+    case state_swimming:
+        SPRITES_play_anim(state.sprite_id, data.swimming_anim);
+        FLUIDS_splash_at(SDL_round(b.x) / FLUIDS_CELL_W,
+                         SDL_round(b.y) / FLUIDS_CELL_H);
+        break;
     }
 }
 
@@ -66,7 +77,10 @@ static void update_states_machine(player_state player, body player_body) {
     PHYSICS_is_on_floor(player.body_id, &is_on_floor);
     PHYSICS_is_on_ceiling(player.body_id, &is_on_ceiling);
 
-    if (is_on_floor && !is_on_ceiling && SDL_abs(player_body.vel_x) < EPSILON)
+    if (player.swimming)
+        new_state = state_swimming;
+    else if (is_on_floor && !is_on_ceiling &&
+             SDL_abs(player_body.vel_x) < EPSILON)
         new_state = state_idle;
     else if (is_on_floor && !is_on_ceiling)
         new_state = state_moving;
@@ -80,7 +94,7 @@ static void update_states_machine(player_state player, body player_body) {
 
     if (new_state != state.state) {
         state.state = new_state;
-        state_changed(new_state);
+        state_changed(new_state, player);
     }
 }
 
@@ -224,6 +238,29 @@ void PLAYER_SPRITE_start(void) {
                     SDL_strtod(val, NULL);
             }
         }
+
+        // Swimming animation
+        data.swimming_anim.looped = true;
+        if (SDL_strcmp(key, "swimming_anim_x") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.swimming_anim.frames[j].coords_x =
+                    SDL_strtol(val, NULL, 10);
+            }
+        }
+        if (SDL_strcmp(key, "swimming_anim_y") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.swimming_anim.frames[j].coords_y =
+                    SDL_strtol(val, NULL, 10);
+            }
+        }
+        if (SDL_strcmp(key, "swimming_anim_dur") == 0) {
+            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
+                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
+                data.swimming_anim.frames[j].duration = SDL_strtod(val, NULL);
+            }
+        }
     }
 
     CSV_free(&parsed);
@@ -232,7 +269,7 @@ void PLAYER_SPRITE_start(void) {
                 "Player sprite data loaded successfully.");
 }
 
-void PLAYER_SPRITE_create(void) {
+void PLAYER_SPRITE_create(player_state player) {
     SPRITES_new_sprite(
         (sprite){
             .coords_x = data.coords_x,
@@ -241,8 +278,9 @@ void PLAYER_SPRITE_create(void) {
             .coords_h = data.coords_h,
         },
         &state.sprite_id);
+
     state.created = true;
-    state_changed(state.state);
+    state_changed(state.state, player);
 }
 
 void PLAYER_SPRITE_destroy(void) {
@@ -257,8 +295,8 @@ void PLAYER_SPRITE_update(player_state player) {
 
     sprite s = (sprite){0};
     body b = (body){0};
-    SPRITES_get_sprite(state.sprite_id, &s);
     PHYSICS_get_body(player.body_id, &b);
+    SPRITES_get_sprite(state.sprite_id, &s);
 
     s.pos_x = (Uint32)SDL_roundf(b.x) + data.offset_x;
     s.pos_y = (Uint32)SDL_roundf(b.y) + data.offset_y;

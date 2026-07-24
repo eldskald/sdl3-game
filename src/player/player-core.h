@@ -5,8 +5,9 @@ typedef struct {
     bool created;
     size_t body_id;
     Sint8 facing;
-    bool jumping;
     double coyote_jump_timer;
+    bool jumping;
+    bool swimming;
 } player_state;
 
 void PLAYER_start(void);
