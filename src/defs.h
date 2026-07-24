@@ -64,6 +64,8 @@
 #define FLUIDS_SIMULATE_Y 66
 #define FLUIDS_TYPES fluid_water, fluid_lava
 #define FLUIDS_TOTAL 2
+#define FLUIDS_CELL_W (SPRITESHEET_CELL_X / FLUIDS_SPLIT_X)
+#define FLUIDS_CELL_H (SPRITESHEET_CELL_Y / FLUIDS_SPLIT_Y)
 #define FLUIDS_CSV_PATH "data/simulation/fluids.csv"
 
 // Physics
@@ -72,8 +74,8 @@
 
 
 // Player
-#define PLAYER_BASE_CSV_PATH "data/player/base.csv"
-#define PLAYER_SPRITE_CSV_PATH "data/player/sprite.csv"
+#define PLAYER_BASE_CSV_PATH "data/player/core.csv"
+#define PLAYER_SPRITE_CSV_PATH "data/player/presentation.csv"
 
 
 

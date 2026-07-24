@@ -20,3 +20,7 @@ crouch_idle_anim_dur,0.8,0.8
 crouch_moving_anim_x,30,31,28,29
 crouch_moving_anim_y,4,4,6,6
 crouch_moving_anim_dur,0.1,0.1,0.1,0.1
+
+swimming_anim_x,31,28
+swimming_anim_y,6,8
+swimming_anim_dur,0.5,0.5

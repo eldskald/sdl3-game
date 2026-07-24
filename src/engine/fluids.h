@@ -44,6 +44,10 @@ void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h);
 void FLUIDS_get_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_cell (*cells)[w][h]);
 
+// Creates a splash at `(x,y)` by taking fluids underneath and pressurizing it
+// at `(x,y)`.
+void FLUIDS_splash_at(Uint32 x, Uint32 y);
+
 
 
 // Ticks the simulation. Call on update in any thread.
