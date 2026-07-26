@@ -37,7 +37,7 @@ void FLUIDS_set_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type, double volume);
 
 // Clear all fluids on rect `(x,y,w,h)`.
-void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h);
+void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type);
 
 // Sets `cells` to be the rect `(x,y,w,h)`. Cells outside range are treated as
 // solids.
