@@ -130,5 +130,23 @@ void test_fluids(void) {
                SDL_abs(probe[3][3].volume[fluid_water] - 1.0f) < EPSILON,
            });
 
+    FLUIDS_set_at(8, 2, 2, 2, fluid_lava, 1.0f);
+    for (int i = 0; i < 20; i++)
+        FLUIDS_step();
+    FLUIDS_get_at(6, 0, 6, 6, &probe);
+    expect("Created lava above the water and stepped enough for it to go under "
+           "the water, checking...",
+           8,
+           (bool[]){
+               SDL_abs(probe[0][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_abs(probe[0][3].volume[fluid_lava] - 1.0f) < EPSILON,
+               SDL_abs(probe[1][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_abs(probe[1][3].volume[fluid_lava] - 1.0f) < EPSILON,
+               SDL_abs(probe[2][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_abs(probe[2][3].volume[fluid_lava] - 1.0f) < EPSILON,
+               SDL_abs(probe[3][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_abs(probe[3][3].volume[fluid_lava] - 1.0f) < EPSILON,
+           });
+
     FLUIDS_stop();
 }

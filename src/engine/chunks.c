@@ -96,7 +96,6 @@ static chunk load_from_json(const char* json) {
                 push_to_dynarr((void*)pool, &fluids);
             }
         }
-
     }
 
     JSON_free(data);

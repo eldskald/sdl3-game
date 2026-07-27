@@ -193,7 +193,7 @@ static void get_neighbor_fluids(Uint32 x, Uint32 y, fluid_cell (*nbs)[3][3]) {
             }
             fluid_cell cell = (fluid_cell){0};
             cell.solid = is_solid(i, j);
-            for (Uint8 type = 0; type <= FLUIDS_TOTAL; type++)
+            for (Uint8 type = 0; type < FLUIDS_TOTAL; type++)
                 cell.volume[type] = grid[i][j].volume[type];
             (*nbs)[i - x + 1][j - y + 1] = cell;
         }
@@ -266,7 +266,7 @@ static void flow_step(double vol,
         double avg = (total + nbs[1 + dir][1].volume) / 2.0f;
         double qty = SDL_min(vol * (double)(steps - 1) / steps,
                              1.0f - nbs[1 + dir][1].volume);
-        qty = SDL_min(qty, vol - avg);
+        qty = SDL_min(qty, total - avg);
         (*new)[x][y].volume[type] -= qty;
         flow_step(qty, type, steps - 1, dir, x + dir, y, new);
     }
@@ -318,8 +318,7 @@ void FLUIDS_step(void) {
                         free_y[len] = -1;
                         len++;
                     }
-                    if (!nbs TRIGHT.solid &&
-                        nbs TRIGHT.volume < EPSILON) {
+                    if (!nbs TRIGHT.solid && nbs TRIGHT.volume < EPSILON) {
                         free_x[len] = 1;
                         free_y[len] = -1;
                         len++;
@@ -352,12 +351,13 @@ void FLUIDS_step(void) {
                     // Spits out excess fluid in equal quantity in all free
                     // neighbors
                     if (len > 0) {
-                        double qty = SDL_min(total - 1.0f, vol) / len;
+                        double excess = SDL_min(total - 1.0f, vol);
+                        double qty = excess / len;
                         for (int i = 0; i < len; i++) {
                             new[x + free_x[i]][y + free_y[i]].volume[type] +=
                                 qty;
                         }
-                        new[x][y].volume[type] = 1.0f;
+                        new[x][y].volume[type] -= excess;
                         continue;
                     }
                     // If there are no free neighbors, send excess fluid up
@@ -365,15 +365,14 @@ void FLUIDS_step(void) {
                     else if (!nbs TOP.solid) {
                         double qty = SDL_min(total - 1.0f, vol);
                         new[x][y - 1].volume[type] += qty;
-                        new[x][y].volume[type] = 1.0f;
+                        new[x][y].volume[type] -= qty;
                         continue;
                     }
                 }
 
                 // Check and simulate falling
                 if (nbs BOT.volume < EPSILON && !nbs BOT.solid &&
-                    (total > 1.0f - EPSILON ||
-                     nbs TOP.volume < EPSILON)) {
+                    (total > 1.0f - EPSILON || nbs TOP.volume < EPSILON)) {
                     double qty = SDL_min(vol, dt * data[type].gravity);
                     new[x][y].volume[type] -= qty;
                     new[x][y + 1].volume[type] += qty;
@@ -397,11 +396,9 @@ void FLUIDS_step(void) {
                 // above, it should wait for the bottom to feed other cells and
                 // then current should feed it.
                 if ((!nbs BOT.solid && nbs BOT.volume <= EPSILON &&
-                     total < 1.0f - EPSILON &&
-                     nbs TOP.volume >= EPSILON) ||
+                     total < 1.0f - EPSILON && nbs TOP.volume >= EPSILON) ||
                     (!nbs BOT.solid && nbs BOT.volume >= 1.0f - EPSILON &&
-                     total < 1.0f - EPSILON &&
-                     nbs TOP.volume >= EPSILON)) {
+                     total < 1.0f - EPSILON && nbs TOP.volume >= EPSILON)) {
                     continue;
                 }
 
@@ -415,8 +412,7 @@ void FLUIDS_step(void) {
                 bool right = false;
                 bool bright = false;
                 Uint8 flows = 0;
-                if (!nbs BLEFT.solid &&
-                    nbs BLEFT.volume < 1.0f - EPSILON &&
+                if (!nbs BLEFT.solid && nbs BLEFT.volume < 1.0f - EPSILON &&
                     !nbs LEFT.solid &&
                     (nbs LEFT.volume < EPSILON ||
                      nbs LEFT.volume > 1.0f - EPSILON)) {
@@ -426,8 +422,7 @@ void FLUIDS_step(void) {
                     left = true;
                     flows++;
                 }
-                if (!nbs BRIGHT.solid &&
-                    nbs BRIGHT.volume < 1.0f - EPSILON &&
+                if (!nbs BRIGHT.solid && nbs BRIGHT.volume < 1.0f - EPSILON &&
                     !nbs RIGHT.solid &&
                     (nbs RIGHT.volume < EPSILON ||
                      nbs RIGHT.volume > 1.0f - EPSILON)) {
@@ -441,8 +436,7 @@ void FLUIDS_step(void) {
                 if (flows == 2) {
                     double qty = SDL_min(dt * data[type].flow, vol) / 2.0f;
                     if (bleft) {
-                        double lqty =
-                            SDL_min(qty, 1.0f - nbs BLEFT.volume);
+                        double lqty = SDL_min(qty, 1.0f - nbs BLEFT.volume);
                         new[x][y].volume[type] -= lqty;
                         flow_step(lqty,
                                   type,
@@ -464,8 +458,7 @@ void FLUIDS_step(void) {
                                   &new);
                     }
                     if (bright) {
-                        double rqty =
-                            SDL_min(qty, 1.0f - nbs BRIGHT.volume);
+                        double rqty = SDL_min(qty, 1.0f - nbs BRIGHT.volume);
                         new[x][y].volume[type] -= rqty;
                         flow_step(rqty,
                                   type,
@@ -490,8 +483,7 @@ void FLUIDS_step(void) {
                 if (flows == 1) {
                     double qty = SDL_min(dt * data[type].flow, vol);
                     if (bleft) {
-                        double lqty =
-                            SDL_min(qty, 1.0f - nbs BLEFT.volume);
+                        double lqty = SDL_min(qty, 1.0f - nbs BLEFT.volume);
                         new[x][y].volume[type] -= lqty;
                         flow_step(lqty,
                                   type,
@@ -512,8 +504,7 @@ void FLUIDS_step(void) {
                                   y,
                                   &new);
                     } else if (bright) {
-                        double rqty =
-                            SDL_min(qty, 1.0f - nbs BRIGHT.volume);
+                        double rqty = SDL_min(qty, 1.0f - nbs BRIGHT.volume);
                         new[x][y].volume[type] -= rqty;
                         flow_step(rqty,
                                   type,

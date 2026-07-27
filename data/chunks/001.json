@@ -42,8 +42,32 @@
          "name":"Water",
          "objects":[
                 {
-                 "height":64,
+                 "height":24,
                  "id":1,
+                 "name":"",
+                 "opacity":1,
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":288,
+                 "x":16,
+                 "y":136
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "color":"#ffaa00",
+         "draworder":"topdown",
+         "id":3,
+         "name":"Lava",
+         "objects":[
+                {
+                 "height":64,
+                 "id":8,
                  "name":"",
                  "opacity":1,
                  "rotation":0,
@@ -59,8 +83,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":3,
- "nextobjectid":5,
+ "nextlayerid":4,
+ "nextobjectid":9,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
