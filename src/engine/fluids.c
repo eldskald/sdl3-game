@@ -14,6 +14,7 @@
 
 
 typedef struct {
+    double density;
     double gravity;
     double flow;
     Uint8 flow_range;
@@ -26,6 +27,11 @@ typedef struct {
 typedef struct {
     double volume[FLUIDS_TOTAL];
 } fluids;
+
+typedef struct {
+    double volume;
+    bool solid;
+} neighbor;
 
 typedef struct {
     Uint32 x;
@@ -41,10 +47,9 @@ typedef struct {
 
 static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
                   [TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y] = {0};
-
 static fluid_data data[FLUIDS_TOTAL] = {0};
-
 static dynarr mods = (dynarr){0};
+static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
 
 
@@ -75,10 +80,13 @@ static void load_fluid_data(void) {
     set_on_hashmap((void*)fluid_lava, "lava", &names);
 
     // Sets fluids data
-    for (size_t i = 1; i <= 2; i++) {
+    for (size_t i = 1; i <= FLUIDS_TOTAL; i++) {
         dynarr* row = (dynarr*)parsed.at[i];
         char* name = (char*)row->at[0];
         data[(size_t)get_from_hashmap(name, &names)] = (fluid_data){
+            .density = SDL_strtod(
+                (char*)row->at[(size_t)get_from_hashmap("density", &props)],
+                NULL),
             .gravity = SDL_strtod(
                 (char*)row->at[(size_t)get_from_hashmap("gravity", &props)],
                 NULL),
@@ -115,8 +123,30 @@ static void load_fluid_data(void) {
                 "Fluid data loaded successfully.");
 }
 
+static void order_fluids_by_density(void) {
+    // Initiate ordered_fluids
+    for (int i = 0; i < FLUIDS_TOTAL; i++) {
+        ordered[i] = i;
+    }
+
+    // Bubble sort order it
+    bool found = true;
+    while (found) {
+        found = false;
+        for (int i = 1; i < FLUIDS_TOTAL; i++) {
+            if (data[ordered[i]].density > data[ordered[i - 1]].density) {
+                int mem = ordered[i];
+                ordered[i] = ordered[i - 1];
+                ordered[i - 1] = mem;
+                found = true;
+            }
+        }
+    }
+}
+
 void FLUIDS_start(void) {
     load_fluid_data();
+    order_fluids_by_density();
     init_dynarr(&mods);
 }
 
@@ -153,9 +183,9 @@ static bool is_solid(Uint32 x, Uint32 y) {
 #define BRIGHT [2][2]
 #define SELF [1][1]
 
-static void get_neighbors(Uint32 x, Uint32 y, fluid_cell (*nbs)[3][4]) {
+static void get_neighbor_fluids(Uint32 x, Uint32 y, fluid_cell (*nbs)[3][3]) {
     for (long i = (long)x - 1; i <= (long)x + 1; i++) {
-        for (long j = (long)y - 1; j <= (long)y + 2; j++) {
+        for (long j = (long)y - 1; j <= (long)y + 1; j++) {
             if (i < 0 || j < 0 || i >= TILEMAP_SIZE_X * FLUIDS_SPLIT_X ||
                 j >= TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y) {
                 (*nbs)[i - x + 1][j - y + 1] = (fluid_cell){.solid = true};
@@ -175,6 +205,32 @@ static void get_neighbors(Uint32 x, Uint32 y, fluid_cell (*nbs)[3][4]) {
     if ((*nbs)BOT.solid && (*nbs)LEFT.solid) (*nbs) BLEFT.solid = true;
 }
 
+static void
+get_neighbors(Uint32 x, Uint32 y, Uint8 up_to, neighbor (*nbs)[3][4]) {
+    for (long i = (long)x - 1; i <= (long)x + 1; i++) {
+        for (long j = (long)y - 1; j <= (long)y + 2; j++) {
+            if (i < 0 || j < 0 || i >= TILEMAP_SIZE_X * FLUIDS_SPLIT_X ||
+                j >= TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y) {
+                (*nbs)[i - x + 1][j - y + 1] = (neighbor){.solid = true};
+                continue;
+            }
+            neighbor cell = (neighbor){0};
+            cell.solid = is_solid(i, j);
+            for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
+                fluid_type type = ordered[t];
+                cell.volume += grid[i][j].volume[type];
+                if (type == up_to) break;
+            }
+            (*nbs)[i - x + 1][j - y + 1] = cell;
+        }
+    }
+    // Blocking off diagonals if both up/down left/right neighbors are blocked
+    if ((*nbs)TOP.solid && (*nbs)LEFT.solid) (*nbs) TLEFT.solid = true;
+    if ((*nbs)TOP.solid && (*nbs)RIGHT.solid) (*nbs) TRIGHT.solid = true;
+    if ((*nbs)BOT.solid && (*nbs)RIGHT.solid) (*nbs) BRIGHT.solid = true;
+    if ((*nbs)BOT.solid && (*nbs)LEFT.solid) (*nbs) BLEFT.solid = true;
+}
+
 static void flow_step(double vol,
                       fluid_type type,
                       int steps,
@@ -184,36 +240,33 @@ static void flow_step(double vol,
                       fluids (*new)[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X]
                                    [FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y]) {
     (*new)[x][y].volume[type] += vol;
-    fluid_cell nbs[3][4] = {0};
-    get_neighbors(x, y, &nbs);
+    neighbor nbs[3][4] = {0};
+    get_neighbors(x, y, type, &nbs);
+    double total = nbs[1][1].volume;
 
     bool b = false;
     bool t = false;
-    if (!nbs[1 + dir][2].solid &&
-        nbs[1 + dir][2].volume[type] < 1.0f - EPSILON &&
-        nbs[1 + dir][2].volume[type] > EPSILON && !nbs[1 + dir][1].solid &&
-        (nbs[1 + dir][3].solid ||
-         nbs[1 + dir][3].volume[type] > 1.0f - EPSILON) &&
-        (nbs[1 + dir][1].volume[type] < EPSILON ||
-         nbs[1 + dir][1].volume[type] > 1.0f - EPSILON))
+    if (!nbs[1 + dir][2].solid && nbs[1 + dir][2].volume < 1.0f - EPSILON &&
+        nbs[1 + dir][2].volume > EPSILON && !nbs[1 + dir][1].solid &&
+        (nbs[1 + dir][3].solid || nbs[1 + dir][3].volume > 1.0f - EPSILON) &&
+        (nbs[1 + dir][1].volume < EPSILON ||
+         nbs[1 + dir][1].volume > 1.0f - EPSILON))
         b = true;
-    else if (!nbs[1 + dir][1].solid && nbs[1 + dir][1].volume[type] < vol &&
-             (nbs[1 + dir][2].solid ||
-              nbs[1 + dir][2].volume[type] > 1.0f - EPSILON))
+    else if (!nbs[1 + dir][1].solid && nbs[1 + dir][1].volume < total &&
+             (nbs[1 + dir][2].solid || nbs[1 + dir][2].volume > 1.0f - EPSILON))
         t = true;
 
     if (steps <= 1) return;
     if (b) {
         double qty = SDL_min(vol * (double)(steps - 1) / steps,
-                             1.0f - nbs[1 + dir][2].volume[type]);
+                             1.0f - nbs[1 + dir][2].volume);
         (*new)[x][y].volume[type] -= qty;
         flow_step(qty, type, steps - 1, dir, x + dir, y + 1, new);
     } else if (t) {
-        double avg =
-            (nbs[1][1].volume[type] + nbs[1 + dir][1].volume[type]) / 2.0f;
+        double avg = (total + nbs[1 + dir][1].volume) / 2.0f;
         double qty = SDL_min(vol * (double)(steps - 1) / steps,
-                             1.0f - nbs[1 + dir][1].volume[type]);
-        qty = SDL_min(qty, vol - avg);
+                             1.0f - nbs[1 + dir][1].volume);
+        qty = SDL_min(qty, total - avg);
         (*new)[x][y].volume[type] -= qty;
         flow_step(qty, type, steps - 1, dir, x + dir, y, new);
     }
@@ -233,56 +286,64 @@ void FLUIDS_step(void) {
     for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
         for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
             if (is_solid(x, y)) continue;
-            fluid_cell nbs[3][4] = {0};
-            get_neighbors(x, y, &nbs);
-            for (Uint8 type = 0; type < FLUIDS_TOTAL; type++) {
+
+            // We iterate through liquid types in decrescent order of density,
+            // counting the volume of a cell as the volume of all liquid types
+            // iterated through so far. This means a given fluid will see all
+            // fluids denser than itself when trying to fall/flow into a new
+            // cell, ignoring all lighter fluids which should be handled by
+            // de-pressurization when denser fluids fall into its cell.
+            for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
+                fluid_type type = ordered[t];
                 double vol = grid[x][y].volume[type];
                 if (vol < EPSILON) continue;
 
+                neighbor nbs[3][4] = {0};
+                get_neighbors(x, y, type, &nbs);
+                double total = nbs[1][1].volume;
+
                 // Check and de-pressurizes
-                if (vol > 1.0f + EPSILON) {
+                if (total > 1.0f + EPSILON) {
                     // Checks free neighbors without fluids/solids
                     int free_x[8] = {0};
                     int free_y[8] = {0};
                     size_t len = 0;
-                    if (!nbs TLEFT.solid && nbs TLEFT.volume[type] < EPSILON) {
+                    if (!nbs TLEFT.solid && nbs TLEFT.volume < EPSILON) {
                         free_x[len] = -1;
                         free_y[len] = -1;
                         len++;
                     }
-                    if (!nbs TOP.solid && nbs TOP.volume[type] < EPSILON) {
+                    if (!nbs TOP.solid && nbs TOP.volume < EPSILON) {
                         free_x[len] = 0;
                         free_y[len] = -1;
                         len++;
                     }
-                    if (!nbs TRIGHT.solid &&
-                        nbs TRIGHT.volume[type] < EPSILON) {
+                    if (!nbs TRIGHT.solid && nbs TRIGHT.volume < EPSILON) {
                         free_x[len] = 1;
                         free_y[len] = -1;
                         len++;
                     }
-                    if (!nbs LEFT.solid && nbs LEFT.volume[type] < EPSILON) {
+                    if (!nbs LEFT.solid && nbs LEFT.volume < EPSILON) {
                         free_x[len] = -1;
                         free_y[len] = 0;
                         len++;
                     }
-                    if (!nbs RIGHT.solid && nbs RIGHT.volume[type] < EPSILON) {
+                    if (!nbs RIGHT.solid && nbs RIGHT.volume < EPSILON) {
                         free_x[len] = 1;
                         free_y[len] = 0;
                         len++;
                     }
-                    if (!nbs BLEFT.solid && nbs BLEFT.volume[type] < EPSILON) {
+                    if (!nbs BLEFT.solid && nbs BLEFT.volume < EPSILON) {
                         free_x[len] = -1;
                         free_y[len] = 1;
                         len++;
                     }
-                    if (!nbs BOT.solid && nbs BOT.volume[type] < EPSILON) {
+                    if (!nbs BOT.solid && nbs BOT.volume < EPSILON) {
                         free_x[len] = 0;
                         free_y[len] = 1;
                         len++;
                     }
-                    if (!nbs BRIGHT.solid &&
-                        nbs BRIGHT.volume[type] < EPSILON) {
+                    if (!nbs BRIGHT.solid && nbs BRIGHT.volume < EPSILON) {
                         free_x[len] = 1;
                         free_y[len] = 1;
                         len++;
@@ -290,35 +351,36 @@ void FLUIDS_step(void) {
                     // Spits out excess fluid in equal quantity in all free
                     // neighbors
                     if (len > 0) {
-                        double qty = (vol - 1.0f) / len;
+                        double excess = SDL_min(total - 1.0f, vol);
+                        double qty = excess / len;
                         for (int i = 0; i < len; i++) {
                             new[x + free_x[i]][y + free_y[i]].volume[type] +=
                                 qty;
                         }
-                        new[x][y].volume[type] = 1.0f;
+                        new[x][y].volume[type] -= excess;
                         continue;
                     }
                     // If there are no free neighbors, send excess fluid up
                     // if up is not solid
                     else if (!nbs TOP.solid) {
-                        double qty = vol - 1.0f;
+                        double qty = SDL_min(total - 1.0f, vol);
                         new[x][y - 1].volume[type] += qty;
-                        new[x][y].volume[type] = 1.0f;
+                        new[x][y].volume[type] -= qty;
                         continue;
                     }
                 }
 
                 // Check and simulate falling
-                if (nbs BOT.volume[type] < EPSILON && !nbs BOT.solid &&
-                    (vol > 1.0f - EPSILON || nbs TOP.volume[type] < EPSILON)) {
+                if (nbs BOT.volume < EPSILON && !nbs BOT.solid &&
+                    (total > 1.0f - EPSILON || nbs TOP.volume < EPSILON)) {
                     double qty = SDL_min(vol, dt * data[type].gravity);
                     new[x][y].volume[type] -= qty;
                     new[x][y + 1].volume[type] += qty;
                     continue;
-                } else if (nbs BOT.volume[type] > EPSILON && !nbs BOT.solid &&
-                           nbs BOT.volume[type] < 1.0f - EPSILON) {
+                } else if (nbs BOT.volume > EPSILON && !nbs BOT.solid &&
+                           nbs BOT.volume < 1.0f - EPSILON) {
                     double qty = SDL_min(vol, dt * data[type].gravity);
-                    qty = SDL_min(qty, 1.0f - nbs BOT.volume[type]);
+                    qty = SDL_min(qty, 1.0f - nbs BOT.volume);
                     new[x][y].volume[type] -= qty;
                     new[x][y + 1].volume[type] += qty;
                     continue;
@@ -333,10 +395,10 @@ void FLUIDS_step(void) {
                 // full but the current one is not and currently being fed from
                 // above, it should wait for the bottom to feed other cells and
                 // then current should feed it.
-                if ((!nbs BOT.solid && nbs BOT.volume[type] <= EPSILON &&
-                     vol < 1.0f - EPSILON && nbs TOP.volume[type] >= EPSILON) ||
-                    (!nbs BOT.solid && nbs BOT.volume[type] >= 1.0f - EPSILON &&
-                     vol < 1.0f - EPSILON && nbs TOP.volume[type] >= EPSILON)) {
+                if ((!nbs BOT.solid && nbs BOT.volume <= EPSILON &&
+                     total < 1.0f - EPSILON && nbs TOP.volume >= EPSILON) ||
+                    (!nbs BOT.solid && nbs BOT.volume >= 1.0f - EPSILON &&
+                     total < 1.0f - EPSILON && nbs TOP.volume >= EPSILON)) {
                     continue;
                 }
 
@@ -350,25 +412,23 @@ void FLUIDS_step(void) {
                 bool right = false;
                 bool bright = false;
                 Uint8 flows = 0;
-                if (!nbs BLEFT.solid &&
-                    nbs BLEFT.volume[type] < 1.0f - EPSILON &&
+                if (!nbs BLEFT.solid && nbs BLEFT.volume < 1.0f - EPSILON &&
                     !nbs LEFT.solid &&
-                    (nbs LEFT.volume[type] < EPSILON ||
-                     nbs LEFT.volume[type] > 1.0f - EPSILON)) {
+                    (nbs LEFT.volume < EPSILON ||
+                     nbs LEFT.volume > 1.0f - EPSILON)) {
                     bleft = true;
                     flows++;
-                } else if (!nbs LEFT.solid && nbs LEFT.volume[type] < vol) {
+                } else if (!nbs LEFT.solid && nbs LEFT.volume < total) {
                     left = true;
                     flows++;
                 }
-                if (!nbs BRIGHT.solid &&
-                    nbs BRIGHT.volume[type] < 1.0f - EPSILON &&
+                if (!nbs BRIGHT.solid && nbs BRIGHT.volume < 1.0f - EPSILON &&
                     !nbs RIGHT.solid &&
-                    (nbs RIGHT.volume[type] < EPSILON ||
-                     nbs RIGHT.volume[type] > 1.0f - EPSILON)) {
+                    (nbs RIGHT.volume < EPSILON ||
+                     nbs RIGHT.volume > 1.0f - EPSILON)) {
                     bright = true;
                     flows++;
-                } else if (!nbs RIGHT.solid && nbs RIGHT.volume[type] < vol) {
+                } else if (!nbs RIGHT.solid && nbs RIGHT.volume < total) {
                     right = true;
                     flows++;
                 }
@@ -376,8 +436,7 @@ void FLUIDS_step(void) {
                 if (flows == 2) {
                     double qty = SDL_min(dt * data[type].flow, vol) / 2.0f;
                     if (bleft) {
-                        double lqty =
-                            SDL_min(qty, 1.0f - nbs BLEFT.volume[type]);
+                        double lqty = SDL_min(qty, 1.0f - nbs BLEFT.volume);
                         new[x][y].volume[type] -= lqty;
                         flow_step(lqty,
                                   type,
@@ -387,8 +446,8 @@ void FLUIDS_step(void) {
                                   y + 1,
                                   &new);
                     } else {
-                        double avg = (vol + nbs LEFT.volume[type]) / 2.0f;
-                        double lqty = SDL_min(qty, vol - avg);
+                        double avg = (total + nbs LEFT.volume) / 2.0f;
+                        double lqty = SDL_min(qty, total - avg);
                         new[x][y].volume[type] -= lqty;
                         flow_step(lqty,
                                   type,
@@ -399,8 +458,7 @@ void FLUIDS_step(void) {
                                   &new);
                     }
                     if (bright) {
-                        double rqty =
-                            SDL_min(qty, 1.0f - nbs BRIGHT.volume[type]);
+                        double rqty = SDL_min(qty, 1.0f - nbs BRIGHT.volume);
                         new[x][y].volume[type] -= rqty;
                         flow_step(rqty,
                                   type,
@@ -410,8 +468,8 @@ void FLUIDS_step(void) {
                                   y + 1,
                                   &new);
                     } else {
-                        double avg = (vol + nbs RIGHT.volume[type]) / 2.0f;
-                        double rqty = SDL_min(qty, vol - avg);
+                        double avg = (total + nbs RIGHT.volume) / 2.0f;
+                        double rqty = SDL_min(qty, total - avg);
                         new[x][y].volume[type] -= rqty;
                         flow_step(rqty,
                                   type,
@@ -425,8 +483,7 @@ void FLUIDS_step(void) {
                 if (flows == 1) {
                     double qty = SDL_min(dt * data[type].flow, vol);
                     if (bleft) {
-                        double lqty =
-                            SDL_min(qty, 1.0f - nbs BLEFT.volume[type]);
+                        double lqty = SDL_min(qty, 1.0f - nbs BLEFT.volume);
                         new[x][y].volume[type] -= lqty;
                         flow_step(lqty,
                                   type,
@@ -436,8 +493,8 @@ void FLUIDS_step(void) {
                                   y + 1,
                                   &new);
                     } else if (left) {
-                        double avg = (vol + nbs LEFT.volume[type]) / 2.0f;
-                        double lqty = SDL_min(qty, vol - avg);
+                        double avg = (total + nbs LEFT.volume) / 2.0f;
+                        double lqty = SDL_min(qty, total - avg);
                         new[x][y].volume[type] -= lqty;
                         flow_step(lqty,
                                   type,
@@ -447,8 +504,7 @@ void FLUIDS_step(void) {
                                   y,
                                   &new);
                     } else if (bright) {
-                        double rqty =
-                            SDL_min(qty, 1.0f - nbs BRIGHT.volume[type]);
+                        double rqty = SDL_min(qty, 1.0f - nbs BRIGHT.volume);
                         new[x][y].volume[type] -= rqty;
                         flow_step(rqty,
                                   type,
@@ -458,8 +514,8 @@ void FLUIDS_step(void) {
                                   y + 1,
                                   &new);
                     } else if (right) {
-                        double avg = (vol + nbs RIGHT.volume[type]) / 2.0f;
-                        double rqty = SDL_min(qty, vol - avg);
+                        double avg = (total + nbs RIGHT.volume) / 2.0f;
+                        double rqty = SDL_min(qty, total - avg);
                         new[x][y].volume[type] -= rqty;
                         flow_step(rqty,
                                   type,
@@ -484,13 +540,10 @@ void FLUIDS_step(void) {
         mod* m = (mod*)mods.at[0];
         for (Uint32 x = m->x; x < m->x + m->w; x++) {
             for (Uint32 y = m->y; y < m->y + m->h; y++) {
-                if (m->clear) {
-                    for (fluid_type type = 0; type < FLUIDS_TOTAL; type++) {
-                        grid[x][y].volume[type] = 0.0f;
-                    }
-                } else {
+                if (m->clear)
+                    grid[x][y].volume[m->type] = 0.0f;
+                else
                     grid[x][y].volume[m->type] += m->volume;
-                }
             }
         }
         SDL_free(m);
@@ -515,7 +568,7 @@ void FLUIDS_set_at(
     push_to_dynarr((void*)m, &mods);
 }
 
-void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h) {
+void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type) {
     mod* m = SDL_malloc(sizeof(mod));
     *m = (mod){
         .x = x,
@@ -523,6 +576,7 @@ void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h) {
         .w = w,
         .h = h,
         .clear = true,
+        .type = type,
     };
     push_to_dynarr((void*)m, &mods);
 }
@@ -566,8 +620,8 @@ void FLUIDS_draw(SDL_Renderer* renderer) {
                 double vol = grid[x][y].volume[type];
                 if (vol < EPSILON) continue;
 
-                fluid_cell nbs[3][4] = {0};
-                get_neighbors(x, y, &nbs);
+                fluid_cell nbs[3][3] = {0};
+                get_neighbor_fluids(x, y, &nbs);
                 bool t = nbs TOP.solid ? true : nbs TOP.volume[type] > EPSILON;
                 bool b = nbs BOT.solid ? true : nbs BOT.volume[type] > EPSILON;
                 bool l =
@@ -746,7 +800,6 @@ void FLUIDS_draw(SDL_Renderer* renderer) {
                         SDL_RenderPoint(renderer,
                                         x * FLUIDS_CELL_W + (bit & 3),
                                         y * FLUIDS_CELL_H + (bit >> 2));
-
 #else
                         stubbed_SDL_RenderPoint(x * FLUIDS_CELL_W + (bit & 3),
                                                 y * FLUIDS_CELL_H + (bit >> 2));
@@ -768,7 +821,7 @@ void FLUIDS_splash_at(Uint32 x, Uint32 y) {
         for (int i = -2; i < 2; i++) {
             if (!is_solid(x + i, y + 2) &&
                 grid[x + i][y + 2].volume[type] > 0.1f) {
-                FLUIDS_clear_at(x + i, y + 2, 1, 1);
+                FLUIDS_clear_at(x + i, y + 2, 1, 1, type);
                 FLUIDS_set_at(x + i, y + 2, 1, 1, type, 0.1f);
                 total += grid[x + i][y + 2].volume[type] - 0.1f;
             }

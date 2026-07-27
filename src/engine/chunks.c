@@ -61,19 +61,38 @@ static chunk load_from_json(const char* json) {
             dynarr objects =
                 ((jsondata*)get_from_hashmap("objects", &layer))->arr;
             for (int i = 0; i < objects.len; i++) {
-                double cell_x = SPRITESHEET_CELL_X / FLUIDS_SPLIT_X;
-                double cell_y = SPRITESHEET_CELL_Y / FLUIDS_SPLIT_Y;
                 hashmap obj = ((jsondata*)objects.at[i])->obj;
                 double x = ((jsondata*)get_from_hashmap("x", &obj))->num;
                 double y = ((jsondata*)get_from_hashmap("y", &obj))->num;
                 double w = ((jsondata*)get_from_hashmap("width", &obj))->num;
                 double h = ((jsondata*)get_from_hashmap("height", &obj))->num;
                 fluid_pool* pool = SDL_malloc(sizeof(fluid_pool));
-                *pool = (fluid_pool){.x = x / cell_x,
-                                     .y = y / cell_y,
-                                     .w = w / cell_x,
-                                     .h = h / cell_y,
+                *pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
+                                     .y = y / FLUIDS_CELL_H,
+                                     .w = w / FLUIDS_CELL_W,
+                                     .h = h / FLUIDS_CELL_H,
                                      .type = fluid_water};
+                push_to_dynarr((void*)pool, &fluids);
+            }
+        }
+
+        // If layer is a lava layer
+        if (SDL_strcmp(name, "Lava") == 0 &&
+            SDL_strcmp(type, "objectgroup") == 0) {
+            dynarr objects =
+                ((jsondata*)get_from_hashmap("objects", &layer))->arr;
+            for (int i = 0; i < objects.len; i++) {
+                hashmap obj = ((jsondata*)objects.at[i])->obj;
+                double x = ((jsondata*)get_from_hashmap("x", &obj))->num;
+                double y = ((jsondata*)get_from_hashmap("y", &obj))->num;
+                double w = ((jsondata*)get_from_hashmap("width", &obj))->num;
+                double h = ((jsondata*)get_from_hashmap("height", &obj))->num;
+                fluid_pool* pool = SDL_malloc(sizeof(fluid_pool));
+                *pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
+                                     .y = y / FLUIDS_CELL_H,
+                                     .w = w / FLUIDS_CELL_W,
+                                     .h = h / FLUIDS_CELL_H,
+                                     .type = fluid_lava};
                 push_to_dynarr((void*)pool, &fluids);
             }
         }
