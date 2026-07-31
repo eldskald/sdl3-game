@@ -263,24 +263,16 @@ void test_drawing(void) {
     FLUIDS_set_at(2, 2, 1, 1, fluid_water, 1.0f);
     FLUIDS_step();
     RENDERER_update();
-    SDL_RenderPoint_call* pt_calls = NULL;
-    size_t pt_calls_n = get_SDL_RenderPoint_calls(&pt_calls);
+    SDL_RenderFillRect_call* rect_calls = NULL;
+    size_t rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
     expect("Added a cell of water, checking calls...",
-           25,
+           5,
            (bool[]){
-               pt_calls_n == 12,       pt_calls[0].x == 10.0f,
-               pt_calls[0].y == 11.0f, pt_calls[1].x == 9.0f,
-               pt_calls[1].y == 11.0f, pt_calls[2].x == 11.0f,
-               pt_calls[2].y == 10.0f, pt_calls[3].x == 10.0f,
-               pt_calls[3].y == 10.0f, pt_calls[4].x == 9.0f,
-               pt_calls[4].y == 10.0f, pt_calls[5].x == 8.0f,
-               pt_calls[5].y == 10.0f, pt_calls[6].x == 11.0f,
-               pt_calls[6].y == 9.0f,  pt_calls[7].x == 10.0f,
-               pt_calls[7].y == 9.0f,  pt_calls[8].x == 9.0f,
-               pt_calls[8].y == 9.0f,  pt_calls[9].x == 8.0f,
-               pt_calls[9].y == 9.0f,  pt_calls[10].x == 10.0f,
-               pt_calls[10].y == 8.0f, pt_calls[11].x == 9.0f,
-               pt_calls[11].y == 8.0f,
+               rect_calls_n == 1,
+               rect_calls[0].rect.x == 8.0f,
+               rect_calls[0].rect.y == 8.0f,
+               rect_calls[0].rect.w == 4.0f,
+               rect_calls[0].rect.h == 4.0f,
            });
     clear_stubbed_calls();
 

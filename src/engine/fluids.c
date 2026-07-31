@@ -180,7 +180,10 @@ static bool is_solid(Uint32 x, Uint32 y) {
 #define TLEFT [0][0]
 #define TRIGHT [2][0]
 #define BLEFT [0][2]
+#define BBRIGHT [2][3]
+#define BBLEFT [0][3]
 #define BRIGHT [2][2]
+
 #define SELF [1][1]
 
 static void get_neighbor_fluids(Uint32 x, Uint32 y, fluid_cell (*nbs)[3][3]) {
@@ -242,18 +245,21 @@ static void flow_step(double vol,
     (*new)[x][y].volume[type] += vol;
     neighbor nbs[3][4] = {0};
     get_neighbors(x, y, type, &nbs);
-    double total = nbs[1][1].volume;
+    double total = nbs SELF.volume;
+    neighbor bbot = nbs[1 + dir][3];
+    neighbor bot = nbs[1 + dir][2];
+    neighbor side = nbs[1 + dir][1];
+    neighbor top = nbs[1 + dir][0];
 
     bool b = false;
     bool t = false;
-    if (!nbs[1 + dir][2].solid && nbs[1 + dir][2].volume < 1.0f - EPSILON &&
-        nbs[1 + dir][2].volume > EPSILON && !nbs[1 + dir][1].solid &&
-        (nbs[1 + dir][3].solid || nbs[1 + dir][3].volume > 1.0f - EPSILON) &&
-        (nbs[1 + dir][1].volume < EPSILON ||
-         nbs[1 + dir][1].volume > 1.0f - EPSILON))
+    if ((!bot.solid && bot.volume < 1.0f - EPSILON) &&
+        (bbot.solid || bbot.volume > 1.0f - EPSILON) &&
+        (!side.solid && side.volume < EPSILON))
         b = true;
-    else if (!nbs[1 + dir][1].solid && nbs[1 + dir][1].volume < total &&
-             (nbs[1 + dir][2].solid || nbs[1 + dir][2].volume > 1.0f - EPSILON))
+    if ((!side.solid && side.volume < total) &&
+        (bot.solid || bot.volume > 1.0f - EPSILON) &&
+        (!top.solid && top.volume < EPSILON))
         t = true;
 
     if (steps <= 1) return;
@@ -300,7 +306,9 @@ void FLUIDS_step(void) {
 
                 neighbor nbs[3][4] = {0};
                 get_neighbors(x, y, type, &nbs);
-                double total = nbs[1][1].volume;
+                if (nbs SELF.solid) continue;
+
+                double total = nbs SELF.volume;
 
                 // Check and de-pressurizes
                 if (total > 1.0f + EPSILON) {
@@ -412,24 +420,23 @@ void FLUIDS_step(void) {
                 bool right = false;
                 bool bright = false;
                 Uint8 flows = 0;
-                if (!nbs BLEFT.solid && nbs BLEFT.volume < 1.0f - EPSILON &&
-                    !nbs LEFT.solid &&
-                    (nbs LEFT.volume < EPSILON ||
-                     nbs LEFT.volume > 1.0f - EPSILON)) {
-                    bleft = true;
-                    flows++;
-                } else if (!nbs LEFT.solid && nbs LEFT.volume < total) {
-                    left = true;
-                    flows++;
-                }
-                if (!nbs BRIGHT.solid && nbs BRIGHT.volume < 1.0f - EPSILON &&
-                    !nbs RIGHT.solid &&
-                    (nbs RIGHT.volume < EPSILON ||
-                     nbs RIGHT.volume > 1.0f - EPSILON)) {
+                if ((!nbs BRIGHT.solid && nbs BRIGHT.volume < 1.0f - EPSILON) &&
+                    (nbs BBRIGHT.solid ||
+                     nbs BBRIGHT.volume > 1.0f - EPSILON) &&
+                    (!nbs RIGHT.solid && nbs RIGHT.volume < EPSILON)) {
                     bright = true;
                     flows++;
                 } else if (!nbs RIGHT.solid && nbs RIGHT.volume < total) {
                     right = true;
+                    flows++;
+                }
+                if ((!nbs BLEFT.solid && nbs BLEFT.volume < 1.0f - EPSILON) &&
+                    (nbs BBLEFT.solid || nbs BBLEFT.volume > 1.0f - EPSILON) &&
+                    (!nbs LEFT.solid && nbs LEFT.volume < EPSILON)) {
+                    bleft = true;
+                    flows++;
+                } else if (!nbs LEFT.solid && nbs LEFT.volume < total) {
+                    left = true;
                     flows++;
                 }
                 if (flows == 0) continue;
@@ -601,212 +608,66 @@ void FLUIDS_get_at(
 
 
 
-// Draw function. We could draw cells with math based on SPRITESHEET_CELL_X/Y
-// and FLUIDS_SPLIT_X/Y but instead, we will draw them iterating on the bits on
-// a Uint16, this way we can draw them with 0's and 1's, each bit representing a
-// pixel on a 4x4 grid (which is the current size of each cell) which also means
-// if we ever change sizes, we need to redraw and resize the variable.
 void FLUIDS_draw(SDL_Renderer* renderer) {
-    for (fluid_type type = 0; type < FLUIDS_TOTAL; type++) {
+    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
+        for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
+            double total = 0.0f;
+            for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
+                fluid_type type = ordered[t];
 #ifndef TEST
-        SDL_SetRenderDrawColor(renderer,
-                               data[type].col_r,
-                               data[type].col_g,
-                               data[type].col_b,
-                               data[type].col_a);
+                SDL_SetRenderDrawColor(renderer,
+                                       data[type].col_r,
+                                       data[type].col_g,
+                                       data[type].col_b,
+                                       data[type].col_a);
 #endif
-        for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-            for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
                 double vol = grid[x][y].volume[type];
                 if (vol < EPSILON) continue;
+                if (is_solid(x, y)) continue;
 
+                total += vol;
                 fluid_cell nbs[3][3] = {0};
                 get_neighbor_fluids(x, y, &nbs);
-                bool t = nbs TOP.solid ? true : nbs TOP.volume[type] > EPSILON;
-                bool b = nbs BOT.solid ? true : nbs BOT.volume[type] > EPSILON;
-                bool l =
-                    nbs LEFT.solid ? true : nbs LEFT.volume[type] > EPSILON;
-                bool r =
-                    nbs RIGHT.solid ? true : nbs RIGHT.volume[type] > EPSILON;
+                double tvol = nbs[1][0].volume[type];
+                double bvol = nbs[1][2].solid ? 1.0f : nbs[1][2].volume[type];
+                double below = total - vol;
 
-                double vt = nbs TOP.solid ? 1.0f : nbs TOP.volume[type];
-                double vb = nbs BOT.solid ? 1.0f : nbs BOT.volume[type];
-                double vl = nbs LEFT.solid ? 1.0f : nbs LEFT.volume[type];
-                double vr = nbs RIGHT.solid ? 1.0f : nbs RIGHT.volume[type];
-                Uint16 draw = 0;
-
-                // Cells with no neighbors first
-                if (!t && !b && !l && !r) {
-                    if (vol <= 0.3f)
-                        draw = 0b0000010000000000;
-                    else if (vol <= 0.6f)
-                        draw = 0b0000011001100000;
-                    else
-                        draw = 0b0110111111110110;
+                SDL_FRect rect = (SDL_FRect){0};
+                if (below < EPSILON) {
+                    if (tvol > EPSILON || (bvol < EPSILON && tvol < EPSILON)) {
+                        rect.x = x * FLUIDS_CELL_W;
+                        rect.y = y * FLUIDS_CELL_H;
+                        rect.w = FLUIDS_CELL_W;
+                        rect.h = FLUIDS_CELL_H;
+                    } else {
+                        double h = 1.0f;
+                        if (vol > 0.25f) h += 1.0f;
+                        if (vol > 0.5f) h += 1.0f;
+                        if (vol > 0.75f) h += 1.0f;
+                        rect.x = x * FLUIDS_CELL_W;
+                        rect.y = y * FLUIDS_CELL_H + 4.0f - h;
+                        rect.w = FLUIDS_CELL_W;
+                        rect.h = h;
+                    }
+                } else {
+                    double h = 1.0f;
+                    if (vol > 0.25f) h += 1.0f;
+                    if (vol > 0.5f) h += 1.0f;
+                    if (vol > 0.75f) h += 1.0f;
+                    double off_y = 1.0f;
+                    if (below > 0.25f) off_y += 1.0f;
+                    if (below > 0.5f) off_y += 1.0f;
+                    if (below > 0.75f) off_y += 1.0f;
+                    rect.x = x * FLUIDS_CELL_W;
+                    rect.y = y * FLUIDS_CELL_H + 4.0f - h - off_y;
+                    rect.w = FLUIDS_CELL_W;
+                    rect.h = h;
                 }
-
-                // Cells with one neighbor to the top
-                if (t && !b && !l && !r) {
-                    if (vol <= 0.3f)
-                        draw = 0b0110000000000000;
-                    else if (vol <= 0.6f)
-                        draw = 0b1111011000000000;
-                    else
-                        draw = 0b1111111101100000;
-                }
-
-                // Cells with one neighbor to the bottom
-                if (!t && b && !l && !r) {
-                    if (vol <= 0.3f)
-                        draw = 0b0000000000000110;
-                    else if (vol <= 0.6f)
-                        draw = 0b0000000001101111;
-                    else
-                        draw = 0b0000011011111111;
-                }
-
-                // Cells with one neighbor to the left
-                if (!t && !b && l && !r) {
-                    if (vol <= 0.3f)
-                        draw = 0b0000100010000000;
-                    else if (vol <= 0.6f)
-                        draw = 0b1000110011001000;
-                    else
-                        draw = 0b1100111011101100;
-                }
-
-                // Cells with one neighbor to the right
-                if (!t && !b && !l && r) {
-                    if (vol <= 0.3f)
-                        draw = 0b0000000100010000;
-                    else if (vol <= 0.6f)
-                        draw = 0b0001001100110001;
-                    else
-                        draw = 0b0011011101110011;
-                }
-
-                // Cells with two neighbors top and bottom
-                if (t && b && !l && !r) {
-                    if (vol <= 0.25f)
-                        draw = 0b0100010001000100;
-                    else if (vol <= 0.5f)
-                        draw = 0b0110011001100110;
-                    else if (vol <= 0.75f)
-                        draw = 0b1110111011101110;
-                    else
-                        draw = 0b1111111111111111;
-                }
-
-                // Cells with two neighbors left and right
-                if (!t && !b && l && r) {
-                    if (vol <= 0.3f)
-                        draw = 0b0000100110010000;
-                    else if (vol <= 0.6f)
-                        draw = 0b1001111111111001;
-                    else
-                        draw = 0b1111111111111111;
-                }
-
-                // Cells with two neighbors bottom and left
-                if (!t && b && l && !r) {
-                    if (vl <= 0.5f || vb <= 0.5f)
-                        draw = 0b0000000000001000;
-                    else
-                        draw = 0b0000000011001100;
-                }
-
-                // Cells with two neighbors bottom and right
-                if (!t && b && !l && r) {
-                    if (vr <= 0.5f || vb <= 0.5f)
-                        draw = 0b0000000000000001;
-                    else
-                        draw = 0b0000000000110011;
-                }
-
-                // Cells with two neighbors top and left
-                if (t && !b && l && !r) {
-                    if (vl <= 0.5f || vt <= 0.5f)
-                        draw = 0b1000000000000000;
-                    else
-                        draw = 0b1100110000000000;
-                }
-
-                // Cells with two neighbors top and right
-                if (t && !b && !l && r) {
-                    if (vr <= 0.5f || vt <= 0.5)
-                        draw = 0b0001000000000000;
-                    else
-                        draw = 0b0011001100000000;
-                }
-
-                // Cells with three neighbors, all but top
-                if (!t && b && l && r) {
-                    if (vol <= 0.25f)
-                        draw = 0b0000000000001111;
-                    else if (vol <= 0.5f)
-                        draw = 0b0000000011111111;
-                    else if (vol <= 0.75)
-                        draw = 0b0000111111111111;
-                    else
-                        draw = 0b1111111111111111;
-                }
-
-                // Cells with three neighbors, all but bottom
-                if (t && !b && l && r) {
-                    if (vol <= 0.25f)
-                        draw = 0b1111000000000000;
-                    else if (vol <= 0.5f)
-                        draw = 0b1111111100000000;
-                    else if (vol <= 0.75f)
-                        draw = 0b1111111111110000;
-                    else
-                        draw = 0b1111111111111111;
-                }
-
-                // Cells with three neighbors, all but left
-                if (t && b && !l && r) {
-                    if (vol <= 0.25f)
-                        draw = 0b0001000100010001;
-                    else if (vol <= 0.5f)
-                        draw = 0b0011001100110011;
-                    else if (vol <= 0.75f)
-                        draw = 0b0111011101110111;
-                    else
-                        draw = 0b1111111111111111;
-                }
-
-                // Cells with three neighbors, all but right
-                if (t && b && l && !r) {
-                    if (vol <= 0.25f)
-                        draw = 0b1000000000000000;
-                    else if (vol <= 0.5f)
-                        draw = 0b1100110011001100;
-                    else if (vol <= 0.75f)
-                        draw = 0b1110111011101110;
-                    else
-                        draw = 0b1111111111111111;
-                }
-
-                // Cells with neighbors in all directions
-                if (t && b && l && r) {
-                    draw = 0b1111111111111111;
-                }
-
-                // Loop though the bits of `draw` and draw each pixel
-                int bit = 15;
-                while (draw > 0) {
-                    if (draw & 1)
 #ifndef TEST
-                        SDL_RenderPoint(renderer,
-                                        x * FLUIDS_CELL_W + (bit & 3),
-                                        y * FLUIDS_CELL_H + (bit >> 2));
+                SDL_RenderFillRect(renderer, &rect);
 #else
-                        stubbed_SDL_RenderPoint(x * FLUIDS_CELL_W + (bit & 3),
-                                                y * FLUIDS_CELL_H + (bit >> 2));
+                stubbed_SDL_RenderFillRect(&rect);
 #endif
-                    draw >>= 1;
-                    bit--;
-                }
             }
         }
     }
