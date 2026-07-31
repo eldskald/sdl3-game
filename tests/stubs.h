@@ -12,6 +12,10 @@ typedef struct {
     float y;
 } SDL_RenderPoint_call;
 
+typedef struct {
+    SDL_FRect rect;
+} SDL_RenderFillRect_call;
+
 // Stub of `SDL_RenderTexture()`
 void stubbed_SDL_RenderTexture(SDL_FRect* srcrect,
                                SDL_FRect* dstrect,
@@ -20,6 +24,9 @@ void stubbed_SDL_RenderTexture(SDL_FRect* srcrect,
 // Stub of `SDL_RenderPoint()`
 void stubbed_SDL_RenderPoint(float x, float y);
 
+// Stub of `SDL_RenderFillRect()`
+void stubbed_SDL_RenderFillRect(SDL_FRect* rect);
+
 // Points calls to an array of all `stubbed_SDL_RenderTexture()` calls. Returns
 // the length of said array.
 size_t get_SDL_RenderTexture_calls(SDL_RenderTexture_call** ptr);
@@ -27,6 +34,10 @@ size_t get_SDL_RenderTexture_calls(SDL_RenderTexture_call** ptr);
 // Points calls to an array of all `stubbed_SDL_RenderPoint()` calls. Returns
 // the length of said array.
 size_t get_SDL_RenderPoint_calls(SDL_RenderPoint_call** ptr);
+
+// Points calls to an array of all `stubbed_SDL_RenderFillRect()` calls. Returns
+// the length of said array.
+size_t get_SDL_RenderFillRect_calls(SDL_RenderFillRect_call** ptr);
 
 // Erase all calls.
 void clear_stubbed_calls(void);
