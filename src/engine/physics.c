@@ -7,8 +7,22 @@
 
 
 
+typedef struct {
+    struct {
+        Uint16 x;
+        Uint16 y;
+    } tl;
+    struct {
+        Uint16 x;
+        Uint16 y;
+    } br;
+} nbcoords;
+
+
+
 static body* bodies = NULL;
 static size_t bodies_cap = 0;
+static dynarr nbsearch[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = {0};
 
 static void double_dynarr(void) {
     body* new_sprites = SDL_calloc(bodies_cap << 1, sizeof(body));
@@ -26,6 +40,61 @@ static Uint16 pos_to_tile_x(double x) {
 
 static Uint16 pos_to_tile_y(double y) {
     return y / SPRITESHEET_CELL_Y;
+}
+
+// Clamps a tile index to [0, size - 1] before converting it, so rects outside
+// the tilemap end up on the edge cells.
+static Uint16 clamp_tile(double tile, Uint16 size) {
+    return SDL_clamp(tile, 0.0, (double)(size - 1));
+}
+
+// Cells occupied by a rect snapped to pixels, w and h must be positive. Edges
+// exactly on a cell border don't occupy the next cell.
+static nbcoords get_rect_nbcoords(double x, double y, double w, double h) {
+    double l = SDL_round(x);
+    double t = SDL_round(y);
+    double r = l + SDL_round(w);
+    double b = t + SDL_round(h);
+    double tl_x = SDL_floor(l / SPRITESHEET_CELL_X);
+    double tl_y = SDL_floor(t / SPRITESHEET_CELL_Y);
+    double br_x = SDL_floor(r / SPRITESHEET_CELL_X) -
+                  ((int)r % SPRITESHEET_CELL_X == 0 ? 1 : 0);
+    double br_y = SDL_floor(b / SPRITESHEET_CELL_Y) -
+                  ((int)b % SPRITESHEET_CELL_Y == 0 ? 1 : 0);
+    return (nbcoords){
+        .tl = {.x = clamp_tile(tl_x, TILEMAP_SIZE_X),
+               .y = clamp_tile(tl_y, TILEMAP_SIZE_Y)},
+        .br = {.x = clamp_tile(br_x, TILEMAP_SIZE_X),
+               .y = clamp_tile(br_y, TILEMAP_SIZE_Y)},
+    };
+}
+
+static nbcoords get_body_nbcoords(body b) {
+    return get_rect_nbcoords(b.x, b.y, b.w, b.h);
+}
+
+static void add_to_nbsearch(nbcoords c, size_t idx) {
+    for (Uint16 x = c.tl.x; x <= c.br.x; x++) {
+        for (Uint16 y = c.tl.y; y <= c.br.y; y++) {
+            push_to_dynarr((void*)idx, &nbsearch[x][y]);
+        }
+    }
+}
+
+static void remove_from_nbsearch(nbcoords c, size_t idx) {
+    for (Uint16 x = c.tl.x; x <= c.br.x; x++) {
+        for (Uint16 y = c.tl.y; y <= c.br.y; y++) {
+            remove_val_from_dynarr((void*)idx, &nbsearch[x][y]);
+        }
+    }
+}
+
+static void update_nbsearch(nbcoords old, nbcoords new, size_t idx) {
+    if (old.tl.x == new.tl.x && old.tl.y == new.tl.y && old.br.x == new.br.x &&
+        old.br.y == new.br.y)
+        return;
+    remove_from_nbsearch(old, idx);
+    add_to_nbsearch(new, idx);
 }
 
 
@@ -204,6 +273,7 @@ int PHYSICS_new_body(body data, size_t* body_id) {
     for (size_t i = 0; i < bodies_cap; i++) {
         if (bodies[i].w == 0) {
             bodies[i] = data;
+            add_to_nbsearch(get_body_nbcoords(data), i);
             *body_id = i;
             return 0;
         }
@@ -211,6 +281,7 @@ int PHYSICS_new_body(body data, size_t* body_id) {
     double_dynarr();
     size_t index = bodies_cap >> 1;
     bodies[index] = data;
+    add_to_nbsearch(get_body_nbcoords(data), index);
     *body_id = index;
     return 0;
 }
@@ -229,6 +300,7 @@ int PHYSICS_del_body(size_t body_id) {
                     body_id);
         return 1;
     }
+    remove_from_nbsearch(get_body_nbcoords(bodies[body_id]), body_id);
     bodies[body_id] = (body){0};
     return 0;
 }
@@ -303,8 +375,11 @@ int PHYSICS_set_position(size_t body_id, double x, double y) {
                     body_id);
         return 1;
     }
+    nbcoords nbc0 = get_body_nbcoords(bodies[body_id]);
     bodies[body_id].x = x;
     bodies[body_id].y = y;
+    nbcoords nbc = get_body_nbcoords(bodies[body_id]);
+    update_nbsearch(nbc0, nbc, body_id);
     return 0;
 }
 
@@ -330,7 +405,9 @@ int PHYSICS_update_body(size_t body_id, body data) {
                     body_id);
         return 1;
     }
+    nbcoords nbc0 = get_body_nbcoords(bodies[body_id]);
     bodies[body_id] = data;
+    update_nbsearch(nbc0, get_body_nbcoords(data), body_id);
     return 0;
 }
 
@@ -339,12 +416,18 @@ int PHYSICS_update_body(size_t body_id, body data) {
 void PHYSICS_start(void) {
     bodies = SDL_calloc(STARTING_BODIES_DYNARR_CAP, sizeof(body));
     bodies_cap = STARTING_BODIES_DYNARR_CAP;
+    // nbsearch cells start zeroed and allocate lazily on their first push
 }
 
 void PHYSICS_stop(void) {
     SDL_free(bodies);
     bodies = NULL;
     bodies_cap = 0;
+    for (Uint16 x = 0; x < TILEMAP_SIZE_X; x++) {
+        for (Uint16 y = 0; y < TILEMAP_SIZE_Y; y++) {
+            clear_dynarr(&nbsearch[x][y]);
+        }
+    }
 }
 
 
@@ -363,6 +446,7 @@ void PHYSICS_update(void) {
 
         // body_base types collide only with the tilemap, body_area don't
         // collide at all.
+        nbcoords nbc0 = get_body_nbcoords(bodies[i]);
         if (bodies[i].type == physics_actor) {
             move_body_horizontally(&bodies[i], dvx);
             move_body_vertically(&bodies[i], dvy);
@@ -370,28 +454,56 @@ void PHYSICS_update(void) {
             bodies[i].x += dvx;
             bodies[i].y += dvy;
         }
+        update_nbsearch(nbc0, get_body_nbcoords(bodies[i]), i);
     }
 }
 
 
 
-dynarr PHYSICS_get_intersecting_bodies(SDL_Rect rect) {
-    dynarr arr = (dynarr){0};
-    init_dynarr(&arr);
-    for (size_t i = 0; i < bodies_cap; i++) {
-        if (bodies[i].w == 0 || bodies[i].h == 0) continue;
-        if (bodies[i].sleeping) continue;
-        if (are_intersecting(bodies[i].x,
-                             bodies[i].y,
-                             bodies[i].w,
-                             bodies[i].h,
-                             rect.x,
-                             rect.y,
-                             rect.w,
-                             rect.h))
-            push_to_dynarr((void*)i, &arr);
+int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr) {
+    if (rect.x < 0 || rect.y < 0 ||
+        rect.x + rect.w > TILEMAP_SIZE_X * SPRITESHEET_CELL_X ||
+        rect.y + rect.h > TILEMAP_SIZE_Y * SPRITESHEET_CELL_Y) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to get bodies intersecting rect { x = %d, y = %d, "
+                    "w = %d, h = %d } but it is outside the tilemap",
+                    rect.x,
+                    rect.y,
+                    rect.w,
+                    rect.h);
+        return 1;
     }
-    return arr;
+    if (!arr || !arr->at) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to get intersecting bodies into an uninitialized "
+                    "dynarr");
+        return 2;
+    }
+    arr->len = 0;
+    if (rect.w <= 0 || rect.h <= 0) return 0;
+
+    nbcoords nbc = get_rect_nbcoords(rect.x, rect.y, rect.w, rect.h);
+    for (Uint16 x = nbc.tl.x; x <= nbc.br.x; x++) {
+        for (Uint16 y = nbc.tl.y; y <= nbc.br.y; y++) {
+            for (size_t i = 0; i < nbsearch[x][y].len; i++) {
+                size_t id = (size_t)nbsearch[x][y].at[i];
+                body b = bodies[id];
+                if (b.sleeping) continue;
+
+                // A body spanning many cells is only checked on the first
+                // cell both it and rect share, to avoid duplicates
+                nbcoords bnbc = get_body_nbcoords(b);
+                if (x != SDL_max(bnbc.tl.x, nbc.tl.x) ||
+                    y != SDL_max(bnbc.tl.y, nbc.tl.y))
+                    continue;
+
+                if (are_intersecting(
+                        b.x, b.y, b.w, b.h, rect.x, rect.y, rect.w, rect.h))
+                    push_to_dynarr((void*)id, arr);
+            }
+        }
+    }
+    return 0;
 }
 
 int PHYSICS_is_on_floor(size_t body_id, bool* check) {

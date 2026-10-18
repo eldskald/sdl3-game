@@ -15,23 +15,26 @@ struct node {
     node* next;
 };
 
-// List of int types. Use push_to_list(), remove_from_list() and clear_list() to
-// manipulate it. Always call clear_list() when done, or else memory leaks.
+// List of `void*` types. Use `push_to_list()`, `remove_from_list()` and
+// `clear_list()` to manipulate it. Always call `clear_list()` when done, or
+// else memory leaks.
 //
+// ```
 // struct list {
 //     node* head;
 // };
+// ```
 typedef struct {
     node* head;
 } list;
 
-// Pushes val to be the new head.
+// Pushes `val`  to be the new head.
 void push_to_list(void* val, list* l);
 
 // Removes the list's head and returns its value.
 void* pop_from_list(list* l);
 
-// Iterates from head until it finds val and remove it.
+// Iterates from head until it finds `val` and removes it.
 void remove_from_list(void* val, list* l);
 
 // Returns the length of the list.
