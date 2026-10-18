@@ -27,7 +27,7 @@ void push_to_dynarr(void* val, dynarr* arr) {
 void remove_at_from_dynarr(size_t at, dynarr* arr) {
     if (!arr) return;
     if (at < 0 || at >= arr->len) return;
-    for (size_t i = at; i < arr->len; i++) {
+    for (size_t i = at; i + 1 < arr->len; i++) {
         arr->at[i] = arr->at[i + 1];
     }
     arr->len--;

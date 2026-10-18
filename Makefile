@@ -24,17 +24,17 @@ WIN_LINK_FLAGS		= -L./SDL3/lib -lSDL3
 ifeq ($(DEV_PLATFORM), Linux)
 	EXT				:= .x86_64
 	DEV_CC			:= $(LINUX_CC)
-	DEV_COMP_FLAGS	:= $(LINUX_COMP_FLAGS) -g -DDEV
+	DEV_COMP_FLAGS	:= $(LINUX_COMP_FLAGS) -g -Og -DDEV
 	DEV_LINK_FLAGS	:= $(LINUX_LINK_FLAGS)
 endif
 ifeq ($(DEV_PLATFORM), Windows)
 	EXT				:= .exe
 	DEV_CC			:= $(WIN_CC)
-	DEV_COMP_FLAGS	:= $(WIN_COMP_FLAGS) -g -DDEV
+	DEV_COMP_FLAGS	:= $(WIN_COMP_FLAGS) -g -Og -DDEV
 	DEV_LINK_FLAGS	:= $(WIN_LINK_FLAGS)
 endif
 
-.PHONY: all clean dev windows linux
+.PHONY: all clean dev test windows linux
 
 all: windows linux
 
@@ -48,11 +48,11 @@ test:
 	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -Itests -o test -DTEST -fsanitize=address
 
 windows:
-	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
-	zip -r -q windows.zip $(GAME_NAME).exe SDL3.dll res
+	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) -O2 $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
+	zip -r -q windows.zip $(GAME_NAME).exe SDL3.dll
 	rm $(GAME_NAME).exe
 
 linux:
-	$(LINUX_CC) $(SRC_FILES) $(LINUX_COMP_FLAGS) $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
-	zip -r -q linux.zip $(GAME_NAME).x86_64 res
+	$(LINUX_CC) $(SRC_FILES) $(LINUX_COMP_FLAGS) -O2 $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
+	zip -r -q linux.zip $(GAME_NAME).x86_64
 	rm $(GAME_NAME).x86_64

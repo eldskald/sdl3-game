@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "defs.h"
 #include "engine/fluids.h"
+#include "engine/game-manager.h"
 #include "engine/physics.h"
 #include "engine/sprites.h"
 #include "player/player-core.h"
@@ -36,6 +37,7 @@ typedef struct {
     bool created;
     size_t sprite_id;
     states_machine_state state;
+    double splash_cooldown;
 } sprite_state;
 
 static sprite_data data = (sprite_data){0};
@@ -64,8 +66,11 @@ static void state_changed(states_machine_state new_state, player_state player) {
         break;
     case state_swimming:
         SPRITES_play_anim(state.sprite_id, data.swimming_anim);
-        FLUIDS_splash_at(SDL_round(b.x) / FLUIDS_CELL_W,
-                         SDL_round(b.y) / FLUIDS_CELL_H);
+        if (state.splash_cooldown <= 0.0f) {
+            FLUIDS_splash_at(SDL_round(b.x) / FLUIDS_CELL_W,
+                             SDL_round(b.y) / FLUIDS_CELL_H);
+            state.splash_cooldown = PLAYER_SPLASH_COOLDOWN;
+        }
         break;
     }
 }
@@ -292,6 +297,8 @@ void PLAYER_SPRITE_destroy(void) {
 
 void PLAYER_SPRITE_update(player_state player) {
     if (!state.created) return;
+
+    state.splash_cooldown -= GAME_MANAGER_get_current_dt();
 
     sprite s = (sprite){0};
     body b = (body){0};

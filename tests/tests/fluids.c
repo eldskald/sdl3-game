@@ -1,9 +1,37 @@
 #include "tests/fluids.h"
 #include "engine/fluids.h"
+#include "engine/game-manager.h"
 #include "engine/tilemap.h"
 #include "tests.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
+
+// Slowest move time of each fluid in `tests/mocks/fluids.csv`, so stepping for
+// `n` of these runs every kind of move of that fluid at least `n` times.
+// UPDATE IF TESTS/MOCKS/FLUIDS.CSV IS CHANGED!!!
+#define WATER_MOVE_TIME 0.05
+#define LAVA_MOVE_TIME 0.2
+#define WATER_PARTICLE_VOL 0.1
+
+// Steps the simulation for `seconds` of game time. Steps one extra frame so a
+// timer that would fire right at the end isn't missed by rounding.
+static void step_for(double seconds) {
+    Uint32 frames = SDL_ceil(seconds / GAME_MANAGER_get_current_dt()) + 1;
+    for (Uint32 i = 0; i < frames; i++)
+        FLUIDS_step();
+}
+
+// Sums the water on rect `(x,y,w,h)`, which must be inside the 12x12 cells at
+// the origin.
+static double sum_water(Uint32 x, Uint32 y, Uint32 w, Uint32 h) {
+    fluid_cell cells[12][12] = {0};
+    FLUIDS_get_at(0, 0, 12, 12, &cells);
+    double sum = 0.0f;
+    for (Uint32 i = x; i < x + w; i++)
+        for (Uint32 j = y; j < y + h; j++)
+            sum += cells[i][j].volume[fluid_water];
+    return sum;
+}
 
 void test_fluids(void) {
     printf(YELLOW "\nTesting fluids...\n" RESET);
@@ -28,8 +56,7 @@ void test_fluids(void) {
     TILEMAP_set_at(0, 0, 3, 3, &data0);
     FLUIDS_start();
     FLUIDS_set_at(2, 2, 2, 2, fluid_water, 1.0f);
-    FLUIDS_step();
-    FLUIDS_step();
+    step_for(2 * WATER_MOVE_TIME);
 
     fluid_cell probe[6][6] = {0};
     FLUIDS_get_at(0, 0, 6, 6, &probe);
@@ -61,15 +88,15 @@ void test_fluids(void) {
         },
     };
     TILEMAP_set_at(0, 2, 3, 3, &data1);
-    FLUIDS_step();
+    step_for(WATER_MOVE_TIME);
     FLUIDS_get_at(0, 4, 6, 6, &probe);
     expect(
         "Made a hole in the cup and another cup underneath, stepped once and "
         "checking if it starts falling...",
         8,
         (bool[]){
-            probe[2][0].volume[fluid_water] == 0.5f,
-            probe[3][0].volume[fluid_water] == 0.5f,
+            probe[2][0].volume[fluid_water] == 1.0f,
+            probe[3][0].volume[fluid_water] == 1.0f,
             probe[2][1].volume[fluid_water] == 0.0f,
             probe[3][1].volume[fluid_water] == 0.0f,
             probe[2][2].volume[fluid_water] == 0.0f,
@@ -78,8 +105,7 @@ void test_fluids(void) {
             probe[3][3].volume[fluid_water] == 0.0f,
         });
 
-    for (int i = 0; i < 10; i++)
-        FLUIDS_step();
+    step_for(10 * WATER_MOVE_TIME);
     FLUIDS_get_at(0, 4, 6, 6, &probe);
     expect("Stepped enough for all the water to fall down, checking...",
            8,
@@ -113,40 +139,121 @@ void test_fluids(void) {
     };
     TILEMAP_set_at(3, 0, 3, 3, &data2);
     FLUIDS_set_at(8, 2, 2, 2, fluid_water, 1.0f);
-    for (int i = 0; i < 20; i++)
-        FLUIDS_step();
+    step_for(20 * WATER_MOVE_TIME);
     FLUIDS_get_at(6, 0, 6, 6, &probe);
     expect("Created water in the middle and stepped enough for it to flow to "
            "the sides, checking...",
            8,
            (bool[]){
-               SDL_abs(probe[0][2].volume[fluid_water] - 0.0f) < EPSILON,
-               SDL_abs(probe[0][3].volume[fluid_water] - 1.0f) < EPSILON,
-               SDL_abs(probe[1][2].volume[fluid_water] - 0.0f) < EPSILON,
-               SDL_abs(probe[1][3].volume[fluid_water] - 1.0f) < EPSILON,
-               SDL_abs(probe[2][2].volume[fluid_water] - 0.0f) < EPSILON,
-               SDL_abs(probe[2][3].volume[fluid_water] - 1.0f) < EPSILON,
-               SDL_abs(probe[3][2].volume[fluid_water] - 0.0f) < EPSILON,
-               SDL_abs(probe[3][3].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[0][2].volume[fluid_water] - 0.0f) < EPSILON,
+               SDL_fabs(probe[0][3].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[1][2].volume[fluid_water] - 0.0f) < EPSILON,
+               SDL_fabs(probe[1][3].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[2][2].volume[fluid_water] - 0.0f) < EPSILON,
+               SDL_fabs(probe[2][3].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[3][2].volume[fluid_water] - 0.0f) < EPSILON,
+               SDL_fabs(probe[3][3].volume[fluid_water] - 1.0f) < EPSILON,
            });
 
+    // Mods are applied at the end of a step, so the first step only sets the
+    // uneven surface and the second one is the one that has to level it.
+    FLUIDS_set_at(6, 2, 1, 1, fluid_water, 0.8f);
+    FLUIDS_set_at(7, 2, 1, 1, fluid_water, 0.2f);
+    FLUIDS_set_at(8, 2, 1, 1, fluid_water, 0.3f);
+    FLUIDS_set_at(9, 2, 1, 1, fluid_water, 0.1f);
+    FLUIDS_step();
+    FLUIDS_get_at(6, 0, 6, 6, &probe);
+    bool uneven = SDL_fabs(probe[0][2].volume[fluid_water] - 0.8f) < EPSILON &&
+                  SDL_fabs(probe[1][2].volume[fluid_water] - 0.2f) < EPSILON &&
+                  SDL_fabs(probe[2][2].volume[fluid_water] - 0.3f) < EPSILON &&
+                  SDL_fabs(probe[3][2].volume[fluid_water] - 0.1f) < EPSILON;
+    FLUIDS_step();
+    FLUIDS_get_at(6, 0, 6, 6, &probe);
+    expect("Created an uneven surface on top of the water and stepped once, "
+           "checking if it levelled in a single tick...",
+           5,
+           (bool[]){
+               uneven,
+               SDL_fabs(probe[0][2].volume[fluid_water] - 0.35f) < EPSILON,
+               SDL_fabs(probe[1][2].volume[fluid_water] - 0.35f) < EPSILON,
+               SDL_fabs(probe[2][2].volume[fluid_water] - 0.35f) < EPSILON,
+               SDL_fabs(probe[3][2].volume[fluid_water] - 0.35f) < EPSILON,
+           });
+    FLUIDS_clear_at(6, 2, 4, 1, fluid_water);
+
     FLUIDS_set_at(8, 2, 2, 2, fluid_lava, 1.0f);
-    for (int i = 0; i < 20; i++)
-        FLUIDS_step();
+    step_for(20 * LAVA_MOVE_TIME);
     FLUIDS_get_at(6, 0, 6, 6, &probe);
     expect("Created lava above the water and stepped enough for it to go under "
            "the water, checking...",
            8,
            (bool[]){
-               SDL_abs(probe[0][2].volume[fluid_water] - 1.0f) < EPSILON,
-               SDL_abs(probe[0][3].volume[fluid_lava] - 1.0f) < EPSILON,
-               SDL_abs(probe[1][2].volume[fluid_water] - 1.0f) < EPSILON,
-               SDL_abs(probe[1][3].volume[fluid_lava] - 1.0f) < EPSILON,
-               SDL_abs(probe[2][2].volume[fluid_water] - 1.0f) < EPSILON,
-               SDL_abs(probe[2][3].volume[fluid_lava] - 1.0f) < EPSILON,
-               SDL_abs(probe[3][2].volume[fluid_water] - 1.0f) < EPSILON,
-               SDL_abs(probe[3][3].volume[fluid_lava] - 1.0f) < EPSILON,
+               SDL_fabs(probe[0][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[0][3].volume[fluid_lava] - 1.0f) < EPSILON,
+               SDL_fabs(probe[1][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[1][3].volume[fluid_lava] - 1.0f) < EPSILON,
+               SDL_fabs(probe[2][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[2][3].volume[fluid_lava] - 1.0f) < EPSILON,
+               SDL_fabs(probe[3][2].volume[fluid_water] - 1.0f) < EPSILON,
+               SDL_fabs(probe[3][3].volume[fluid_lava] - 1.0f) < EPSILON,
            });
+
+    // A closed square room of tiles over all the previous ones, so its fluid
+    // cells 2 to 9 are the only open ones.
+    tile room[6][6] = {0};
+    for (int x = 0; x < 6; x++)
+        for (int y = 0; y < 6; y++)
+            if (x == 0 || y == 0 || x == 5 || y == 5)
+                room[x][y] = (tile){.mat = tile_stone};
+    TILEMAP_set_at(0, 0, 6, 6, &room);
+    FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
+    FLUIDS_clear_at(0, 0, 12, 12, fluid_lava);
+    FLUIDS_step();
+
+    // Shoots left from the middle of cell (4,4) into the wall at column 1.
+    bool added = true;
+    for (int i = 0; i < 10; i++)
+        if (FLUIDS_add_particle(fluid_water,
+                                4.5f * FLUIDS_CELL_W,
+                                4.5f * FLUIDS_CELL_H,
+                                -300.0f,
+                                0.0f) != 0)
+            added = false;
+    for (int i = 0; i < 5; i++)
+        FLUIDS_step();
+    expect(
+        "Cleared everything, made a square room and shot water particles "
+        "into a wall, checking if they became water next to it...",
+        3,
+        (bool[]){
+            added,
+            SDL_fabs(sum_water(2, 2, 1, 8) - 10 * WATER_PARTICLE_VOL) < EPSILON,
+            SDL_fabs(sum_water(0, 0, 12, 12) - 10 * WATER_PARTICLE_VOL) <
+                EPSILON,
+        });
+
+    // Shoots down from above the middle of the room at the puddle.
+    step_for(20 * WATER_MOVE_TIME);
+    added = true;
+    for (int i = 0; i < 5; i++)
+        if (FLUIDS_add_particle(fluid_water,
+                                6.0f * FLUIDS_CELL_W,
+                                3.5f * FLUIDS_CELL_H,
+                                0.0f,
+                                300.0f) != 0)
+            added = false;
+    for (int i = 0; i < 10; i++)
+        FLUIDS_step();
+    expect(
+        "Let the water settle into a puddle and shot water particles down "
+        "at it, checking if they landed in it...",
+        3,
+        (bool[]){
+            added,
+            SDL_fabs(sum_water(2, 9, 8, 1) - 15 * WATER_PARTICLE_VOL) < EPSILON,
+            SDL_fabs(sum_water(0, 0, 12, 12) - 15 * WATER_PARTICLE_VOL) <
+                EPSILON,
+        });
 
     FLUIDS_stop();
 }
