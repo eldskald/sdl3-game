@@ -23,9 +23,17 @@ void test_dynarr(void) {
                     arr.len == 2,
                     arr.cap == DYNARR_INITIAL_CAP});
 
+    remove_val_from_dynarr(&arr, &arr);
+    expect("Removed value from dynarr, checking values, length and cap...",
+           3,
+           (bool[]){arr.at[0] == &test,
+                    arr.len == 1,
+                    arr.cap == DYNARR_INITIAL_CAP});
+
+    push_to_dynarr(&arr, &arr);
     remove_at_from_dynarr(0, &arr);
-    expect("Removed first element from dynarr, checking values, length and "
-           "cap...",
+    expect("Reapplied removed value and then removed first element from "
+           "dynarr, checking values, length and cap...",
            3,
            (bool[]){
                arr.at[0] == &arr, arr.len == 1, arr.cap == DYNARR_INITIAL_CAP});

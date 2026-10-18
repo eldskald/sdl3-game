@@ -79,8 +79,10 @@ int PHYSICS_set_position(size_t body_id, double x, double y);
 // body at that index, `0` when everything went right.
 int PHYSICS_update_body(size_t body_id, body data);
 
-// Get all bodies intersecting `rect`.
-dynarr PHYSICS_get_intersecting_bodies(SDL_Rect rect);
+// Deletes all values in `arr` and puts in all body indexes intersecting `rect`.
+// Returns `0` when everything went right, `1` if `rect` is out of bounds and
+// `2` if `arr` is not initialized.
+int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr);
 
 // Checks if the body at `body_id` is touching tiles below, setting `check` to
 // true if that's the case. Returns `3` when `body_id` is outside the array's

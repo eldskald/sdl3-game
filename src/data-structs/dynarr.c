@@ -11,9 +11,9 @@ void init_dynarr(dynarr* arr) {
 void push_to_dynarr(void* val, dynarr* arr) {
     if (!arr) return;
 
-    // Doubles cap if len reaches cap
+    // Doubles cap if len reaches cap, allocates initial cap if it's empty
     if (arr->len == arr->cap) {
-        size_t new_cap = arr->cap << 1;
+        size_t new_cap = arr->cap ? arr->cap << 1 : DYNARR_INITIAL_CAP;
         void** new = SDL_calloc(new_cap, sizeof(void*));
         SDL_memcpy(new, arr->at, arr->cap * sizeof(void*));
         SDL_free(arr->at);
@@ -31,6 +31,16 @@ void remove_at_from_dynarr(size_t at, dynarr* arr) {
         arr->at[i] = arr->at[i + 1];
     }
     arr->len--;
+}
+
+void remove_val_from_dynarr(void* val, dynarr* arr) {
+    if (!arr) return;
+    for (size_t i = 0; i < arr->len; i++) {
+        if (arr->at[i] == val) {
+            remove_at_from_dynarr(i, arr);
+            return;
+        }
+    }
 }
 
 void clear_dynarr(dynarr* arr) {
