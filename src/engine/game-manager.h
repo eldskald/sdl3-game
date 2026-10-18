@@ -1,18 +1,18 @@
 #pragma once
 #include <SDL3/SDL.h>
 
-// Initializes game. Call on SDL_AppInit(). Returns 0 when successful, 1
+// Initializes game. Call on `SDL_AppInit()`. Returns `0` when successful, `1`
 // otherwise.
 int GAME_MANAGER_start(void);
 
-// Main thread loop. Call on SDL_AppIterate().
+// Main thread loop. Call on `SDL_AppIterate()`.
 void GAME_MANAGER_update(void);
 
-// Event handling. Call on SDL_AppEvent(). Returns 1 when game is quitting, 0
-// otherwise.
+// Event handling. Call on `SDL_AppEvent()`. Returns `1` when game is quitting,
+// `0` otherwise.
 int GAME_MANAGER_events(SDL_Event* event);
 
-// Unloads game. Call on SDL_AppQuit().
+// Unloads game. Call on `SDL_AppQuit()`.
 void GAME_MANAGER_stop(void);
 
 // Requests to quit the game.

@@ -8,6 +8,7 @@
 #ifndef TEST
 static SDL_Window* window = NULL;
 static SDL_Texture* base_screen = NULL;
+static SDL_GPUDevice* device = NULL;
 #endif
 static SDL_Renderer* renderer = NULL;
 static SDL_Texture* spritesheet = NULL;
@@ -38,8 +39,27 @@ static int start_graphics_pipeline() {
     SDL_SetWindowMinimumSize(window, MIN_WINDOW_SIZE_X, MIN_WINDOW_SIZE_Y);
     SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Window initialized successfully.");
 
-    // Creating SDL_Renderer
-    renderer = SDL_CreateRenderer(window, NULL);
+    // Creating SDL_GPUDevice for shaders
+#ifdef DEV
+    bool gpu_debug_mode = true;
+#else
+    bool gpu_debug_mode = false;
+#endif
+    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV |
+                                     SDL_GPU_SHADERFORMAT_DXIL,
+                                 gpu_debug_mode,
+                                 NULL);
+    if (!device) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create SDL_GPUDevice: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "SDL_GPUDevice created successfully.");
+
+    // Creating SDL_Renderer on top of the GPU device. It claims the window
+    // for the device, so we must not call SDL_ClaimWindowForGPUDevice().
+    renderer = SDL_CreateGPURenderer(device, window);
     if (!renderer) {
         SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
                      "Couldn't create SDL_Renderer: %s",
@@ -63,7 +83,6 @@ static int start_graphics_pipeline() {
     SDL_SetTextureScaleMode(base_screen, SDL_SCALEMODE_NEAREST);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture base_screen created successfully.");
-
 #endif
 
     return 0;
@@ -157,6 +176,7 @@ void RENDERER_stop(void) {
 #endif
     SPRITES_stop();
 #ifndef TEST
+    SDL_DestroyGPUDevice(device);
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 #endif

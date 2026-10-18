@@ -1,0 +1,22 @@
+#!/bin/bash
+
+shadercross="SDL_shadercross/bin/shadercross"
+src="src/gpu"
+out="res/shaders"
+
+for file in $(find "$src" -type f -name '*.hlsl'); do
+    name="$(basename "$file" .hlsl)"
+
+    case "$name" in
+        *.vert) stage="vertex" ;;
+        *.frag) stage="fragment" ;;
+        *.comp) stage="compute" ;;
+        *)
+            echo "Unknown shader stage for $file, skipping" >&2
+            continue
+            ;;
+    esac
+
+    "$shadercross" "$file" -s HLSL -d SPIRV -t "$stage" -o "$out/$name.spv"
+    "$shadercross" "$file" -s HLSL -d DXIL -t "$stage" -o "$out/$name.dxil"
+done

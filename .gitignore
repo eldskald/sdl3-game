@@ -1,4 +1,5 @@
 /SDL3
+/SDL_shadercross
 SDL3.dll
 game.*
 test
