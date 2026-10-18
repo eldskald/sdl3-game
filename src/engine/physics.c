@@ -209,7 +209,7 @@ int PHYSICS_new_body(body data, size_t* body_id) {
         }
     }
     double_dynarr();
-    size_t index = (bodies_cap >> 1) + 1;
+    size_t index = bodies_cap >> 1;
     bodies[index] = data;
     *body_id = index;
     return 0;
@@ -337,8 +337,8 @@ int PHYSICS_update_body(size_t body_id, body data) {
 
 
 void PHYSICS_start(void) {
-    bodies = SDL_calloc(STARTING_SPRITES_DYNARR_CAP, sizeof(body));
-    bodies_cap = STARTING_SPRITES_DYNARR_CAP;
+    bodies = SDL_calloc(STARTING_BODIES_DYNARR_CAP, sizeof(body));
+    bodies_cap = STARTING_BODIES_DYNARR_CAP;
 }
 
 void PHYSICS_stop(void) {

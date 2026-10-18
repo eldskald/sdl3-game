@@ -72,7 +72,7 @@ int SPRITES_new_sprite(sprite data, size_t* sprite_id) {
         }
     }
     double_dynarr();
-    size_t index = sprites_size / 2 + 1;
+    size_t index = sprites_size / 2;
     sprites[index].sprite = data;
     add_to_z_index_map(index);
     *sprite_id = index;

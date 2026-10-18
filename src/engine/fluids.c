@@ -15,9 +15,11 @@
 
 typedef struct {
     double density;
-    double gravity;
-    double flow;
-    Uint8 flow_range;
+    double move_down_time;
+    double move_diag_time;
+    double move_side_time;
+    double min_spread;
+    double particle_vol;
     Uint8 col_r;
     Uint8 col_g;
     Uint8 col_b;
@@ -27,6 +29,14 @@ typedef struct {
 typedef struct {
     double volume[FLUIDS_TOTAL];
 } fluids;
+
+typedef struct {
+    double x;
+    double y;
+    double vel_x;
+    double vel_y;
+    fluid_type type;
+} fluid_particle;
 
 typedef struct {
     double volume;
@@ -43,15 +53,102 @@ typedef struct {
     bool clear;
 } mod;
 
+typedef struct {
+    Uint32 x;
+    Uint32 y;
+} splash;
+
+typedef struct {
+    long x;
+    long y;
+    long dir;
+    Uint32 len;
+    double fills[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X];
+    double deltas[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X];
+} stretch;
+
 
 
 static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
                   [TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y] = {0};
+static fluids buffer[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X]
+                    [FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y] = {0};
 static fluid_data data[FLUIDS_TOTAL] = {0};
 static dynarr mods = (dynarr){0};
+static SDL_Mutex* mods_mutex = NULL;
+static dynarr queued_particles = (dynarr){0};
+static SDL_Mutex* queued_particles_mutex = NULL;
+static dynarr splashes = (dynarr){0};
+static SDL_Mutex* splashes_mutex = NULL;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
+static fluid_particle* particles = NULL;
+static size_t particles_cap = 0;
+static size_t particles_len = 0;
+static SDL_Mutex* particles_mutex = NULL;
 
+// Down, diagonal and sideways move timers, in that order.
+static double move_timers[3][FLUIDS_TOTAL] = {0};
+
+static void double_particles_dynarr(void) {
+    fluid_particle* new_particles =
+        SDL_calloc(particles_cap << 1, sizeof(fluid_particle));
+    SDL_memcpy(
+        new_particles, particles, particles_cap * sizeof(fluid_particle));
+    SDL_free(particles);
+    particles_cap = particles_cap << 1;
+    particles = new_particles;
+}
+
+// We treat these differently from sprites and bodies because these particles
+// are not exposed, their indexes are not IDs that other code should keep track
+// of so we can move them around the array safely.
+static void remove_fluid_particle(size_t index) {
+    particles_len--;
+    particles[index] = particles[particles_len];
+}
+
+static void add_fluid_particle(fluid_particle particle) {
+    if (particles_len >= particles_cap) double_particles_dynarr();
+    particles[particles_len] = particle;
+    particles_len++;
+}
+
+static void
+queue_item(dynarr* queue, SDL_Mutex* mutex, const void* item, size_t size) {
+    void* copy = SDL_malloc(size);
+    SDL_memcpy(copy, item, size);
+    SDL_LockMutex(mutex);
+    push_to_dynarr(copy, queue);
+    SDL_UnlockMutex(mutex);
+}
+
+// Applies the queued items in the order they were queued, if `apply` isn't
+// `NULL`, and frees them.
+static void drain_queue(dynarr* queue, SDL_Mutex* mutex, void (*apply)(void*)) {
+    SDL_LockMutex(mutex);
+    for (size_t i = 0; i < queue->len; i++) {
+        if (apply) apply(queue->at[i]);
+        SDL_free(queue->at[i]);
+    }
+    while (queue->len > 0)
+        remove_at_from_dynarr(queue->len - 1, queue);
+    SDL_UnlockMutex(mutex);
+}
+
+static void clear_queue(dynarr* queue, SDL_Mutex** mutex) {
+    drain_queue(queue, *mutex, NULL);
+    clear_dynarr(queue);
+    SDL_DestroyMutex(*mutex);
+    *mutex = NULL;
+}
+
+
+
+static double read_prop(dynarr* row, char* prop, hashmap* props) {
+    return SDL_strtod((char*)row->at[(size_t)get_from_hashmap(prop, props)],
+                      NULL);
+}
 
 static void load_fluid_data(void) {
 #ifndef TEST
@@ -84,34 +181,16 @@ static void load_fluid_data(void) {
         dynarr* row = (dynarr*)parsed.at[i];
         char* name = (char*)row->at[0];
         data[(size_t)get_from_hashmap(name, &names)] = (fluid_data){
-            .density = SDL_strtod(
-                (char*)row->at[(size_t)get_from_hashmap("density", &props)],
-                NULL),
-            .gravity = SDL_strtod(
-                (char*)row->at[(size_t)get_from_hashmap("gravity", &props)],
-                NULL),
-            .flow = SDL_strtod(
-                (char*)row->at[(size_t)get_from_hashmap("flow", &props)], NULL),
-            .flow_range = SDL_strtol(
-                (char*)row->at[(size_t)get_from_hashmap("flow_range", &props)],
-                NULL,
-                10),
-            .col_r = SDL_strtol(
-                (char*)row->at[(size_t)get_from_hashmap("col_r", &props)],
-                NULL,
-                10),
-            .col_g = SDL_strtol(
-                (char*)row->at[(size_t)get_from_hashmap("col_g", &props)],
-                NULL,
-                10),
-            .col_b = SDL_strtol(
-                (char*)row->at[(size_t)get_from_hashmap("col_b", &props)],
-                NULL,
-                10),
-            .col_a = SDL_strtol(
-                (char*)row->at[(size_t)get_from_hashmap("col_a", &props)],
-                NULL,
-                10),
+            .density = read_prop(row, "density", &props),
+            .move_down_time = read_prop(row, "move_down_time", &props),
+            .move_diag_time = read_prop(row, "move_diag_time", &props),
+            .move_side_time = read_prop(row, "move_side_time", &props),
+            .min_spread = read_prop(row, "min_spread", &props),
+            .particle_vol = read_prop(row, "particle_vol", &props),
+            .col_r = read_prop(row, "col_r", &props),
+            .col_g = read_prop(row, "col_g", &props),
+            .col_b = read_prop(row, "col_b", &props),
+            .col_a = read_prop(row, "col_a", &props),
         };
     }
 
@@ -144,32 +223,98 @@ static void order_fluids_by_density(void) {
     }
 }
 
+static double get_move_time(fluid_type type, Uint8 move) {
+    double times[3] = {data[type].move_down_time,
+                       data[type].move_diag_time,
+                       data[type].move_side_time};
+    return times[move];
+}
+
+// Starts each move timer at a different point of its period so the moves, each
+// a full pass over the grid, land on different ticks as much as possible. The
+// most frequent go first, each starting where the busiest tick it would land on
+// is the least busy.
+static void stagger_move_timers(void) {
+    double tick = 1.0f / FLUIDS_T_TARGET_FPS;
+    Uint32 ticks = FLUIDS_STAGGER_SECONDS * FLUIDS_T_TARGET_FPS;
+    Uint32 load[FLUIDS_STAGGER_SECONDS * FLUIDS_T_TARGET_FPS] = {0};
+    bool placed[3][FLUIDS_TOTAL] = {0};
+    for (Uint8 n = 0; n < 3 * FLUIDS_TOTAL; n++) {
+        Uint8 move = 0;
+        fluid_type type = 0;
+        Uint32 period = 0;
+        for (Uint8 m = 0; m < 3; m++) {
+            for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
+                Uint32 p = SDL_max(1, SDL_round(get_move_time(t, m) / tick));
+                if (placed[m][t] || (period > 0 && p >= period)) continue;
+                move = m;
+                type = t;
+                period = p;
+            }
+        }
+        placed[move][type] = true;
+
+        Uint32 best = 0;
+        Uint32 best_peak = SDL_MAX_UINT32;
+        Uint32 best_sum = SDL_MAX_UINT32;
+        for (Uint32 o = 0; o < SDL_min(period, ticks); o++) {
+            Uint32 peak = 0;
+            Uint32 sum = 0;
+            for (Uint32 t = o; t < ticks; t += period) {
+                peak = SDL_max(peak, load[t]);
+                sum += load[t];
+            }
+            if (peak < best_peak || (peak == best_peak && sum < best_sum)) {
+                best = o;
+                best_peak = peak;
+                best_sum = sum;
+            }
+        }
+        for (Uint32 t = best; t < ticks; t += period)
+            load[t]++;
+
+        // Half a tick early, so it isn't right at the edge of rounding.
+        move_timers[move][type] =
+            SDL_max(get_move_time(type, move) - (best + 0.5f) * tick, 0.0f);
+    }
+}
+
 void FLUIDS_start(void) {
     load_fluid_data();
     order_fluids_by_density();
+    stagger_move_timers();
     init_dynarr(&mods);
+    mods_mutex = SDL_CreateMutex();
+    init_dynarr(&queued_particles);
+    queued_particles_mutex = SDL_CreateMutex();
+    init_dynarr(&splashes);
+    splashes_mutex = SDL_CreateMutex();
+    particles = SDL_calloc(STARTING_FLUIDS_PARTICLES_DYNARR_CAP,
+                           sizeof(fluid_particle));
+    particles_cap = STARTING_FLUIDS_PARTICLES_DYNARR_CAP;
+    particles_len = 0;
+    particles_mutex = SDL_CreateMutex();
 }
 
 void FLUIDS_stop(void) {
-    clear_dynarr(&mods);
+    clear_queue(&mods, &mods_mutex);
+    clear_queue(&queued_particles, &queued_particles_mutex);
+    clear_queue(&splashes, &splashes_mutex);
     SDL_memset(grid, 0, sizeof(grid));
+    SDL_memset(move_timers, 0, sizeof(move_timers));
+    SDL_free(particles);
+    particles = NULL;
+    particles_cap = 0;
+    particles_len = 0;
+    SDL_DestroyMutex(particles_mutex);
+    particles_mutex = NULL;
 }
 
 
-
-static Uint16 fluid_grid_to_tilemap_x(Uint32 x) {
-    return x / FLUIDS_SPLIT_X;
-}
-
-static Uint16 fluid_grid_to_tilemap_y(Uint32 y) {
-    return y / FLUIDS_SPLIT_Y;
-}
 
 static bool is_solid(Uint32 x, Uint32 y) {
-    Uint16 tile_x = fluid_grid_to_tilemap_x(x);
-    Uint16 tile_y = fluid_grid_to_tilemap_y(y);
     tile data = (tile){0};
-    TILEMAP_get_at(tile_x, tile_y, &data);
+    TILEMAP_get_at(x / FLUIDS_SPLIT_X, y / FLUIDS_SPLIT_Y, &data);
     return data.mat;
 }
 
@@ -180,51 +325,47 @@ static bool is_solid(Uint32 x, Uint32 y) {
 #define TLEFT [0][0]
 #define TRIGHT [2][0]
 #define BLEFT [0][2]
-#define BBRIGHT [2][3]
-#define BBLEFT [0][3]
 #define BRIGHT [2][2]
 
 #define SELF [1][1]
 
-static void get_neighbor_fluids(Uint32 x, Uint32 y, fluid_cell (*nbs)[3][3]) {
-    for (long i = (long)x - 1; i <= (long)x + 1; i++) {
-        for (long j = (long)y - 1; j <= (long)y + 1; j++) {
-            if (i < 0 || j < 0 || i >= TILEMAP_SIZE_X * FLUIDS_SPLIT_X ||
-                j >= TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y) {
-                (*nbs)[i - x + 1][j - y + 1] = (fluid_cell){.solid = true};
-                continue;
-            }
-            fluid_cell cell = (fluid_cell){0};
-            cell.solid = is_solid(i, j);
-            for (Uint8 type = 0; type < FLUIDS_TOTAL; type++)
-                cell.volume[type] = grid[i][j].volume[type];
-            (*nbs)[i - x + 1][j - y + 1] = cell;
-        }
-    }
-    // Blocking off diagonals if both up/down left/right neighbors are blocked
-    if ((*nbs)TOP.solid && (*nbs)LEFT.solid) (*nbs) TLEFT.solid = true;
-    if ((*nbs)TOP.solid && (*nbs)RIGHT.solid) (*nbs) TRIGHT.solid = true;
-    if ((*nbs)BOT.solid && (*nbs)RIGHT.solid) (*nbs) BRIGHT.solid = true;
-    if ((*nbs)BOT.solid && (*nbs)LEFT.solid) (*nbs) BLEFT.solid = true;
+static void initiate_buffer(void) {
+    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++)
+        SDL_memcpy(buffer[x], grid[x], sizeof(buffer[x]));
+}
+
+static void transfer_buffer(void) {
+    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++)
+        SDL_memcpy(grid[x], buffer[x], sizeof(buffer[x]));
+}
+
+
+
+static bool is_outside(long x, long y) {
+    return x < 0 || y < 0 || x >= FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X ||
+           y >= FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+}
+
+static bool is_wall(long x, long y) {
+    return is_outside(x, y) || is_solid(x, y);
+}
+
+static double get_fill(fluids cell, Uint8 ordered_type) {
+    double filled = 0.0f;
+    for (Uint8 t = 0; t <= ordered_type; t++)
+        filled += cell.volume[ordered[t]];
+    return filled;
 }
 
 static void
-get_neighbors(Uint32 x, Uint32 y, Uint8 up_to, neighbor (*nbs)[3][4]) {
-    for (long i = (long)x - 1; i <= (long)x + 1; i++) {
-        for (long j = (long)y - 1; j <= (long)y + 2; j++) {
-            if (i < 0 || j < 0 || i >= TILEMAP_SIZE_X * FLUIDS_SPLIT_X ||
-                j >= TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y) {
-                (*nbs)[i - x + 1][j - y + 1] = (neighbor){.solid = true};
-                continue;
-            }
-            neighbor cell = (neighbor){0};
-            cell.solid = is_solid(i, j);
-            for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
-                fluid_type type = ordered[t];
-                cell.volume += grid[i][j].volume[type];
-                if (type == up_to) break;
-            }
-            (*nbs)[i - x + 1][j - y + 1] = cell;
+get_neighbors(Uint32 x, Uint32 y, Uint8 ordered_type, neighbor (*nbs)[3][3]) {
+    for (long i = -1; i <= 1; i++) {
+        for (long j = -1; j <= 1; j++) {
+            long nx = (long)x + i;
+            long ny = (long)y + j;
+            neighbor nb = (neighbor){.solid = is_wall(nx, ny)};
+            if (!nb.solid) nb.volume = get_fill(grid[nx][ny], ordered_type);
+            (*nbs)[i + 1][j + 1] = nb;
         }
     }
     // Blocking off diagonals if both up/down left/right neighbors are blocked
@@ -234,358 +375,567 @@ get_neighbors(Uint32 x, Uint32 y, Uint8 up_to, neighbor (*nbs)[3][4]) {
     if ((*nbs)BOT.solid && (*nbs)LEFT.solid) (*nbs) BLEFT.solid = true;
 }
 
-static void flow_step(double vol,
-                      fluid_type type,
-                      int steps,
-                      int dir,
-                      Uint32 x,
-                      Uint32 y,
-                      fluids (*new)[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X]
-                                   [FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y]) {
-    (*new)[x][y].volume[type] += vol;
-    neighbor nbs[3][4] = {0};
-    get_neighbors(x, y, type, &nbs);
-    double total = nbs SELF.volume;
-    neighbor bbot = nbs[1 + dir][3];
-    neighbor bot = nbs[1 + dir][2];
-    neighbor side = nbs[1 + dir][1];
-    neighbor top = nbs[1 + dir][0];
+static double get_space(neighbor nb) {
+    if (nb.solid || nb.volume > 1.0f - EPSILON) return 0.0f;
+    return 1.0f - nb.volume;
+}
 
-    bool b = false;
-    bool t = false;
-    if ((!bot.solid && bot.volume < 1.0f - EPSILON) &&
-        (bbot.solid || bbot.volume > 1.0f - EPSILON) &&
-        (!side.solid && side.volume < EPSILON))
-        b = true;
-    if ((!side.solid && side.volume < total) &&
-        (bot.solid || bot.volume > 1.0f - EPSILON) &&
-        (!top.solid && top.volume < EPSILON))
-        t = true;
+// Checks the volume before the tiles, since most cells are empty.
+static bool has_fluid(long x, long y, fluid_type type) {
+    return !is_outside(x, y) && grid[x][y].volume[type] > EPSILON &&
+           !is_solid(x, y);
+}
 
-    if (steps <= 1) return;
-    if (b) {
-        double qty = SDL_min(vol * (double)(steps - 1) / steps,
-                             1.0f - nbs[1 + dir][2].volume);
-        (*new)[x][y].volume[type] -= qty;
-        flow_step(qty, type, steps - 1, dir, x + dir, y + 1, new);
-    } else if (t) {
-        double avg = (total + nbs[1 + dir][1].volume) / 2.0f;
-        double qty = SDL_min(vol * (double)(steps - 1) / steps,
-                             1.0f - nbs[1 + dir][1].volume);
-        qty = SDL_min(qty, total - avg);
-        (*new)[x][y].volume[type] -= qty;
-        flow_step(qty, type, steps - 1, dir, x + dir, y, new);
+static bool is_surface(long x, long y, fluid_type type) {
+    return has_fluid(x, y, type) && !has_fluid(x, y - 1, type);
+}
+
+static bool has_any_fluid(long x, long y) {
+    return !is_outside(x, y) &&
+           get_fill(grid[x][y], FLUIDS_TOTAL - 1) > EPSILON && !is_solid(x, y);
+}
+
+// Like `is_surface()`, but for all fluid types together.
+static bool is_any_surface(long x, long y) {
+    return has_any_fluid(x, y) && !has_any_fluid(x, y - 1);
+}
+
+static double
+level_fills(const double* base, bool* active, Uint32 len, double total) {
+    for (Uint32 i = 0; i < len; i++)
+        active[i] = true;
+    double level = 0.0f;
+    bool dropped = true;
+    while (dropped) {
+        double sum = total;
+        Uint32 count = 0;
+        for (Uint32 i = 0; i < len; i++) {
+            if (!active[i]) continue;
+            sum += base[i];
+            count++;
+        }
+        level = sum / count;
+
+        dropped = false;
+        for (Uint32 i = 0; i < len; i++) {
+            if (active[i] && base[i] > level) {
+                active[i] = false;
+                dropped = true;
+            }
+        }
+    }
+    return level;
+}
+
+static bool is_under_min_spread(double vol, fluid_type type) {
+    return vol > EPSILON && vol < data[type].min_spread;
+}
+
+static void split_diagonally(
+    double vol, double left, double right, double* l_share, double* r_share) {
+    bool l = left > EPSILON;
+    bool r = right > EPSILON;
+    double share = l && r ? vol / 2.0f : vol;
+    *l_share = l ? share : 0.0f;
+    *r_share = r ? share : 0.0f;
+    if (l && left < share) {
+        *l_share = left;
+        *r_share = r ? SDL_min(vol - left, right) : 0.0f;
+    } else if (r && right < share) {
+        *r_share = right;
+        *l_share = l ? SDL_min(vol - right, left) : 0.0f;
+    }
+}
+
+// Gets the surface stretch on row `y` starting at `x` and going in `dir`, so
+// fluid poured into `(x,y)` is levelled over all of it. A cell that isn't a
+// surface is a stretch of itself alone, and a blocked one is an empty stretch.
+static void get_stretch(
+    long x, long y, long dir, bool blocked, Uint8 ordered_type, stretch* s) {
+    fluid_type type = ordered[ordered_type];
+    s->x = x;
+    s->y = y;
+    s->dir = dir;
+    s->len = 0;
+    if (blocked || is_wall(x, y)) return;
+    s->fills[s->len++] = get_fill(grid[x][y], ordered_type);
+    if (!is_surface(x, y, type)) return;
+    for (x += dir; is_surface(x, y, type); x += dir)
+        s->fills[s->len++] = get_fill(grid[x][y], ordered_type);
+}
+
+// Summed before checking against `EPSILON`, so many nearly full cells still
+// add up to some space.
+static double get_stretch_space(const stretch* s) {
+    double space = 0.0f;
+    for (Uint32 i = 0; i < s->len; i++)
+        space += SDL_max(1.0f - s->fills[i], 0.0f);
+    return space < EPSILON ? 0.0f : space;
+}
+
+// Levels `vol` over the stretch into its `deltas`. Returns whether that would
+// leave any of its cells under `min_spread`.
+static bool level_stretch(stretch* s, double vol, fluid_type type) {
+    bool active[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X] = {0};
+    double level = level_fills(s->fills, active, s->len, vol);
+    bool under = false;
+    for (Uint32 i = 0; i < s->len; i++) {
+        s->deltas[i] = active[i] ? level - s->fills[i] : 0.0f;
+        double own = grid[s->x + s->dir * (long)i][s->y].volume[type];
+        if (s->deltas[i] > 0.0f &&
+            is_under_min_spread(own + s->deltas[i], type))
+            under = true;
+    }
+    return under;
+}
+
+static void pour_into_stretch(const stretch* s, fluid_type type) {
+    for (Uint32 i = 0; i < s->len; i++)
+        buffer[s->x + s->dir * (long)i][s->y].volume[type] += s->deltas[i];
+}
+
+
+static void step_move_down(Uint8 ordered_type) {
+    fluid_type type = ordered[ordered_type];
+    initiate_buffer();
+    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
+        for (Uint32 y = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y-- > 0;) {
+            double vol = buffer[x][y].volume[type];
+            if (vol < EPSILON || is_wall(x, y) || is_wall(x, y + 1)) continue;
+
+            double space = 1.0f - get_fill(buffer[x][y + 1], ordered_type);
+            if (space < EPSILON) continue;
+
+            double qty = SDL_min(vol, space);
+            buffer[x][y].volume[type] -= qty;
+            buffer[x][y + 1].volume[type] += qty;
+        }
+    }
+    transfer_buffer();
+}
+
+static void step_move_diagonally(Uint8 ordered_type) {
+    fluid_type type = ordered[ordered_type];
+    initiate_buffer();
+    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
+        for (Uint32 y = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y-- > 0;) {
+            double vol = grid[x][y].volume[type];
+            if (vol < EPSILON || is_wall(x, y)) continue;
+
+            neighbor nbs[3][3] = {0};
+            get_neighbors(x, y, ordered_type, &nbs);
+            if (get_space(nbs BOT) > EPSILON) continue;
+
+            stretch left;
+            stretch right;
+            get_stretch(x - 1, y + 1, -1, nbs BLEFT.solid, ordered_type, &left);
+            get_stretch(
+                x + 1, y + 1, 1, nbs BRIGHT.solid, ordered_type, &right);
+            double l_share = 0.0f;
+            double r_share = 0.0f;
+            split_diagonally(vol,
+                             get_stretch_space(&left),
+                             get_stretch_space(&right),
+                             &l_share,
+                             &r_share);
+            if (is_under_min_spread(vol - l_share - r_share, type)) continue;
+            if (l_share > 0.0f && level_stretch(&left, l_share, type)) continue;
+            if (r_share > 0.0f && level_stretch(&right, r_share, type))
+                continue;
+
+            buffer[x][y].volume[type] -= l_share + r_share;
+            if (l_share > 0.0f) pour_into_stretch(&left, type);
+            if (r_share > 0.0f) pour_into_stretch(&right, type);
+        }
+    }
+    transfer_buffer();
+}
+
+static void step_move_sideways(Uint8 ordered_type) {
+    fluid_type type = ordered[ordered_type];
+    initiate_buffer();
+    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
+        for (Uint32 y = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y-- > 0;) {
+            double vol = grid[x][y].volume[type];
+            if (vol < EPSILON || is_wall(x, y)) continue;
+
+            neighbor nbs[3][3] = {0};
+            get_neighbors(x, y, ordered_type, &nbs);
+            if (get_space(nbs BOT) > EPSILON ||
+                get_space(nbs BLEFT) > EPSILON ||
+                get_space(nbs BRIGHT) > EPSILON)
+                continue;
+
+            // The cell only gives away its own fluid, so it starts levelling
+            // from its fill without it.
+            Uint32 xs[3] = {x};
+            double base[3] = {nbs SELF.volume - vol};
+            Uint32 len = 1;
+            if (!nbs LEFT.solid) {
+                xs[len] = x - 1;
+                base[len++] = nbs LEFT.volume;
+            }
+            if (!nbs RIGHT.solid) {
+                xs[len] = x + 1;
+                base[len++] = nbs RIGHT.volume;
+            }
+            if (len == 1) continue;
+
+            bool active[3] = {0};
+            double level = level_fills(base, active, len, vol);
+            double given = 0.0f;
+            bool too_little = false;
+            for (Uint32 i = 1; i < len; i++) {
+                if (!active[i]) continue;
+                given += level - base[i];
+                if (is_under_min_spread(
+                        grid[xs[i]][y].volume[type] + level - base[i], type))
+                    too_little = true;
+            }
+            if (too_little || is_under_min_spread(vol - given, type)) continue;
+
+            for (Uint32 i = 1; i < len; i++) {
+                if (!active[i]) continue;
+                buffer[x][y].volume[type] -= level - base[i];
+                buffer[xs[i]][y].volume[type] += level - base[i];
+            }
+        }
+    }
+    transfer_buffer();
+}
+
+static void step_stabilize_surfaces(Uint8 ordered_type) {
+    fluid_type type = ordered[ordered_type];
+    initiate_buffer();
+    for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
+        Uint32 x = 0;
+        while (x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X) {
+            if (grid[x][y].volume[type] <= EPSILON || !is_surface(x, y, type)) {
+                x++;
+                continue;
+            }
+
+            Uint32 start = x;
+            double total = 0.0f;
+            double base[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X] = {0};
+            for (; is_surface(x, y, type); x++) {
+                double vol = grid[x][y].volume[type];
+                total += vol;
+                base[x - start] = get_fill(grid[x][y], ordered_type) - vol;
+            }
+
+            Uint32 len = x - start;
+            if (len < 2) continue;
+
+            double leak = 2.0f * data[type].min_spread;
+            neighbor first[3][3] = {0};
+            neighbor last[3][3] = {0};
+            get_neighbors(start, y, ordered_type, &first);
+            get_neighbors(x - 1, y, ordered_type, &last);
+            stretch left;
+            stretch right;
+            left.len = 0;
+            right.len = 0;
+            if (get_space(first BOT) < EPSILON &&
+                grid[start][y].volume[type] < leak)
+                get_stretch(start - 1,
+                            y + 1,
+                            -1,
+                            first BLEFT.solid,
+                            ordered_type,
+                            &left);
+            if (get_space(last BOT) < EPSILON &&
+                grid[x - 1][y].volume[type] < leak)
+                get_stretch(
+                    x, y + 1, 1, last BRIGHT.solid, ordered_type, &right);
+
+            double l_share = 0.0f;
+            double r_share = 0.0f;
+            split_diagonally(total,
+                             get_stretch_space(&left),
+                             get_stretch_space(&right),
+                             &l_share,
+                             &r_share);
+            if (l_share > 0.0f) {
+                level_stretch(&left, l_share, type);
+                pour_into_stretch(&left, type);
+            }
+            if (r_share > 0.0f) {
+                level_stretch(&right, r_share, type);
+                pour_into_stretch(&right, type);
+            }
+            total -= l_share + r_share;
+
+            bool active[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X] = {0};
+            double level = level_fills(base, active, len, total);
+            for (Uint32 i = 0; i < len; i++)
+                buffer[start + i][y].volume[type] +=
+                    (active[i] ? level - base[i] : 0.0f) -
+                    grid[start + i][y].volume[type];
+        }
+    }
+    transfer_buffer();
+}
+
+static void step_depressurize(Uint8 ordered_type) {
+    fluid_type type = ordered[ordered_type];
+    initiate_buffer();
+    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
+        for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
+            double vol = grid[x][y].volume[type];
+            if (vol < EPSILON || is_wall(x, y)) continue;
+
+            neighbor nbs[3][3] = {0};
+            get_neighbors(x, y, ordered_type, &nbs);
+            if (nbs SELF.volume < 1.0f + EPSILON) continue;
+            double excess = SDL_min(nbs SELF.volume - 1.0f, vol);
+
+            // Fills the sides first, so excess on a surface goes back into it
+            // instead of up.
+            double l_share = 0.0f;
+            double r_share = 0.0f;
+            split_diagonally(excess,
+                             get_space(nbs LEFT),
+                             get_space(nbs RIGHT),
+                             &l_share,
+                             &r_share);
+            buffer[x][y].volume[type] -= l_share + r_share;
+            if (l_share > 0.0f) buffer[x - 1][y].volume[type] += l_share;
+            if (r_share > 0.0f) buffer[x + 1][y].volume[type] += r_share;
+            excess -= l_share + r_share;
+            if (excess < EPSILON) continue;
+
+            // Fills empty neighbors or bubbles excess up if no empty neighbors
+            // exist
+            Uint32 free_x[8] = {0};
+            Uint32 free_y[8] = {0};
+            Uint8 len = 0;
+            for (Uint8 i = 0; i < 3; i++) {
+                for (Uint8 j = 0; j < 3; j++) {
+                    if (i == 1 && j == 1) continue;
+                    if (nbs[i][j].solid || nbs[i][j].volume > EPSILON) continue;
+                    free_x[len] = x + i - 1;
+                    free_y[len] = y + j - 1;
+                    len++;
+                }
+            }
+            if (len > 0) {
+                buffer[x][y].volume[type] -= excess;
+                for (Uint8 n = 0; n < len; n++)
+                    buffer[free_x[n]][free_y[n]].volume[type] += excess / len;
+            } else if (!nbs TOP.solid) {
+                buffer[x][y].volume[type] -= excess;
+                buffer[x][y - 1].volume[type] += excess;
+            }
+        }
+    }
+    transfer_buffer();
+}
+
+
+
+static void add_queued_particle(void* item) {
+    add_fluid_particle(*(fluid_particle*)item);
+}
+
+static void simulate_fluid_particles(void) {
+    double dt = GAME_MANAGER_get_current_dt();
+    size_t i = 0;
+    while (i < particles_len) {
+        fluid_particle* p = &particles[i];
+        p->vel_y += FLUID_PARTICLES_GRAVITY * dt;
+        double dx = p->vel_x * dt;
+        double dy = p->vel_y * dt;
+        Uint32 steps = SDL_ceil(SDL_max(SDL_fabs(dx) / FLUIDS_CELL_W,
+                                        SDL_fabs(dy) / FLUIDS_CELL_H));
+        if (steps == 0) steps = 1;
+
+        bool landed = false;
+        for (Uint32 s = 0; s < steps && !landed; s++) {
+            long x = SDL_floor(p->x / FLUIDS_CELL_W);
+            long y = SDL_floor(p->y / FLUIDS_CELL_H);
+            double next_x = p->x + dx / steps;
+            double next_y = p->y + dy / steps;
+            long to_x = SDL_floor(next_x / FLUIDS_CELL_W);
+            long to_y = SDL_floor(next_y / FLUIDS_CELL_H);
+
+            if (to_x != x || to_y != y) {
+                if (is_wall(to_x, to_y)) {
+                    if (!is_wall(x, y))
+                        grid[x][y].volume[p->type] +=
+                            data[p->type].particle_vol;
+                    landed = true;
+                } else if (has_any_fluid(to_x, to_y)) {
+                    grid[to_x][to_y].volume[p->type] +=
+                        data[p->type].particle_vol;
+                    landed = true;
+                }
+            }
+            if (!landed) {
+                p->x = next_x;
+                p->y = next_y;
+            }
+        }
+
+        if (landed)
+            remove_fluid_particle(i);
+        else
+            i++;
+    }
+}
+
+
+
+static bool find_surface_near(long x, long y, long* surface_y) {
+    for (long d = 0; d <= FLUID_SPLASH_SURFACE_RANGE; d++) {
+        if (is_any_surface(x, y - d)) {
+            *surface_y = y - d;
+            return true;
+        }
+        if (d > 0 && is_any_surface(x, y + d)) {
+            *surface_y = y + d;
+            return true;
+        }
+    }
+    return false;
+}
+
+static double take_from_cell(long x, long y, double wanted, double* taken) {
+    if (is_wall(x, y)) return wanted;
+    for (Uint8 t = FLUIDS_TOTAL; t-- > 0;) {
+        fluid_type type = ordered[t];
+        double qty = SDL_min(grid[x][y].volume[type], wanted);
+        grid[x][y].volume[type] -= qty;
+        taken[type] += qty;
+        wanted -= qty;
+    }
+    return wanted;
+}
+
+// Must be called with `particles_mutex` locked, since it adds particles
+// straight into the simulation.
+static void apply_splash(void* item) {
+    Uint32 x = ((splash*)item)->x;
+    Uint32 y = ((splash*)item)->y;
+    if (is_wall(x, y)) return;
+    long sides_x[2] = {(long)x - 1, (long)x + 1};
+    long sides_y[2] = {0};
+    bool open[2] = {0};
+    double origin_x[2] = {0};
+    double origin_y[2] = {0};
+    for (Uint8 i = 0; i < 2; i++) {
+        // Particles spawn on the cell above the surface, so it can't be a wall
+        // or they would be destroyed.
+        open[i] = find_surface_near(sides_x[i], y, &sides_y[i]) &&
+                  !is_wall(sides_x[i], sides_y[i] - 1);
+        origin_x[i] = (sides_x[i] + 0.5f) * FLUIDS_CELL_W;
+        origin_y[i] = sides_y[i] * FLUIDS_CELL_H - 1.0f;
+    }
+    Uint8 open_count = open[0] + open[1];
+    if (open_count == 0) return;
+
+    double fan = FLUID_SPLASH_FAN_ANGLE * SDL_PI_D / 180.0f;
+    double jitter = FLUID_SPLASH_ANGLE_JITTER * SDL_PI_D / 180.0f;
+
+    double taken[FLUIDS_TOTAL] = {0};
+    for (Uint8 i = 0; i < 2; i++) {
+        if (!open[i]) continue;
+        double wanted = take_from_cell(sides_x[i], sides_y[i], 1.0f, taken);
+        if (wanted > EPSILON)
+            take_from_cell(sides_x[i], sides_y[i] + 1, wanted, taken);
+    }
+
+    for (Uint8 type = 0; type < FLUIDS_TOTAL; type++) {
+        double total = taken[type];
+        double vol = data[type].particle_vol;
+        Uint32 count = vol > EPSILON ? (Uint32)SDL_floor(total / vol) : 0;
+        double remainder = SDL_max(total - count * vol, 0.0f);
+        for (Uint8 i = 0; i < 2; i++) {
+            if (open[i])
+                grid[sides_x[i]][sides_y[i]].volume[type] +=
+                    remainder / open_count;
+        }
+
+        // Spreads the particles evenly over the fan, pointing up, each with a
+        // random nudge in its direction and a random speed. The left half of
+        // the fan spawns above the left cell and the right half above the right
+        // one.
+        for (Uint32 n = 0; n < count; n++) {
+            double angle = count > 1 ? fan * n / (count - 1) - fan / 2 : 0.0f;
+            angle += (SDL_randf() * 2.0f - 1.0f) * jitter;
+            Uint8 side = open_count == 2 ? n * 2 >= count : open[1];
+            double speed = SDL_randf() * FLUID_SPLASH_SPEED;
+            add_fluid_particle((fluid_particle){
+                .x = origin_x[side],
+                .y = origin_y[side],
+                .vel_x = speed * SDL_sin(angle),
+                .vel_y = -speed * SDL_cos(angle),
+                .type = type,
+            });
+        }
+    }
+}
+
+static Uint32 count_due_steps(double* timer, double time, double dt) {
+    if (time < EPSILON) return 1;
+    *timer += dt;
+    Uint32 count = (Uint32)(*timer / time);
+    *timer -= count * time;
+    return count;
+}
+
+static void apply_mod(void* item) {
+    mod* m = (mod*)item;
+    for (Uint32 x = m->x; x < m->x + m->w; x++) {
+        for (Uint32 y = m->y; y < m->y + m->h; y++) {
+            if (m->clear)
+                grid[x][y].volume[m->type] = 0.0f;
+            else
+                grid[x][y].volume[m->type] += m->volume;
+        }
     }
 }
 
 void FLUIDS_step(void) {
     double dt = GAME_MANAGER_get_current_dt();
+    void (*const moves[3])(Uint8) = {
+        step_move_down, step_move_diagonally, step_move_sideways};
 
-    fluids new[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X]
-              [FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y] = {0};
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
-            new[x][y] = grid[x][y];
+    // Denser fluids go first so lighter ones can depressurize from them in the
+    // same tick.
+    for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
+        fluid_type type = ordered[t];
+        for (Uint8 m = 0; m < 3; m++) {
+            Uint32 n = count_due_steps(
+                &move_timers[m][type], get_move_time(type, m), dt);
+            for (; n > 0; n--)
+                moves[m](t);
         }
+        step_depressurize(t);
+        step_stabilize_surfaces(t);
     }
 
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
-            if (is_solid(x, y)) continue;
+    drain_queue(&mods, mods_mutex, apply_mod);
 
-            // We iterate through liquid types in decrescent order of density,
-            // counting the volume of a cell as the volume of all liquid types
-            // iterated through so far. This means a given fluid will see all
-            // fluids denser than itself when trying to fall/flow into a new
-            // cell, ignoring all lighter fluids which should be handled by
-            // de-pressurization when denser fluids fall into its cell.
-            for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
-                fluid_type type = ordered[t];
-                double vol = grid[x][y].volume[type];
-                if (vol < EPSILON) continue;
-
-                neighbor nbs[3][4] = {0};
-                get_neighbors(x, y, type, &nbs);
-                if (nbs SELF.solid) continue;
-
-                double total = nbs SELF.volume;
-
-                // Check and de-pressurizes
-                if (total > 1.0f + EPSILON) {
-                    // Checks free neighbors without fluids/solids
-                    int free_x[8] = {0};
-                    int free_y[8] = {0};
-                    size_t len = 0;
-                    if (!nbs TLEFT.solid && nbs TLEFT.volume < EPSILON) {
-                        free_x[len] = -1;
-                        free_y[len] = -1;
-                        len++;
-                    }
-                    if (!nbs TOP.solid && nbs TOP.volume < EPSILON) {
-                        free_x[len] = 0;
-                        free_y[len] = -1;
-                        len++;
-                    }
-                    if (!nbs TRIGHT.solid && nbs TRIGHT.volume < EPSILON) {
-                        free_x[len] = 1;
-                        free_y[len] = -1;
-                        len++;
-                    }
-                    if (!nbs LEFT.solid && nbs LEFT.volume < EPSILON) {
-                        free_x[len] = -1;
-                        free_y[len] = 0;
-                        len++;
-                    }
-                    if (!nbs RIGHT.solid && nbs RIGHT.volume < EPSILON) {
-                        free_x[len] = 1;
-                        free_y[len] = 0;
-                        len++;
-                    }
-                    if (!nbs BLEFT.solid && nbs BLEFT.volume < EPSILON) {
-                        free_x[len] = -1;
-                        free_y[len] = 1;
-                        len++;
-                    }
-                    if (!nbs BOT.solid && nbs BOT.volume < EPSILON) {
-                        free_x[len] = 0;
-                        free_y[len] = 1;
-                        len++;
-                    }
-                    if (!nbs BRIGHT.solid && nbs BRIGHT.volume < EPSILON) {
-                        free_x[len] = 1;
-                        free_y[len] = 1;
-                        len++;
-                    }
-                    // Spits out excess fluid in equal quantity in all free
-                    // neighbors
-                    if (len > 0) {
-                        double excess = SDL_min(total - 1.0f, vol);
-                        double qty = excess / len;
-                        for (int i = 0; i < len; i++) {
-                            new[x + free_x[i]][y + free_y[i]].volume[type] +=
-                                qty;
-                        }
-                        new[x][y].volume[type] -= excess;
-                        continue;
-                    }
-                    // If there are no free neighbors, send excess fluid up
-                    // if up is not solid
-                    else if (!nbs TOP.solid) {
-                        double qty = SDL_min(total - 1.0f, vol);
-                        new[x][y - 1].volume[type] += qty;
-                        new[x][y].volume[type] -= qty;
-                        continue;
-                    }
-                }
-
-                // Check and simulate falling
-                if (nbs BOT.volume < EPSILON && !nbs BOT.solid &&
-                    (total > 1.0f - EPSILON || nbs TOP.volume < EPSILON)) {
-                    double qty = SDL_min(vol, dt * data[type].gravity);
-                    new[x][y].volume[type] -= qty;
-                    new[x][y + 1].volume[type] += qty;
-                    continue;
-                } else if (nbs BOT.volume > EPSILON && !nbs BOT.solid &&
-                           nbs BOT.volume < 1.0f - EPSILON) {
-                    double qty = SDL_min(vol, dt * data[type].gravity);
-                    qty = SDL_min(qty, 1.0f - nbs BOT.volume);
-                    new[x][y].volume[type] -= qty;
-                    new[x][y + 1].volume[type] += qty;
-                    continue;
-                }
-
-                // If the current cell is not full and being fed from above and
-                // the its bottom is free, it can't feed it and it should start
-                // flowing left and right. However, we don't want this to
-                // happen, we want it to wait for the cell above to fill it so
-                // it can start dropping down, so we have to stop the checks
-                // here. We want the same thing to happen when the cell under is
-                // full but the current one is not and currently being fed from
-                // above, it should wait for the bottom to feed other cells and
-                // then current should feed it.
-                if ((!nbs BOT.solid && nbs BOT.volume <= EPSILON &&
-                     total < 1.0f - EPSILON && nbs TOP.volume >= EPSILON) ||
-                    (!nbs BOT.solid && nbs BOT.volume >= 1.0f - EPSILON &&
-                     total < 1.0f - EPSILON && nbs TOP.volume >= EPSILON)) {
-                    continue;
-                }
-
-                // Check and simulate flowing. First, we check which
-                // diagonals are free, because it means we flow all the way
-                // and we won't flow sideways. If one of the diagonals isn't
-                // available, we check its top. If it's available, we flow
-                // to it only until volumes equalize.
-                bool left = false;
-                bool bleft = false;
-                bool right = false;
-                bool bright = false;
-                Uint8 flows = 0;
-                if ((!nbs BRIGHT.solid && nbs BRIGHT.volume < 1.0f - EPSILON) &&
-                    (nbs BBRIGHT.solid ||
-                     nbs BBRIGHT.volume > 1.0f - EPSILON) &&
-                    (!nbs RIGHT.solid && nbs RIGHT.volume < EPSILON)) {
-                    bright = true;
-                    flows++;
-                } else if (!nbs RIGHT.solid && nbs RIGHT.volume < total) {
-                    right = true;
-                    flows++;
-                }
-                if ((!nbs BLEFT.solid && nbs BLEFT.volume < 1.0f - EPSILON) &&
-                    (nbs BBLEFT.solid || nbs BBLEFT.volume > 1.0f - EPSILON) &&
-                    (!nbs LEFT.solid && nbs LEFT.volume < EPSILON)) {
-                    bleft = true;
-                    flows++;
-                } else if (!nbs LEFT.solid && nbs LEFT.volume < total) {
-                    left = true;
-                    flows++;
-                }
-                if (flows == 0) continue;
-                if (flows == 2) {
-                    double qty = SDL_min(dt * data[type].flow, vol) / 2.0f;
-                    if (bleft) {
-                        double lqty = SDL_min(qty, 1.0f - nbs BLEFT.volume);
-                        new[x][y].volume[type] -= lqty;
-                        flow_step(lqty,
-                                  type,
-                                  data[type].flow_range,
-                                  -1,
-                                  x - 1,
-                                  y + 1,
-                                  &new);
-                    } else {
-                        double avg = (total + nbs LEFT.volume) / 2.0f;
-                        double lqty = SDL_min(qty, total - avg);
-                        new[x][y].volume[type] -= lqty;
-                        flow_step(lqty,
-                                  type,
-                                  data[type].flow_range,
-                                  -1,
-                                  x - 1,
-                                  y,
-                                  &new);
-                    }
-                    if (bright) {
-                        double rqty = SDL_min(qty, 1.0f - nbs BRIGHT.volume);
-                        new[x][y].volume[type] -= rqty;
-                        flow_step(rqty,
-                                  type,
-                                  data[type].flow_range,
-                                  1,
-                                  x + 1,
-                                  y + 1,
-                                  &new);
-                    } else {
-                        double avg = (total + nbs RIGHT.volume) / 2.0f;
-                        double rqty = SDL_min(qty, total - avg);
-                        new[x][y].volume[type] -= rqty;
-                        flow_step(rqty,
-                                  type,
-                                  data[type].flow_range,
-                                  1,
-                                  x + 1,
-                                  y,
-                                  &new);
-                    }
-                }
-                if (flows == 1) {
-                    double qty = SDL_min(dt * data[type].flow, vol);
-                    if (bleft) {
-                        double lqty = SDL_min(qty, 1.0f - nbs BLEFT.volume);
-                        new[x][y].volume[type] -= lqty;
-                        flow_step(lqty,
-                                  type,
-                                  data[type].flow_range,
-                                  -1,
-                                  x - 1,
-                                  y + 1,
-                                  &new);
-                    } else if (left) {
-                        double avg = (total + nbs LEFT.volume) / 2.0f;
-                        double lqty = SDL_min(qty, total - avg);
-                        new[x][y].volume[type] -= lqty;
-                        flow_step(lqty,
-                                  type,
-                                  data[type].flow_range,
-                                  -1,
-                                  x - 1,
-                                  y,
-                                  &new);
-                    } else if (bright) {
-                        double rqty = SDL_min(qty, 1.0f - nbs BRIGHT.volume);
-                        new[x][y].volume[type] -= rqty;
-                        flow_step(rqty,
-                                  type,
-                                  data[type].flow_range,
-                                  1,
-                                  x + 1,
-                                  y + 1,
-                                  &new);
-                    } else if (right) {
-                        double avg = (total + nbs RIGHT.volume) / 2.0f;
-                        double rqty = SDL_min(qty, total - avg);
-                        new[x][y].volume[type] -= rqty;
-                        flow_step(rqty,
-                                  type,
-                                  data[type].flow_range,
-                                  1,
-                                  x + 1,
-                                  y,
-                                  &new);
-                    }
-                }
-            }
-        }
-    }
-
-    for (long x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (long y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
-            grid[x][y] = new[x][y];
-        }
-    }
-
-    while (mods.len > 0) {
-        mod* m = (mod*)mods.at[0];
-        for (Uint32 x = m->x; x < m->x + m->w; x++) {
-            for (Uint32 y = m->y; y < m->y + m->h; y++) {
-                if (m->clear)
-                    grid[x][y].volume[m->type] = 0.0f;
-                else
-                    grid[x][y].volume[m->type] += m->volume;
-            }
-        }
-        SDL_free(m);
-        remove_at_from_dynarr(0, &mods);
-    }
+    // Locked so `FLUIDS_draw()` doesn't read the array while it is reallocated.
+    SDL_LockMutex(particles_mutex);
+    drain_queue(&splashes, splashes_mutex, apply_splash);
+    drain_queue(&queued_particles, queued_particles_mutex, add_queued_particle);
+    simulate_fluid_particles();
+    SDL_UnlockMutex(particles_mutex);
 }
 
 
 
 void FLUIDS_set_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type, double volume) {
-    mod* m = SDL_malloc(sizeof(mod));
-    *m = (mod){
-        .x = x,
-        .y = y,
-        .w = w,
-        .h = h,
-        .type = type,
-        .volume = volume,
-        .clear = false,
-    };
-    push_to_dynarr((void*)m, &mods);
+    mod m = {.x = x, .y = y, .w = w, .h = h, .type = type, .volume = volume};
+    queue_item(&mods, mods_mutex, &m, sizeof(mod));
 }
 
 void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type) {
-    mod* m = SDL_malloc(sizeof(mod));
-    *m = (mod){
-        .x = x,
-        .y = y,
-        .w = w,
-        .h = h,
-        .clear = true,
-        .type = type,
-    };
-    push_to_dynarr((void*)m, &mods);
+    mod m = {.x = x, .y = y, .w = w, .h = h, .type = type, .clear = true};
+    queue_item(&mods, mods_mutex, &m, sizeof(mod));
 }
 
 void FLUIDS_get_at(
@@ -608,62 +958,48 @@ void FLUIDS_get_at(
 
 
 
+static double quarter_px(double vol) {
+    return 1.0f + (vol > 0.25f) + (vol > 0.5f) + (vol > 0.75f);
+}
+
 void FLUIDS_draw(SDL_Renderer* renderer) {
     for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
         for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
-            double total = 0.0f;
+            if (is_solid(x, y)) continue;
+            bool empty = !has_any_fluid(x, y);
+            double below = 0.0f;
             for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
                 fluid_type type = ordered[t];
+                double vol = grid[x][y].volume[type];
+                if (vol < EPSILON && !empty) continue;
+                bool top = has_fluid(x, (long)y - 1, type);
+                bool bot = has_fluid(x, y + 1, type);
+
+                // Empty cells between two of the same fluid are painted whole,
+                // so falls look continuous. Denser fluids take precedence.
+                bool gap = vol < EPSILON;
+                if (gap && !(top && bot)) continue;
+                empty = false;
+
+                // Fluid with more of it on top or falling into nothing fills
+                // the cell, otherwise it sits on top of what's below it.
+                SDL_FRect rect = {x * FLUIDS_CELL_W,
+                                  y * FLUIDS_CELL_H,
+                                  FLUIDS_CELL_W,
+                                  FLUIDS_CELL_H};
+                if (!gap &&
+                    (below > EPSILON || (!top && (bot || is_wall(x, y + 1))))) {
+                    rect.h = quarter_px(vol);
+                    rect.y += FLUIDS_CELL_H - rect.h -
+                              (below > EPSILON ? quarter_px(below) : 0.0f);
+                }
+                below += vol;
 #ifndef TEST
                 SDL_SetRenderDrawColor(renderer,
                                        data[type].col_r,
                                        data[type].col_g,
                                        data[type].col_b,
                                        data[type].col_a);
-#endif
-                double vol = grid[x][y].volume[type];
-                if (vol < EPSILON) continue;
-                if (is_solid(x, y)) continue;
-
-                total += vol;
-                fluid_cell nbs[3][3] = {0};
-                get_neighbor_fluids(x, y, &nbs);
-                double tvol = nbs[1][0].volume[type];
-                double bvol = nbs[1][2].solid ? 1.0f : nbs[1][2].volume[type];
-                double below = total - vol;
-
-                SDL_FRect rect = (SDL_FRect){0};
-                if (below < EPSILON) {
-                    if (tvol > EPSILON || (bvol < EPSILON && tvol < EPSILON)) {
-                        rect.x = x * FLUIDS_CELL_W;
-                        rect.y = y * FLUIDS_CELL_H;
-                        rect.w = FLUIDS_CELL_W;
-                        rect.h = FLUIDS_CELL_H;
-                    } else {
-                        double h = 1.0f;
-                        if (vol > 0.25f) h += 1.0f;
-                        if (vol > 0.5f) h += 1.0f;
-                        if (vol > 0.75f) h += 1.0f;
-                        rect.x = x * FLUIDS_CELL_W;
-                        rect.y = y * FLUIDS_CELL_H + 4.0f - h;
-                        rect.w = FLUIDS_CELL_W;
-                        rect.h = h;
-                    }
-                } else {
-                    double h = 1.0f;
-                    if (vol > 0.25f) h += 1.0f;
-                    if (vol > 0.5f) h += 1.0f;
-                    if (vol > 0.75f) h += 1.0f;
-                    double off_y = 1.0f;
-                    if (below > 0.25f) off_y += 1.0f;
-                    if (below > 0.5f) off_y += 1.0f;
-                    if (below > 0.75f) off_y += 1.0f;
-                    rect.x = x * FLUIDS_CELL_W;
-                    rect.y = y * FLUIDS_CELL_H + 4.0f - h - off_y;
-                    rect.w = FLUIDS_CELL_W;
-                    rect.h = h;
-                }
-#ifndef TEST
                 SDL_RenderFillRect(renderer, &rect);
 #else
                 stubbed_SDL_RenderFillRect(&rect);
@@ -671,22 +1007,46 @@ void FLUIDS_draw(SDL_Renderer* renderer) {
             }
         }
     }
+
+    SDL_LockMutex(particles_mutex);
+    for (size_t i = 0; i < particles_len; i++) {
+        fluid_particle p = particles[i];
+        float x = SDL_floor(p.x);
+        float y = SDL_floor(p.y);
+        int n =
+            data[p.type].particle_vol < FLUID_PARTICLES_SIZE_THRESHOLD ? 1 : 4;
+        SDL_FPoint points[4] = {
+            {x, y}, {x + 1.0f, y}, {x, y + 1.0f}, {x + 1.0f, y + 1.0f}};
+#ifndef TEST
+        SDL_SetRenderDrawColor(renderer,
+                               data[p.type].col_r,
+                               data[p.type].col_g,
+                               data[p.type].col_b,
+                               data[p.type].col_a);
+        SDL_RenderPoints(renderer, points, n);
+#else
+        for (int j = 0; j < n; j++)
+            stubbed_SDL_RenderPoint(points[j].x, points[j].y);
+#endif
+    }
+    SDL_UnlockMutex(particles_mutex);
 }
 
 
 
+int FLUIDS_add_particle(
+    fluid_type type, double x, double y, double vel_x, double vel_y) {
+    long cell_x = SDL_floor(x / FLUIDS_CELL_W);
+    long cell_y = SDL_floor(y / FLUIDS_CELL_H);
+    if (is_outside(cell_x, cell_y)) return 2;
+    if (is_solid(cell_x, cell_y)) return 1;
+    fluid_particle p = {
+        .x = x, .y = y, .vel_x = vel_x, .vel_y = vel_y, .type = type};
+    queue_item(&queued_particles, queued_particles_mutex, &p, sizeof(p));
+    return 0;
+}
+
 void FLUIDS_splash_at(Uint32 x, Uint32 y) {
-    if (is_solid(x, y)) return;
-    for (int type = 0; type < FLUIDS_TOTAL; type++) {
-        double total = 0.0f;
-        for (int i = -2; i < 2; i++) {
-            if (!is_solid(x + i, y + 2) &&
-                grid[x + i][y + 2].volume[type] > 0.1f) {
-                FLUIDS_clear_at(x + i, y + 2, 1, 1, type);
-                FLUIDS_set_at(x + i, y + 2, 1, 1, type, 0.1f);
-                total += grid[x + i][y + 2].volume[type] - 0.1f;
-            }
-        }
-        FLUIDS_set_at(x, y, 1, 1, type, total);
-    }
+    splash sp = {.x = x, .y = y};
+    queue_item(&splashes, splashes_mutex, &sp, sizeof(sp));
 }
