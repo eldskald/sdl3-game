@@ -962,10 +962,65 @@ static double quarter_px(double vol) {
     return 1.0f + (vol > 0.25f) + (vol > 0.5f) + (vol > 0.75f);
 }
 
-void FLUIDS_draw(SDL_Renderer* renderer) {
+// Fluid cells aren't drawn in their colors. Instead, they are drawn into
+// `fluids_texture`, owned by `renderer.c` and the size of `base_screen`, with
+// colors that encode what each pixel is. That texture is then drawn on
+// `base_screen` with the fluids shader, `src/gpu/fluids.frag.hlsl`, which reads
+// those codes and decides the actual colors. This lets the shader look at the
+// pixels around each one to smooth out edges and add effects, which it couldn't
+// do if all it had were colors, especially once they get blended.
+//
+// Each pixel of `fluids_texture` is encoded as follows:
+//
+// - Red is the fluid type, `FLUIDS_SHADER_IDX_STEP * (type + 1)`. Air is `0`
+//   and walls are `255`, so the shader samples air as `0.0`, walls as `1.0` and
+//   fluids as `(type + 1) / 32.0`, which leaves room for 31 types. Its `IDX_*`
+//   defines on `src/gpu/includes/fluids-common.hlsli` must match `fluid_type`
+//   plus one.
+// - Green is the density rank, `FLUIDS_SHADER_IDX_STEP * (FLUIDS_TOTAL - t)`
+//   with `t` being the fluid's position on `ordered`, so denser fluids are
+//   higher. Air is `0`, the lightest. Walls are `0` as well, but the shader
+//   checks for them on red.
+// - Blue is unused, always `0`. Alpha is always `255`.
+//
+// The texture is cleared to transparent black every frame, so anything not
+// drawn on is air. Walls are drawn so the shader can tell them apart from air,
+// otherwise fluids against walls would be contoured and have their corners cut.
+// It uses nearest scaling so the shader samples the exact values drawn.
+//
+// For each pixel, the shader samples it and its 4 neighbors, then:
+//
+// 1. If two adjacent neighbors are the same material and lighter than the
+//    pixel, while the other two are fluids, the pixel is a corner poking into
+//    that material and is painted as it. Corners poking into air are painted as
+//    air, which renders nothing.
+// 2. It calls the function of the pixel's fluid, like `water()` on
+//    `src/gpu/includes/water.hlsli`, with the pixel and its neighbors, which
+//    returns its final color. Each fluid gets its base color from the `_Colors`
+//    uniform, which `set_shader_colors()` fills from the fluid data every
+//    frame, and brightens pixels next to air to draw a contour.
+//
+// Adding a fluid requires a new `IDX_*` define, a new include with its
+// function, a call to it on `main()` and increasing the size of `_Colors`.
+//
+// Particles aren't drawn into `fluids_texture`, they are drawn directly with
+// their fluid's color.
+static void draw_grid(SDL_Renderer* renderer) {
     for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
         for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
-            if (is_solid(x, y)) continue;
+            if (is_solid(x, y)) {
+                SDL_FRect rect = {x * FLUIDS_CELL_W,
+                                  y * FLUIDS_CELL_H,
+                                  FLUIDS_CELL_W,
+                                  FLUIDS_CELL_H};
+#ifndef TEST
+                SDL_SetRenderDrawColor(renderer, FLUIDS_WALL_COLOR);
+                SDL_RenderFillRect(renderer, &rect);
+#else
+                stubbed_SDL_RenderFillRect(&rect);
+#endif
+                continue;
+            }
             bool empty = !has_any_fluid(x, y);
             double below = 0.0f;
             for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
@@ -996,10 +1051,11 @@ void FLUIDS_draw(SDL_Renderer* renderer) {
                 below += vol;
 #ifndef TEST
                 SDL_SetRenderDrawColor(renderer,
-                                       data[type].col_r,
-                                       data[type].col_g,
-                                       data[type].col_b,
-                                       data[type].col_a);
+                                       FLUIDS_SHADER_IDX_STEP * (type + 1),
+                                       FLUIDS_SHADER_IDX_STEP *
+                                           (FLUIDS_TOTAL - t),
+                                       0,
+                                       255);
                 SDL_RenderFillRect(renderer, &rect);
 #else
                 stubbed_SDL_RenderFillRect(&rect);
@@ -1007,7 +1063,9 @@ void FLUIDS_draw(SDL_Renderer* renderer) {
             }
         }
     }
+}
 
+static void draw_particles(SDL_Renderer* renderer) {
     SDL_LockMutex(particles_mutex);
     for (size_t i = 0; i < particles_len; i++) {
         fluid_particle p = particles[i];
@@ -1030,6 +1088,44 @@ void FLUIDS_draw(SDL_Renderer* renderer) {
 #endif
     }
     SDL_UnlockMutex(particles_mutex);
+}
+
+#ifndef TEST
+static void set_shader_colors(SDL_GPURenderState* render_state) {
+    // Each fluid's color indexed by type.
+    float colors[FLUIDS_TOTAL][4] = {0};
+    for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
+        colors[t][0] = data[t].col_r / 255.0f;
+        colors[t][1] = data[t].col_g / 255.0f;
+        colors[t][2] = data[t].col_b / 255.0f;
+        colors[t][3] = data[t].col_a / 255.0f;
+    }
+    SDL_SetGPURenderStateFragmentUniforms(
+        render_state, 0, colors, sizeof(colors));
+}
+#endif
+
+void FLUIDS_draw(SDL_Renderer* renderer,
+                 SDL_Texture* texture,
+                 SDL_GPURenderState* render_state) {
+#ifndef TEST
+    SDL_Texture* target = SDL_GetRenderTarget(renderer);
+    SDL_SetRenderTarget(renderer, texture);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    SDL_RenderClear(renderer);
+#endif
+
+    draw_grid(renderer);
+
+#ifndef TEST
+    SDL_SetRenderTarget(renderer, target);
+    set_shader_colors(render_state);
+    SDL_SetGPURenderState(renderer, render_state);
+    SDL_RenderTexture(renderer, texture, NULL, NULL);
+    SDL_SetGPURenderState(renderer, NULL);
+#endif
+
+    draw_particles(renderer);
 }
 
 
