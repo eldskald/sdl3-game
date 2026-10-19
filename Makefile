@@ -1,6 +1,11 @@
-# Load .env default values and then .env itself
--include .env
-export
+# Detecting platform
+ifeq ($(OS), Windows_NT)
+	DEV_PLATFORM := Windows
+else ifneq ($(shell uname -r | grep -i microsoft),)
+	DEV_PLATFORM := Windows
+else
+	DEV_PLATFORM := Linux
+endif
 
 # File/directory names
 GAME_NAME	?= game

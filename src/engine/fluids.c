@@ -993,7 +993,10 @@ static double quarter_px(double vol) {
 // 1. If two adjacent neighbors are the same material and lighter than the
 //    pixel, while the other two are fluids, the pixel is a corner poking into
 //    that material and is painted as it. Corners poking into air are painted as
-//    air, which renders nothing.
+//    air, which renders nothing. Conversely, if two adjacent neighbors are the
+//    same fluid and denser than the pixel, while the other two are the same
+//    material as the pixel, it's an inner corner of that fluid and is painted
+//    as it. Inner corners of air get contoured on step 2.
 // 2. It calls the function of the pixel's fluid, like `water()` on
 //    `src/gpu/includes/water.hlsli`, with the pixel and its neighbors, which
 //    returns its final color. Each fluid gets its base color from the `_Colors`

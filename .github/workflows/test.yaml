@@ -48,8 +48,5 @@ jobs:
           version: 16
           platform: x64
 
-      - name: Setup .env
-        run: cp .env.sample .env
-
       - name: Test
         run: bin/test
