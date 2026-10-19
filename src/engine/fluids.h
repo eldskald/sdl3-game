@@ -66,5 +66,8 @@ int FLUIDS_add_particle(
 // Ticks the simulation. Call on update in any thread.
 void FLUIDS_step(void);
 
-// Draws the fluid cells. Call on renderer update.
-void FLUIDS_draw(SDL_Renderer* renderer);
+// Draws the fluid cells into `texture`, then draws it on the current render
+// target with `render_state`. Call on renderer update.
+void FLUIDS_draw(SDL_Renderer* renderer,
+                 SDL_Texture* texture,
+                 SDL_GPURenderState* render_state);

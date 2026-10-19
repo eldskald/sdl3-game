@@ -5,6 +5,7 @@
 #include "engine/inputs.h"
 #include "engine/physics.h"
 #include "engine/renderer.h"
+#include "engine/sprites.h"
 #include "player/player-core.h"
 #include <SDL3/SDL.h>
 
@@ -91,14 +92,17 @@ static int SDLCALL fluids_thread(void* _arg) { // NOLINT
 
 
 int GAME_MANAGER_start(void) {
+#ifdef DEV
     SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_VIDEO, SDL_LOG_PRIORITY_INFO);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_GPU, SDL_LOG_PRIORITY_INFO);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_AUDIO, SDL_LOG_PRIORITY_INFO);
     SDL_SetLogPriority(SDL_LOG_CATEGORY_INPUT, SDL_LOG_PRIORITY_INFO);
+#endif
 
-    if (RENDERER_start()) return 1;
     if (INPUTS_start()) return 1;
+    if (RENDERER_start()) return 1;
+    SPRITES_start();
     CHUNKS_start();
     PHYSICS_start();
     FLUIDS_start();
@@ -121,6 +125,7 @@ void GAME_MANAGER_stop(void) {
 
     INPUTS_stop();
     RENDERER_stop();
+    SPRITES_stop();
     CHUNKS_stop();
     PHYSICS_stop();
     FLUIDS_stop();

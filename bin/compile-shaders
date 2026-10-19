@@ -4,6 +4,8 @@ shadercross="SDL_shadercross/bin/shadercross"
 src="src/gpu"
 out="res/shaders"
 
+rm -rf $out
+mkdir $out
 for file in $(find "$src" -type f -name '*.hlsl'); do
     name="$(basename "$file" .hlsl)"
 
@@ -17,6 +19,6 @@ for file in $(find "$src" -type f -name '*.hlsl'); do
             ;;
     esac
 
-    "$shadercross" "$file" -s HLSL -d SPIRV -t "$stage" -o "$out/$name.spv"
-    "$shadercross" "$file" -s HLSL -d DXIL -t "$stage" -o "$out/$name.dxil"
+    "$shadercross" "$file" -I "$src" -s HLSL -d SPIRV -t "$stage" -o "$out/$name.spv"
+    "$shadercross" "$file" -I "$src" -s HLSL -d DXIL -t "$stage" -o "$out/$name.dxil"
 done

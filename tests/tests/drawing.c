@@ -13,6 +13,7 @@ void test_drawing(void) {
     printf(YELLOW "\nTesting render texture calls...\n" RESET);
 
     RENDERER_start();
+    SPRITES_start();
 
     size_t id0 = 0;
     size_t id1 = 0;
@@ -265,14 +266,31 @@ void test_drawing(void) {
     RENDERER_update();
     SDL_RenderFillRect_call* rect_calls = NULL;
     size_t rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
+    // The tile set earlier at (3,2) is drawn as wall cells after the water.
     expect("Added a cell of water, checking calls...",
-           5,
+           21,
            (bool[]){
-               rect_calls_n == 1,
+               rect_calls_n == 5,
                rect_calls[0].rect.x == 8.0f,
                rect_calls[0].rect.y == 8.0f,
                rect_calls[0].rect.w == 4.0f,
                rect_calls[0].rect.h == 4.0f,
+               rect_calls[1].rect.x == 24.0f,
+               rect_calls[1].rect.y == 16.0f,
+               rect_calls[1].rect.w == 4.0f,
+               rect_calls[1].rect.h == 4.0f,
+               rect_calls[2].rect.x == 24.0f,
+               rect_calls[2].rect.y == 20.0f,
+               rect_calls[2].rect.w == 4.0f,
+               rect_calls[2].rect.h == 4.0f,
+               rect_calls[3].rect.x == 28.0f,
+               rect_calls[3].rect.y == 16.0f,
+               rect_calls[3].rect.w == 4.0f,
+               rect_calls[3].rect.h == 4.0f,
+               rect_calls[4].rect.x == 28.0f,
+               rect_calls[4].rect.y == 20.0f,
+               rect_calls[4].rect.w == 4.0f,
+               rect_calls[4].rect.h == 4.0f,
            });
     clear_stubbed_calls();
 
@@ -516,5 +534,6 @@ void test_drawing(void) {
                     calls[0].dst.h == SPRITESHEET_CELL_Y});
     clear_stubbed_calls();
 
+    SPRITES_stop();
     RENDERER_stop();
 }
