@@ -17,6 +17,15 @@ float is_corner(float2 o, float2 a, float2 b, float2 c, float2 e) {
            (1.0 - is_wall(a.r)) * is_fluid(c.r) * is_fluid(e.r);
 }
 
+// `1.0` when `a` and `b` are the same fluid, denser than `o` (air being the
+// lightest), and `c` and `e` are the same material as `o`. Samples are
+// `(type, density rank)`.
+float is_inner_corner(float2 o, float2 a, float2 b, float2 c, float2 e) {
+    return step(abs(a.r - b.r), EPSILON) * step(o.g + EPSILON, a.g) *
+           is_fluid(a.r) * (1.0 - is_wall(o.r)) *
+           step(abs(c.r - o.r), EPSILON) * step(abs(e.r - o.r), EPSILON);
+}
+
 float4 main(input i) : SV_Target0 {
     float4 col = 0;
 
@@ -38,6 +47,14 @@ float4 main(input i) : SV_Target0 {
     x = lerp(x, u, is_corner(o, u, l, r, d));
     x = lerp(x, d, is_corner(o, d, r, l, u));
     x = lerp(x, d, is_corner(o, d, l, r, u));
+
+    // Inner corners of a denser fluid are painted as it, smoothing the other
+    // side. When the corner is air its other two neighbors are air too, so the
+    // fluid's function contours it.
+    x = lerp(x, u, is_inner_corner(o, u, r, l, d));
+    x = lerp(x, u, is_inner_corner(o, u, l, r, d));
+    x = lerp(x, d, is_inner_corner(o, d, r, l, u));
+    x = lerp(x, d, is_inner_corner(o, d, l, r, u));
 
     // Check if it's water
     col += is_type(x.r, IDX_WATER) * water(i.uv, x.r, u.r, l.r, d.r, r.r);

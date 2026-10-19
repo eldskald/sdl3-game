@@ -8,8 +8,6 @@ We are dynamically linking with SDL3 and compiling with MinGW-w64 and gcc. You w
 
 You will also need [SDL_shadercross](https://github.com/libsdl-org/SDL_shadercross) to compile the shaders. Download the artifact from the repo, unpack it, rename it to `SDL_shadercross` and put it on this project's root in order to run the binaries.
 
-You also need to setup your `.env` file. Just do `cp .env.sample .env` and change its values if necessary.
-
-After everything is setup, run a dev build with `bin/dev`. You can also run `bin/test` to run tests.
+After everything is setup, run a dev build with `bin/dev`, which also compiles the shaders. You can also run `bin/test` to run tests.
 
 You can lint with `bin/lint` and format with `bin/format` if you have clang-tidy and clang-format.

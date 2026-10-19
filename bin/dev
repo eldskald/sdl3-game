@@ -1,7 +1,6 @@
 #!/bin/bash
 
-source .env
-
+bin/compile-shaders
 make dev GAME_NAME=.dev
-eval "$DEV_RUN_CMD"
+./.dev.*
 rm .dev.*

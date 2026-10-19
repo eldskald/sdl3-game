@@ -3,7 +3,6 @@
 SDL3.dll
 game.*
 test
-.env
 
 # builds
 windows.zip
