@@ -33,6 +33,7 @@ static fluids_canvas fluids = (fluids_canvas){0};
 static float bloom_threshold = 1.0f;
 static float bloom_soft_threshold = 0.5f;
 static int bloom_iterations = 4;
+static bool window_resized = false;
 
 
 
@@ -648,6 +649,16 @@ static void render_final_screen(void) {
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
 
+    // SDL's GPU renderer only resizes its backbuffer on present, so drawing on
+    // the frame the window grew would use a viewport bigger than the
+    // backbuffer. Clearing doesn't use the viewport, so just clear and present
+    // this frame to resize it.
+    if (window_resized) {
+        window_resized = false;
+        SDL_RenderPresent(renderer);
+        return;
+    }
+
     int window_w, window_h;
     SDL_GetWindowSize(window, &window_w, &window_h);
     float window_ar = (float)window_w / (float)window_h;
@@ -721,6 +732,12 @@ void RENDERER_stop(void) {
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 #endif
+}
+
+
+void RENDERER_process(SDL_Event* event) {
+    if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
+        window_resized = true;
 }
 
 
