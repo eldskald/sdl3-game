@@ -8,19 +8,21 @@
 #define LAVA_NOISE_SPEED 0.5
 #define LAVA_NOISE_ASPECT (16.0 / 9.0)
 
-#define LAVA_BLOBS_FREQUENCY 8.0
-#define LAVA_BLOBS_SPEED 0.3
+#define LAVA_BLOBS_FREQUENCY 3.0
+#define LAVA_BLOBS_SPEED 0.1
 #define LAVA_BLOBS_JITTER 0.7
-#define LAVA_BLOBS_THRESHOLD 0.75
-#define LAVA_BLOBS_STRENGTH 1.5
-#define LAVA_BLOBS_TINT 0.8
+#define LAVA_BLOBS_THRESHOLD 0.7
+#define LAVA_BLOBS_STRENGTH 2.5
+#define LAVA_BLOBS_TINT 0.7
+#define LAVA_BLOBS_COLOR float3(0.6, 0.15, 0.0)
 
 #define LAVA_CONTOUR 0.4
 #define LAVA_BACKGROUND_BLEND 0.1
+#define LAVA_GLOW 2.0
 
 #define LAVA_LIGHT_DIR float2(1.0, 1.0)
-#define LAVA_HIGHLIGHT 0.2
-#define LAVA_SHADOW 0.1
+#define LAVA_HIGHLIGHT 0.0
+#define LAVA_SHADOW 0.4
 
 // Lava's noise at `uv`, from `-1.0` to `1.0`, animated by `_Time`. It's offset
 // by `_CamPos` so it stays in place in the world as the camera moves.
@@ -57,23 +59,23 @@ float4 lava(float2 uv,
             float d,
             float r) {
     float4 col = _Colors[1];
-    col.rgb = lerp(col.rgb, bg.rgb, LAVA_BACKGROUND_BLEND);
 
-    // Light the ripples.
+    // Ripples.
+    col.rgb = lerp(col.rgb, bg.rgb, LAVA_BACKGROUND_BLEND);
     col.rgb =
         light_normal(col.rgb, n, LAVA_LIGHT_DIR, LAVA_HIGHLIGHT, LAVA_SHADOW);
 
-    // Tint it yellow inside the blobs.
+    // Blobs.
     col.rgb = lerp(
         col.rgb,
-        float3(1.0, 1.0, 0.0),
+        LAVA_BLOBS_COLOR,
         saturate(lava_blobs(uv) * LAVA_BLOBS_STRENGTH - LAVA_BLOBS_THRESHOLD) *
             LAVA_BLOBS_TINT);
 
-    // Brighten pixels next to air or other fluids for a contour.
+    // Contour.
     float edge = saturate(lava_edge(o, u) + lava_edge(o, l) + lava_edge(o, d) +
                           lava_edge(o, r));
     col.rgb = lerp(col.rgb, float3(1.0, 0.0, 0.0), edge * LAVA_CONTOUR);
 
-    return col;
+    return col * LAVA_GLOW;
 }

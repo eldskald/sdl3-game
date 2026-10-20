@@ -18,6 +18,16 @@
 
 // Renderer
 #define SPRITESHEET_PATH "res/textures/spritesheet.png"
+#define TONEMAP_FRAG_SPIRV_PATH "res/shaders/tonemap.frag.spv"
+#define TONEMAP_FRAG_DXIL_PATH "res/shaders/tonemap.frag.dxil"
+#define BLOOM_PREFILTER_FRAG_SPIRV_PATH "res/shaders/bloom-prefilter.frag.spv"
+#define BLOOM_PREFILTER_FRAG_DXIL_PATH "res/shaders/bloom-prefilter.frag.dxil"
+#define TINT_FRAG_SPIRV_PATH "res/shaders/tint.frag.spv"
+#define TINT_FRAG_DXIL_PATH "res/shaders/tint.frag.dxil"
+#define BOX_SAMPLE_FRAG_SPIRV_PATH "res/shaders/box-sample.frag.spv"
+#define BOX_SAMPLE_FRAG_DXIL_PATH "res/shaders/box-sample.frag.dxil"
+#define BLOOM_CSV_PATH "data/graphics/bloom.csv"
+#define BLOOM_MAX_ITERATIONS 8
 
 #define SPRITESHEET_X 256
 #define SPRITESHEET_Y 256

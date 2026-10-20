@@ -227,7 +227,15 @@ int SPRITES_anim_finished(size_t sprite_id, bool* finished) {
 
 
 
-void SPRITES_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
+void SPRITES_draw(SDL_Renderer* renderer,
+                  SDL_Texture* spritesheet,
+                  SDL_GPURenderState* tint_state) {
+#ifndef TEST
+    // Uniforms are only set when the tint changes from the last sprite's
+    SDL_SetGPURenderState(renderer, tint_state);
+    float last_tint[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
+#endif
+
     for (int i = 0; i < Z_INDEX_TOTAL; i++) {
         node* curr = z_index_map[i].head;
         while (curr) {
@@ -285,6 +293,13 @@ void SPRITES_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
                      sprites[(size_t)curr->val].sprite.coords_h,
             };
 #ifndef TEST
+            sprite s = sprites[(size_t)curr->val].sprite;
+            float tint[4] = {s.tint_r, s.tint_g, s.tint_b, s.tint_a};
+            if (SDL_memcmp(tint, last_tint, sizeof(tint)) != 0) {
+                SDL_SetGPURenderStateFragmentUniforms(
+                    tint_state, 0, tint, sizeof(tint));
+                SDL_memcpy(last_tint, tint, sizeof(tint));
+            }
             SDL_FPoint center = (SDL_FPoint){.x = 0.0f, .y = 0.0f};
             SDL_RenderTextureRotated(
                 renderer,
@@ -303,6 +318,10 @@ void SPRITES_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
             curr = curr->next;
         }
     }
+
+#ifndef TEST
+    SDL_SetGPURenderState(renderer, NULL);
+#endif
 }
 
 

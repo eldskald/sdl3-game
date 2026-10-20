@@ -39,8 +39,10 @@ typedef struct {
 // spritesheet in tiles, or cells, so `0,0` means the first tile, `1,0` means
 // the one to its right, and so on. Its `coords_w,coords_h` means the size of
 // the sprite, also in tile/cell size, so `0,0,2,2` means tiles coords `0,0`,
-// `0,1`, `1,0` and `1,1`. Finally, higher z_index are rendered on top of lower
-// ones.
+// `0,1`, `1,0` and `1,1`. Higher z_index are rendered on top of lower ones.
+// Finally, its color is multiplied by `tint_r,tint_g,tint_b,tint_a`, which
+// should be `1.0` to draw it as is and can go beyond `1.0` to make it bloom.
+// Always set them, since they'd be zero, making the sprite invisible.
 //
 // ```
 // struct sprite {
@@ -51,6 +53,11 @@ typedef struct {
 //     Uint8 coords_w;
 //     Uint8 coords_h;
 //     Sint8 z_index;
+//     SDL_FlipMode flip_mode;
+//     double tint_r;
+//     double tint_g;
+//     double tint_b;
+//     double tint_a;
 // };
 // ```
 typedef struct {
@@ -62,6 +69,10 @@ typedef struct {
     Uint8 coords_h;
     Sint8 z_index;
     SDL_FlipMode flip_mode;
+    double tint_r;
+    double tint_g;
+    double tint_b;
+    double tint_a;
 } sprite;
 
 
@@ -111,5 +122,8 @@ void SPRITES_start(void);
 // Frees allocated memory. Call when quitting the game.
 void SPRITES_stop(void);
 
-// Updates the sprites state and renders them. Call on renderer update.
-void SPRITES_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet);
+// Updates the sprites state and renders them with `tint_state`, the tint
+// shader's render state, to apply their tints. Call on renderer update.
+void SPRITES_draw(SDL_Renderer* renderer,
+                  SDL_Texture* spritesheet,
+                  SDL_GPURenderState* tint_state);

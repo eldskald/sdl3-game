@@ -6,8 +6,8 @@
 #include <SDL3/SDL.h>
 
 void DEV_start(void) {
-    CHUNKS_load_at(0, 0, 0);
-    // PLAYER_create(56.0f, 72.0f);
+    CHUNKS_load_at(3, 0, 0);
+    PLAYER_create(56.0f, 72.0f);
 
     // // Checkerboard background, to see the fluids refracting it.
     // for (Uint32 x = 0; x < WINDOW_SIZE_X / SPRITESHEET_CELL_X; x++) {
@@ -23,6 +23,10 @@ void DEV_start(void) {
     //                 .coords_w = 1,
     //                 .coords_h = 1,
     //                 .z_index = -100,
+    //                 .tint_r = 1.0,
+    //                 .tint_g = 1.0,
+    //                 .tint_b = 1.0,
+    //                 .tint_a = 1.0,
     //             },
     //             &id);
     //     }
