@@ -67,28 +67,30 @@
 #define FLUIDS_CELL_W (SPRITESHEET_CELL_X / FLUIDS_SPLIT_X)
 #define FLUIDS_CELL_H (SPRITESHEET_CELL_Y / FLUIDS_SPLIT_Y)
 #define FLUIDS_CSV_PATH "data/simulation/fluids.csv"
+#define FLUID_PARTICLES_CSV_PATH "data/simulation/fluid-particles.csv"
 #define FLUIDS_FRAG_SPIRV_PATH "res/shaders/fluids.frag.spv"
 #define FLUIDS_FRAG_DXIL_PATH "res/shaders/fluids.frag.dxil"
+#define FLUIDS_RIPPLES_FRAG_SPIRV_PATH "res/shaders/ripples.frag.spv"
+#define FLUIDS_RIPPLES_FRAG_DXIL_PATH "res/shaders/ripples.frag.dxil"
+#define FLUIDS_RIPPLE_STRENGTH 1.0f
+#define FLUIDS_RIPPLE_MAX_SPEED 60
+#define FLUIDS_RIPPLE_SIZE 2
+#define FLUIDS_RIPPLES_MAX_TICKS 4
 #define FLUIDS_SHADER_IDX_STEP 8
 #define FLUIDS_WALL_COLOR 255, 0, 0, 255
 #define STARTING_FLUIDS_PARTICLES_DYNARR_CAP 1024
-#define FLUID_PARTICLES_GRAVITY 600
-#define FLUID_PARTICLES_SIZE_THRESHOLD 0.2
-#define FLUID_SPLASH_FAN_ANGLE 60
-#define FLUID_SPLASH_ANGLE_JITTER 8
-#define FLUID_SPLASH_SPEED 180
 #define FLUID_SPLASH_SURFACE_RANGE 2
 #define FLUIDS_STAGGER_SECONDS 10
 
 // Physics
 #define STARTING_BODIES_DYNARR_CAP 1024
+#define PHYSICS_SPLASH_COOLDOWN 0.2
 
 
 
 // Player
 #define PLAYER_BASE_CSV_PATH "data/player/core.csv"
 #define PLAYER_SPRITE_CSV_PATH "data/player/presentation.csv"
-#define PLAYER_SPLASH_COOLDOWN 0.2
 
 
 

@@ -20,6 +20,27 @@ typedef struct {
     bool solid;
 } fluid_cell;
 
+// Textures and render states the fluids are drawn with, owned by `renderer.c`.
+// `texture` is what the fluid cells are drawn into and `render_states[i]` draws
+// it with the fluids shader, sampling `ripples[i]` for the ripples. Ripples are
+// ticked by drawing one of `ripples` into the other with `ripples_state`, which
+// samples `texture` to keep them inside the fluids.
+//
+// ```
+// struct fluids_canvas {
+//     SDL_Texture* texture;
+//     SDL_Texture* ripples[2];
+//     SDL_GPURenderState* ripples_state;
+//     SDL_GPURenderState* render_states[2];
+// };
+// ```
+typedef struct {
+    SDL_Texture* texture;
+    SDL_Texture* ripples[2];
+    SDL_GPURenderState* ripples_state;
+    SDL_GPURenderState* render_states[2];
+} fluids_canvas;
+
 
 
 // Loads fluids data and allocates initial memory. Call at the start of the
@@ -44,14 +65,23 @@ void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type);
 void FLUIDS_get_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_cell (*cells)[w][h]);
 
-// Queues a splash at `(x,y)`, applied on the next step. It takes up to 1 of
-// fluid from the surface cells of the columns to its left and right, topping
-// up from the cells under them, and throws it up as particles in a fan from
-// just above those cells. Volume that doesn't make a whole particle is put back
-// on them. A column with no surface within `FLUID_SPLASH_SURFACE_RANGE` cells
-// of `y`, or with a wall over its surface, is skipped, and if both are, there
-// is no splash.
-void FLUIDS_splash_at(Uint32 x, Uint32 y);
+// Queues a splash on the `w` columns from `(x,y)` to its right, applied on the
+// next step, as if something hit them from above at `speed`. Each column takes
+// up to `volume` of fluid from its surface cell, topping up from the cell under
+// it, and throws it up as particles from just above it, in its slice of a fan
+// split evenly among the columns, left to right. Both the volume and the
+// particles' speed scale with `speed`, up to `body_max_speed`. Those and the
+// rest of the splash's settings are on `FLUID_PARTICLES_CSV_PATH`. Volume that
+// doesn't make a whole particle is put back. A column with no surface within
+// `FLUID_SPLASH_SURFACE_RANGE` cells of `y`, or with a wall over its surface,
+// is skipped.
+void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed);
+
+// Queues a ripple on the `FLUIDS_RIPPLE_SIZE` square of pixels centered on
+// pixel `(x,y)`, applied on the next ripples tick. It adds `strength` to their
+// height, on top of any ripples already there, then spreads around the body of
+// fluid it's in and fades out over time.
+void FLUIDS_ripple_at(Uint32 x, Uint32 y, double strength);
 
 // Adds a particle of fluid of type `type` at `(x,y)` in world coords, moving
 // with velocity `(vel_x,vel_y)`. It becomes fluid once it lands on a fluid cell
@@ -63,11 +93,13 @@ int FLUIDS_add_particle(
 
 
 
-// Ticks the simulation. Call on update in any thread.
+// Ticks the simulation. Ripples are ticked as many times as this was called
+// on the next `FLUIDS_draw()`, since they're simulated on the GPU. Call on
+// update in any thread.
 void FLUIDS_step(void);
 
-// Draws the fluid cells into `texture`, then draws it on the current render
-// target with `render_state`. Call on renderer update.
-void FLUIDS_draw(SDL_Renderer* renderer,
-                 SDL_Texture* texture,
-                 SDL_GPURenderState* render_state);
+// Draws the fluid cells into `canvas->texture`, ticks the ripples as many times
+// as `FLUIDS_step()` was called since the last draw, up to
+// `FLUIDS_RIPPLES_MAX_TICKS`, then draws it on the current render target with
+// the fluids shader. Call on renderer update.
+void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas);

@@ -1,0 +1,10 @@
+particles
+gravity,600
+size_threshold,0.2
+
+splashes
+fan_angle,60
+angle_jitter,8
+particle_max_speed,240
+volume,2.0
+body_max_speed,200

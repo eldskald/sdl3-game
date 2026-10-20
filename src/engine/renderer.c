@@ -8,13 +8,15 @@
 #ifndef TEST
 static SDL_Window* window = NULL;
 static SDL_Texture* base_screen = NULL;
+static SDL_Texture* pre_fluids_texture = NULL;
 static SDL_GPUDevice* device = NULL;
 static SDL_GPUShader* fluids_shader = NULL;
+static SDL_GPUShader* ripples_shader = NULL;
+static SDL_GPUSampler* nearest_sampler = NULL;
 #endif
 static SDL_Renderer* renderer = NULL;
 static SDL_Texture* spritesheet = NULL;
-static SDL_Texture* fluids_texture = NULL;
-static SDL_GPURenderState* fluids_render_state = NULL;
+static fluids_canvas fluids = (fluids_canvas){0};
 
 
 
@@ -86,22 +88,82 @@ static int start_graphics_pipeline() {
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture base_screen created successfully.");
 
+    // Creating SDL_Texture for everything drawn before the fluids, for them to
+    // refract
+    pre_fluids_texture = SDL_CreateTexture(renderer,
+                                           SDL_PIXELFORMAT_ABGR8888,
+                                           SDL_TEXTUREACCESS_TARGET,
+                                           WINDOW_SIZE_X,
+                                           WINDOW_SIZE_Y);
+    if (!pre_fluids_texture) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create SDL_Texture pre_fluids_texture: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_SetTextureScaleMode(pre_fluids_texture, SDL_SCALEMODE_NEAREST);
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
+                "SDL_Texture pre_fluids_texture created successfully.");
+
     // Creating SDL_Texture for the fluids
-    fluids_texture = SDL_CreateTexture(renderer,
+    fluids.texture = SDL_CreateTexture(renderer,
                                        SDL_PIXELFORMAT_ABGR8888,
                                        SDL_TEXTUREACCESS_TARGET,
                                        WINDOW_SIZE_X,
                                        WINDOW_SIZE_Y);
-    if (!fluids_texture) {
+    if (!fluids.texture) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
                      "Couldn't create SDL_Texture fluids_texture: %s",
                      SDL_GetError());
         return 1;
     }
-    SDL_SetTextureScaleMode(fluids_texture, SDL_SCALEMODE_NEAREST);
-    SDL_SetTextureBlendMode(fluids_texture, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureScaleMode(fluids.texture, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureBlendMode(fluids.texture, SDL_BLENDMODE_BLEND);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture fluids_texture created successfully.");
+
+    // Creating SDL_Textures for the ripples. They are float so heights can be
+    // negative, and start cleared since GPU textures start undefined.
+    for (Uint8 i = 0; i < 2; i++) {
+        fluids.ripples[i] = SDL_CreateTexture(renderer,
+                                              SDL_PIXELFORMAT_RGBA64_FLOAT,
+                                              SDL_TEXTUREACCESS_TARGET,
+                                              WINDOW_SIZE_X,
+                                              WINDOW_SIZE_Y);
+        if (!fluids.ripples[i]) {
+            SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                         "Couldn't create SDL_Texture ripples: %s",
+                         SDL_GetError());
+            return 1;
+        }
+        SDL_SetTextureScaleMode(fluids.ripples[i], SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureBlendMode(fluids.ripples[i], SDL_BLENDMODE_NONE);
+        SDL_SetRenderTarget(renderer, fluids.ripples[i]);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        SDL_RenderClear(renderer);
+    }
+    SDL_SetRenderTarget(renderer, NULL);
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
+                "SDL_Texture ripples created successfully.");
+
+    // Sampler for the fluids and ripples shaders to sample the extra textures
+    // they're given
+    nearest_sampler = SDL_CreateGPUSampler(
+        device,
+        &(SDL_GPUSamplerCreateInfo){
+            .min_filter = SDL_GPU_FILTER_NEAREST,
+            .mag_filter = SDL_GPU_FILTER_NEAREST,
+            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        });
+    if (!nearest_sampler) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create nearest_sampler: %s",
+                     SDL_GetError());
+        return 1;
+    }
 #endif
 
     return 0;
@@ -148,7 +210,8 @@ static int load_graphics_files(void) {
     SDL_DestroySurface(surface);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
 
-    // Fluids shader and render state
+    // Fluids shader and render states, one sampling each ripples texture since
+    // they are swapped every tick. Both sample pre_fluids_texture as well.
     static const Uint8 fluids_spirv[] = {
 #embed FLUIDS_FRAG_SPIRV_PATH
     };
@@ -159,7 +222,7 @@ static int load_graphics_files(void) {
                                          sizeof(fluids_spirv),
                                          fluids_dxil,
                                          sizeof(fluids_dxil),
-                                         1,
+                                         3,
                                          1);
     if (!fluids_shader) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
@@ -167,17 +230,79 @@ static int load_graphics_files(void) {
                      SDL_GetError());
         return 1;
     }
-    SDL_GPURenderStateCreateInfo info = (SDL_GPURenderStateCreateInfo){
-        .fragment_shader = fluids_shader,
+    for (Uint8 i = 0; i < 2; i++) {
+        SDL_GPUTextureSamplerBinding bindings[2] = {
+            (SDL_GPUTextureSamplerBinding){
+                .texture = SDL_GetPointerProperty(
+                    SDL_GetTextureProperties(fluids.ripples[i]),
+                    SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER,
+                    NULL),
+                .sampler = nearest_sampler,
+            },
+            (SDL_GPUTextureSamplerBinding){
+                .texture = SDL_GetPointerProperty(
+                    SDL_GetTextureProperties(pre_fluids_texture),
+                    SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER,
+                    NULL),
+                .sampler = nearest_sampler,
+            },
+        };
+        SDL_GPURenderStateCreateInfo info = (SDL_GPURenderStateCreateInfo){
+            .fragment_shader = fluids_shader,
+            .num_sampler_bindings = 2,
+            .sampler_bindings = bindings,
+        };
+        fluids.render_states[i] = SDL_CreateGPURenderState(renderer, &info);
+        if (!fluids.render_states[i]) {
+            SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                         "Couldn't create fluids_render_state: %s",
+                         SDL_GetError());
+            return 1;
+        }
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Fluids shader loaded successfully.");
+
+    // Ripples shader and render state
+    static const Uint8 ripples_spirv[] = {
+#embed FLUIDS_RIPPLES_FRAG_SPIRV_PATH
     };
-    fluids_render_state = SDL_CreateGPURenderState(renderer, &info);
-    if (!fluids_render_state) {
+    static const Uint8 ripples_dxil[] = {
+#embed FLUIDS_RIPPLES_FRAG_DXIL_PATH
+    };
+    ripples_shader = load_fragment_shader(ripples_spirv,
+                                          sizeof(ripples_spirv),
+                                          ripples_dxil,
+                                          sizeof(ripples_dxil),
+                                          2,
+                                          0);
+    if (!ripples_shader) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create fluids_render_state: %s",
+                     "Couldn't create ripples_shader: %s",
                      SDL_GetError());
         return 1;
     }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Fluids shader loaded successfully.");
+    SDL_GPUTextureSamplerBinding fluids_binding =
+        (SDL_GPUTextureSamplerBinding){
+            .texture =
+                SDL_GetPointerProperty(SDL_GetTextureProperties(fluids.texture),
+                                       SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER,
+                                       NULL),
+            .sampler = nearest_sampler,
+    };
+    fluids.ripples_state =
+        SDL_CreateGPURenderState(renderer,
+                                 &(SDL_GPURenderStateCreateInfo){
+                                     .fragment_shader = ripples_shader,
+                                     .num_sampler_bindings = 1,
+                                     .sampler_bindings = &fluids_binding,
+                                 });
+    if (!fluids.ripples_state) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create ripples_render_state: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Ripples shader loaded successfully.");
 #endif
 
     return 0;
@@ -185,15 +310,25 @@ static int load_graphics_files(void) {
 
 
 
+// Sprites are drawn on pre_fluids_texture first, for the fluids to refract.
+// The fluids shader draws all of it on base_screen, refracted where there are
+// fluids and as is everywhere else, then the tilemap is drawn on top.
 static void render_base_screen(void) {
+#ifndef TEST
+    SDL_SetRenderTarget(renderer, pre_fluids_texture);
+    SDL_SetRenderDrawColor(renderer, COL_BLACK);
+    SDL_RenderClear(renderer);
+#endif
+
+    SPRITES_draw(renderer, spritesheet);
+
 #ifndef TEST
     SDL_SetRenderTarget(renderer, base_screen);
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
 #endif
 
-    FLUIDS_draw(renderer, fluids_texture, fluids_render_state);
-    SPRITES_draw(renderer, spritesheet);
+    FLUIDS_draw(renderer, &fluids);
     TILEMAP_draw(renderer, spritesheet);
 
 #ifndef TEST
@@ -252,9 +387,16 @@ int RENDERER_start(void) {
 
 void RENDERER_stop(void) {
 #ifndef TEST
-    SDL_DestroyGPURenderState(fluids_render_state);
+    SDL_DestroyGPURenderState(fluids.ripples_state);
+    SDL_ReleaseGPUShader(device, ripples_shader);
+    for (Uint8 i = 0; i < 2; i++) {
+        SDL_DestroyGPURenderState(fluids.render_states[i]);
+        SDL_DestroyTexture(fluids.ripples[i]);
+    }
     SDL_ReleaseGPUShader(device, fluids_shader);
-    SDL_DestroyTexture(fluids_texture);
+    SDL_ReleaseGPUSampler(device, nearest_sampler);
+    SDL_DestroyTexture(fluids.texture);
+    SDL_DestroyTexture(pre_fluids_texture);
     SDL_DestroyTexture(base_screen);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyGPUDevice(device);

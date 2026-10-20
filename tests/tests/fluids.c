@@ -1,6 +1,8 @@
 #include "tests/fluids.h"
+#include "defs.h"
 #include "engine/fluids.h"
 #include "engine/game-manager.h"
+#include "engine/physics.h"
 #include "engine/tilemap.h"
 #include "tests.h"
 #include <SDL3/SDL.h>
@@ -12,6 +14,11 @@
 #define WATER_MOVE_TIME 0.05
 #define LAVA_MOVE_TIME 0.2
 #define WATER_PARTICLE_VOL 0.1
+
+// Splash settings in `tests/mocks/fluid-particles.csv`.
+// UPDATE IF TESTS/MOCKS/FLUID-PARTICLES.CSV IS CHANGED!!!
+#define SPLASH_VOLUME 2.0
+#define SPLASH_BODY_MAX_SPEED 200
 
 // Steps the simulation for `seconds` of game time. Steps one extra frame so a
 // timer that would fire right at the end isn't missed by rounding.
@@ -254,6 +261,75 @@ void test_fluids(void) {
             SDL_fabs(sum_water(0, 0, 12, 12) - 15 * WATER_PARTICLE_VOL) <
                 EPSILON,
         });
+
+    // A pool two cells deep at the bottom of the room. Splashes are applied
+    // and their particles thrown up in the same step, so right after it the
+    // water missing from the grid is what was splashed, up to a particle per
+    // column short from what doesn't make a whole one being put back.
+    FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
+    FLUIDS_set_at(2, 8, 8, 2, fluid_water, 1.0f);
+    FLUIDS_step();
+    double pool = sum_water(0, 0, 12, 12);
+    FLUIDS_splash_at(4, 8, 2, 0.0f);
+    FLUIDS_step();
+    double still = sum_water(0, 0, 12, 12);
+    FLUIDS_splash_at(4, 8, 2, SPLASH_BODY_MAX_SPEED / 2.0f);
+    FLUIDS_step();
+    double half = pool - sum_water(0, 0, 12, 12);
+    step_for(40 * WATER_MOVE_TIME);
+    double settled = sum_water(0, 0, 12, 12);
+    FLUIDS_splash_at(4, 8, 2, SPLASH_BODY_MAX_SPEED * 2.0f);
+    FLUIDS_step();
+    double full = pool - sum_water(0, 0, 12, 12);
+    expect("Made a pool and splashed 2 of its columns still, at half and at "
+           "twice the max speed, checking how much water was thrown up...",
+           6,
+           (bool[]){
+               SDL_fabs(pool - 16.0f) < EPSILON,
+               SDL_fabs(still - pool) < EPSILON,
+               half > SPLASH_VOLUME - 2 * WATER_PARTICLE_VOL - EPSILON,
+               half < SPLASH_VOLUME + EPSILON,
+               SDL_fabs(settled - pool) < EPSILON,
+               full > 2 * SPLASH_VOLUME - 2 * WATER_PARTICLE_VOL - EPSILON &&
+                   full < 2 * SPLASH_VOLUME + EPSILON,
+           });
+
+    // Drops a body one fluid cell wide into the pool at the max speed. It
+    // takes 2 updates to reach the surface and a third one moves it within
+    // the water, which mustn't splash again.
+    step_for(40 * WATER_MOVE_TIME);
+    PHYSICS_start();
+    size_t id = 0;
+    PHYSICS_new_body(
+        (body){
+            .type = physics_actor,
+            .x = 4.0f * FLUIDS_CELL_W,
+            .y = 5.0f * FLUIDS_CELL_H,
+            .w = FLUIDS_CELL_W,
+            .h = 2 * FLUIDS_CELL_H,
+            .vel_y = SPLASH_BODY_MAX_SPEED,
+        },
+        &id);
+    PHYSICS_update();
+    FLUIDS_step();
+    double before = sum_water(0, 0, 12, 12);
+    PHYSICS_update();
+    PHYSICS_update();
+    FLUIDS_step();
+    double splashed = before - sum_water(0, 0, 12, 12);
+    PHYSICS_update();
+    FLUIDS_step();
+    double after = before - sum_water(0, 0, 12, 12);
+    PHYSICS_stop();
+    expect("Dropped a body into the pool, checking if it splashed its column "
+           "once...",
+           3,
+           (bool[]){
+               SDL_fabs(before - pool) < EPSILON,
+               splashed > SPLASH_VOLUME - WATER_PARTICLE_VOL - EPSILON &&
+                   splashed < SPLASH_VOLUME + EPSILON,
+               SDL_fabs(after - splashed) < EPSILON,
+           });
 
     FLUIDS_stop();
 }

@@ -9,12 +9,6 @@
 #define IDX_LAVA 2.0
 
 
-
-// Colors of each fluid indexed by `fluid_type`. Size must be `FLUIDS_TOTAL`.
-cbuffer Uniforms : register(b0, space3) {
-    float4 _Colors[2];
-};
-
 // `1.0` when the sample is air, `0.0` otherwise.
 float is_air(float s) {
     return step(s, EPSILON);
@@ -33,6 +27,17 @@ float is_wall(float s) {
 // `1.0` when the sample is the fluid of index `idx`, `0.0` otherwise.
 float is_type(float s, float idx) {
     return step(abs(s - idx / FAC), EPSILON);
+}
+
+// `1.0` when samples `a` and `b` are the same material.
+float is_same(float a, float b) {
+    return step(abs(a - b), EPSILON);
+}
+
+// `1.0` when samples `a` and `b`, `(type, density rank)`, are the same
+// material.
+float is_same(float2 a, float2 b) {
+    return is_same(a.r, b.r);
 }
 
 #endif

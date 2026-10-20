@@ -46,7 +46,7 @@ void PLAYER_create(double at_x, double at_y) {
         &state.body_id);
     state.created = true;
     state.facing = 1;
-    PLAYER_SPRITE_create(state);
+    PLAYER_SPRITE_create();
 }
 
 void PLAYER_destroy(void) {
