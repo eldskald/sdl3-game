@@ -16,8 +16,8 @@ typedef enum {
 } physics_type;
 
 // Body information. Position is `x` and `y`, velocity is `vel_x` and `vel_y`,
-// dimensions are `w` and `h`. `sleeping` turns off physics for it, while `type`
-// is which type of physics it should have. `w` and `h` must not be zero.
+// dimensions are `w` and `h`, while `type` is which type of physics it should
+// have. `w` and `h` must not be zero.
 //
 // ```
 // struct body {
@@ -28,7 +28,6 @@ typedef enum {
 //     double vel_y;
 //     Uint8 w;
 //     Uint8 h;
-//     bool sleeping;
 // };
 // ```
 typedef struct {
@@ -39,7 +38,6 @@ typedef struct {
     double vel_y;
     Uint8 w;
     Uint8 h;
-    bool sleeping;
 } body;
 
 
@@ -104,5 +102,7 @@ void PHYSICS_start(void);
 // Frees all allocated memory. Call at the end of the game.
 void PHYSICS_stop(void);
 
-// Moves each body by its velocity, taking collisions into account.
+// Moves each body by its velocity, taking collisions into account. Bodies that
+// move into fluids splash them, see `FLUIDS_splash_at()`, as hard as they were
+// falling, then can't splash again for `PHYSICS_SPLASH_COOLDOWN` seconds.
 void PHYSICS_update(void);

@@ -1,8 +1,6 @@
 #include "player/player-presentation.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
-#include "engine/fluids.h"
-#include "engine/game-manager.h"
 #include "engine/physics.h"
 #include "engine/sprites.h"
 #include "player/player-core.h"
@@ -37,7 +35,6 @@ typedef struct {
     bool created;
     size_t sprite_id;
     states_machine_state state;
-    double splash_cooldown;
 } sprite_state;
 
 static sprite_data data = (sprite_data){0};
@@ -45,9 +42,7 @@ static sprite_state state = (sprite_state){0};
 
 
 
-static void state_changed(states_machine_state new_state, player_state player) {
-    body b = (body){0};
-    PHYSICS_get_body(player.body_id, &b);
+static void state_changed(states_machine_state new_state) {
     switch (new_state) {
     case state_idle:
         SPRITES_play_anim(state.sprite_id, data.idle_anim);
@@ -66,11 +61,6 @@ static void state_changed(states_machine_state new_state, player_state player) {
         break;
     case state_swimming:
         SPRITES_play_anim(state.sprite_id, data.swimming_anim);
-        if (state.splash_cooldown <= 0.0f) {
-            FLUIDS_splash_at(SDL_round(b.x) / FLUIDS_CELL_W,
-                             SDL_round(b.y) / FLUIDS_CELL_H);
-            state.splash_cooldown = PLAYER_SPLASH_COOLDOWN;
-        }
         break;
     }
 }
@@ -99,7 +89,7 @@ static void update_states_machine(player_state player, body player_body) {
 
     if (new_state != state.state) {
         state.state = new_state;
-        state_changed(new_state, player);
+        state_changed(new_state);
     }
 }
 
@@ -274,7 +264,7 @@ void PLAYER_SPRITE_start(void) {
                 "Player sprite data loaded successfully.");
 }
 
-void PLAYER_SPRITE_create(player_state player) {
+void PLAYER_SPRITE_create(void) {
     SPRITES_new_sprite(
         (sprite){
             .coords_x = data.coords_x,
@@ -283,9 +273,8 @@ void PLAYER_SPRITE_create(player_state player) {
             .coords_h = data.coords_h,
         },
         &state.sprite_id);
-
     state.created = true;
-    state_changed(state.state, player);
+    state_changed(state.state);
 }
 
 void PLAYER_SPRITE_destroy(void) {
@@ -297,8 +286,6 @@ void PLAYER_SPRITE_destroy(void) {
 
 void PLAYER_SPRITE_update(player_state player) {
     if (!state.created) return;
-
-    state.splash_cooldown -= GAME_MANAGER_get_current_dt();
 
     sprite s = (sprite){0};
     body b = (body){0};

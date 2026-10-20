@@ -1,6 +1,7 @@
 #include "engine/physics.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
+#include "engine/fluids.h"
 #include "engine/game-manager.h"
 #include "engine/tilemap.h"
 #include <SDL3/SDL.h>
@@ -20,16 +21,37 @@ typedef struct {
 
 
 
-static body* bodies = NULL;
+// Fluid cells occupied by a rect, `(x,y)` being its top left cell and `(w,h)`
+// how many cells it spans. Cells above or to the left of the grid are left out,
+// so `w` or `h` are `0` or less when it's entirely out.
+typedef struct {
+    long x;
+    long y;
+    long w;
+    long h;
+} fluid_rect;
+
+// Bodies are wrapped with the state the physics engine keeps on them, so it
+// isn't exposed on `body`. `sleeping` turns off physics for it and
+// `splash_cooldown` is how long until it can splash fluids again.
+typedef struct {
+    body body;
+    bool sleeping;
+    double splash_cooldown;
+} body_data;
+
+
+
+static body_data* bodies = NULL;
 static size_t bodies_cap = 0;
 static dynarr nbsearch[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = {0};
 
 static void double_dynarr(void) {
-    body* new_sprites = SDL_calloc(bodies_cap << 1, sizeof(body));
-    SDL_memcpy(new_sprites, bodies, bodies_cap * sizeof(body));
+    body_data* new_bodies = SDL_calloc(bodies_cap << 1, sizeof(body_data));
+    SDL_memcpy(new_bodies, bodies, bodies_cap * sizeof(body_data));
     SDL_free(bodies);
     bodies_cap = bodies_cap << 1;
-    bodies = new_sprites;
+    bodies = new_bodies;
 }
 
 
@@ -261,6 +283,79 @@ static void move_body_vertically(body* b, double d) {
 
 
 
+// Queues a ripple at the center of `b` when it's in a fluid cell, as strong as
+// it was moving at `(vel_x,vel_y)`, up to `FLUIDS_RIPPLE_MAX_SPEED`.
+static void ripple_fluids(body b, double vel_x, double vel_y) {
+    double x = SDL_round(b.x + b.w / 2.0f);
+    double y = SDL_round(b.y + b.h / 2.0f);
+    if (x < 0.0f || y < 0.0f) return;
+    fluid_cell cell[1][1];
+    FLUIDS_get_at(x / FLUIDS_CELL_W, y / FLUIDS_CELL_H, 1, 1, &cell);
+    if (cell[0][0].solid) return;
+    double vol = 0.0f;
+    for (Uint8 t = 0; t < FLUIDS_TOTAL; t++)
+        vol += cell[0][0].volume[t];
+    if (vol < EPSILON) return;
+    double speed = SDL_min(SDL_sqrt(vel_x * vel_x + vel_y * vel_y),
+                           FLUIDS_RIPPLE_MAX_SPEED);
+    FLUIDS_ripple_at(
+        x, y, FLUIDS_RIPPLE_STRENGTH * speed / FLUIDS_RIPPLE_MAX_SPEED);
+}
+
+
+
+// Fluid cells occupied by a rect snapped to pixels, w and h must be positive.
+// Edges exactly on a cell border don't occupy the next cell.
+static fluid_rect get_fluid_rect(double x, double y, double w, double h) {
+    double l = SDL_round(x);
+    double t = SDL_round(y);
+    double r = l + SDL_round(w);
+    double b = t + SDL_round(h);
+    long from_x = SDL_max(SDL_floor(l / FLUIDS_CELL_W), 0.0);
+    long from_y = SDL_max(SDL_floor(t / FLUIDS_CELL_H), 0.0);
+    long to_x = SDL_floor((r - 1.0f) / FLUIDS_CELL_W);
+    long to_y = SDL_floor((b - 1.0f) / FLUIDS_CELL_H);
+    return (fluid_rect){.x = from_x,
+                        .y = from_y,
+                        .w = to_x - from_x + 1,
+                        .h = to_y - from_y + 1};
+}
+
+static bool are_same_fluid_rects(fluid_rect a, fluid_rect b) {
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+// Whether any cell of `r` has fluid.
+static bool has_fluid(fluid_rect r) {
+    if (r.w <= 0 || r.h <= 0) return false;
+    fluid_cell cells[r.w][r.h];
+    FLUIDS_get_at(r.x, r.y, r.w, r.h, &cells);
+    for (long i = 0; i < r.w; i++) {
+        for (long j = 0; j < r.h; j++) {
+            if (cells[i][j].solid) continue;
+            for (Uint8 t = 0; t < FLUIDS_TOTAL; t++)
+                if (cells[i][j].volume[t] > EPSILON) return true;
+        }
+    }
+    return false;
+}
+
+// Splashes the fluids `b` just entered, from `(x0,y0)` to where it is now. When
+// its rect wasn't touching any fluid cell before but now is, every column it
+// spans is splashed at its bottom row, as hard as it was falling at `vel_y`.
+// Assumes it entered through a horizontal surface, from above.
+static void splash_fluids(body_data* b, double x0, double y0, double vel_y) {
+    if (b->splash_cooldown > 0.0f) return;
+    fluid_rect from = get_fluid_rect(x0, y0, b->body.w, b->body.h);
+    fluid_rect to = get_fluid_rect(b->body.x, b->body.y, b->body.w, b->body.h);
+    if (are_same_fluid_rects(from, to)) return;
+    if (has_fluid(from) || !has_fluid(to)) return;
+    FLUIDS_splash_at(to.x, to.y + to.h - 1, to.w, SDL_fabs(vel_y));
+    b->splash_cooldown = PHYSICS_SPLASH_COOLDOWN;
+}
+
+
+
 int PHYSICS_new_body(body data, size_t* body_id) {
     if (data.w == 0 || data.h == 0) {
         SDL_LogWarn(
@@ -271,8 +366,8 @@ int PHYSICS_new_body(body data, size_t* body_id) {
         return 2;
     }
     for (size_t i = 0; i < bodies_cap; i++) {
-        if (bodies[i].w == 0) {
-            bodies[i] = data;
+        if (bodies[i].body.w == 0) {
+            bodies[i] = (body_data){.body = data};
             add_to_nbsearch(get_body_nbcoords(data), i);
             *body_id = i;
             return 0;
@@ -280,7 +375,7 @@ int PHYSICS_new_body(body data, size_t* body_id) {
     }
     double_dynarr();
     size_t index = bodies_cap >> 1;
-    bodies[index] = data;
+    bodies[index] = (body_data){.body = data};
     add_to_nbsearch(get_body_nbcoords(data), index);
     *body_id = index;
     return 0;
@@ -294,14 +389,14 @@ int PHYSICS_del_body(size_t body_id) {
             body_id);
         return 3;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to delete inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    remove_from_nbsearch(get_body_nbcoords(bodies[body_id]), body_id);
-    bodies[body_id] = (body){0};
+    remove_from_nbsearch(get_body_nbcoords(bodies[body_id].body), body_id);
+    bodies[body_id] = (body_data){0};
     return 0;
 }
 
@@ -313,13 +408,13 @@ int PHYSICS_get_body(size_t body_id, body* data) {
             body_id);
         return 3;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    *data = bodies[body_id];
+    *data = bodies[body_id].body;
     return 0;
 }
 
@@ -331,14 +426,14 @@ int PHYSICS_add_velocity(size_t body_id, double vel_x, double vel_y) {
                     body_id);
         return 3;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to add velocity to inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    bodies[body_id].vel_x += vel_x;
-    bodies[body_id].vel_y += vel_y;
+    bodies[body_id].body.vel_x += vel_x;
+    bodies[body_id].body.vel_y += vel_y;
     return 0;
 }
 
@@ -350,14 +445,14 @@ int PHYSICS_set_velocity(size_t body_id, double vel_x, double vel_y) {
                     body_id);
         return 3;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set velocity to inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    bodies[body_id].vel_x = vel_x;
-    bodies[body_id].vel_y = vel_y;
+    bodies[body_id].body.vel_x = vel_x;
+    bodies[body_id].body.vel_y = vel_y;
     return 0;
 }
 
@@ -369,16 +464,16 @@ int PHYSICS_set_position(size_t body_id, double x, double y) {
                     body_id);
         return 3;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set position to inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    nbcoords nbc0 = get_body_nbcoords(bodies[body_id]);
-    bodies[body_id].x = x;
-    bodies[body_id].y = y;
-    nbcoords nbc = get_body_nbcoords(bodies[body_id]);
+    nbcoords nbc0 = get_body_nbcoords(bodies[body_id].body);
+    bodies[body_id].body.x = x;
+    bodies[body_id].body.y = y;
+    nbcoords nbc = get_body_nbcoords(bodies[body_id].body);
     update_nbsearch(nbc0, nbc, body_id);
     return 0;
 }
@@ -399,14 +494,14 @@ int PHYSICS_update_body(size_t body_id, body data) {
             data.h);
         return 2;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to update inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    nbcoords nbc0 = get_body_nbcoords(bodies[body_id]);
-    bodies[body_id] = data;
+    nbcoords nbc0 = get_body_nbcoords(bodies[body_id].body);
+    bodies[body_id].body = data;
     update_nbsearch(nbc0, get_body_nbcoords(data), body_id);
     return 0;
 }
@@ -414,7 +509,7 @@ int PHYSICS_update_body(size_t body_id, body data) {
 
 
 void PHYSICS_start(void) {
-    bodies = SDL_calloc(STARTING_BODIES_DYNARR_CAP, sizeof(body));
+    bodies = SDL_calloc(STARTING_BODIES_DYNARR_CAP, sizeof(body_data));
     bodies_cap = STARTING_BODIES_DYNARR_CAP;
     // nbsearch cells start zeroed and allocate lazily on their first push
 }
@@ -433,28 +528,41 @@ void PHYSICS_stop(void) {
 
 
 void PHYSICS_update(void) {
+    double dt = GAME_MANAGER_get_current_dt();
     for (size_t i = 0; i < bodies_cap; i++) {
-        if (bodies[i].w == 0 || bodies[i].h == 0) continue;
+        if (bodies[i].body.w == 0 || bodies[i].body.h == 0) continue;
         if (bodies[i].sleeping) continue;
-        if (SDL_fabs(bodies[i].vel_x) <= EPSILON &&
-            SDL_fabs(bodies[i].vel_y) <= EPSILON)
+        bodies[i].splash_cooldown -= dt;
+        if (SDL_fabs(bodies[i].body.vel_x) <= EPSILON &&
+            SDL_fabs(bodies[i].body.vel_y) <= EPSILON)
             continue;
 
-        double dt = GAME_MANAGER_get_current_dt();
-        double dvx = dt * bodies[i].vel_x;
-        double dvy = dt * bodies[i].vel_y;
+        double dvx = dt * bodies[i].body.vel_x;
+        double dvy = dt * bodies[i].body.vel_y;
+        double vel_x0 = bodies[i].body.vel_x;
+        double vel_y0 = bodies[i].body.vel_y;
 
         // body_base types collide only with the tilemap, body_area don't
         // collide at all.
-        nbcoords nbc0 = get_body_nbcoords(bodies[i]);
-        if (bodies[i].type == physics_actor) {
-            move_body_horizontally(&bodies[i], dvx);
-            move_body_vertically(&bodies[i], dvy);
+        nbcoords nbc0 = get_body_nbcoords(bodies[i].body);
+        double x0 = bodies[i].body.x;
+        double y0 = bodies[i].body.y;
+        if (bodies[i].body.type == physics_actor) {
+            move_body_horizontally(&bodies[i].body, dvx);
+            move_body_vertically(&bodies[i].body, dvy);
         } else {
-            bodies[i].x += dvx;
-            bodies[i].y += dvy;
+            bodies[i].body.x += dvx;
+            bodies[i].body.y += dvy;
         }
-        update_nbsearch(nbc0, get_body_nbcoords(bodies[i]), i);
+        update_nbsearch(nbc0, get_body_nbcoords(bodies[i].body), i);
+
+        // Only bodies that actually moved disturb the fluids, so ripples
+        // around still ones fade out.
+        if (SDL_fabs(bodies[i].body.x - x0) > EPSILON ||
+            SDL_fabs(bodies[i].body.y - y0) > EPSILON) {
+            ripple_fluids(bodies[i].body, vel_x0, vel_y0);
+            splash_fluids(&bodies[i], x0, y0, vel_y0);
+        }
     }
 }
 
@@ -487,8 +595,8 @@ int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr) {
         for (Uint16 y = nbc.tl.y; y <= nbc.br.y; y++) {
             for (size_t i = 0; i < nbsearch[x][y].len; i++) {
                 size_t id = (size_t)nbsearch[x][y].at[i];
-                body b = bodies[id];
-                if (b.sleeping) continue;
+                if (bodies[id].sleeping) continue;
+                body b = bodies[id].body;
 
                 // A body spanning many cells is only checked on the first
                 // cell both it and rect share, to avoid duplicates
@@ -514,13 +622,13 @@ int PHYSICS_is_on_floor(size_t body_id, bool* check) {
             body_id);
         return 3;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    body b = bodies[body_id];
+    body b = bodies[body_id].body;
     double by = SDL_round(b.y + b.h);
     if ((int)by % SPRITESHEET_CELL_Y != 0) {
         *check = false;
@@ -551,13 +659,13 @@ int PHYSICS_is_on_ceiling(size_t body_id, bool* check) {
             body_id);
         return 3;
     }
-    if (bodies[body_id].w == 0) {
+    if (bodies[body_id].body.w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    body b = bodies[body_id];
+    body b = bodies[body_id].body;
     double by = SDL_round(b.y);
     if (by == 0.0f) {
         *check = true;

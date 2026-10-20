@@ -54,9 +54,27 @@ typedef struct {
 } mod;
 
 typedef struct {
+    double gravity;
+    double size_threshold;
+    double splash_fan_angle;
+    double splash_angle_jitter;
+    double splash_particle_max_speed;
+    double splash_volume;
+    double splash_body_max_speed;
+} fluid_particles_data;
+
+typedef struct {
     Uint32 x;
     Uint32 y;
+    Uint32 w;
+    double speed;
 } splash;
+
+typedef struct {
+    Uint32 x;
+    Uint32 y;
+    double strength;
+} ripple;
 
 typedef struct {
     long x;
@@ -74,12 +92,19 @@ static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
 static fluids buffer[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X]
                     [FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y] = {0};
 static fluid_data data[FLUIDS_TOTAL] = {0};
+static fluid_particles_data particles_data = {0};
 static dynarr mods = (dynarr){0};
 static SDL_Mutex* mods_mutex = NULL;
 static dynarr queued_particles = (dynarr){0};
 static SDL_Mutex* queued_particles_mutex = NULL;
 static dynarr splashes = (dynarr){0};
 static SDL_Mutex* splashes_mutex = NULL;
+static dynarr ripples = (dynarr){0};
+static SDL_Mutex* ripples_mutex = NULL;
+// Which of `fluids_canvas.ripples` has the latest ripples.
+static Uint8 ripples_idx = 0;
+// Ripples ticks due, added by `FLUIDS_step()` and run by `FLUIDS_draw()`.
+static SDL_AtomicInt ripples_ticks = {0};
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
 static fluid_particle* particles = NULL;
@@ -279,8 +304,48 @@ static void stagger_move_timers(void) {
     }
 }
 
+static void load_fluid_particles_data(void) {
+#ifndef TEST
+    char csv[] = {
+#embed FLUID_PARTICLES_CSV_PATH suffix(, '\0')
+    };
+#else
+    char csv[] = {
+#embed "tests/mocks/fluid-particles.csv" suffix(, '\0')
+    };
+#endif
+
+    dynarr parsed = CSV_parse(csv);
+
+    for (int i = 0; i < parsed.len; i++) {
+        if (((dynarr*)parsed.at[i])->len < 2) continue;
+        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
+        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
+        if (SDL_strcmp(key, "gravity") == 0)
+            particles_data.gravity = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "size_threshold") == 0)
+            particles_data.size_threshold = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "fan_angle") == 0)
+            particles_data.splash_fan_angle = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "angle_jitter") == 0)
+            particles_data.splash_angle_jitter = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "particle_max_speed") == 0)
+            particles_data.splash_particle_max_speed = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "volume") == 0)
+            particles_data.splash_volume = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "body_max_speed") == 0)
+            particles_data.splash_body_max_speed = SDL_strtod(val, NULL);
+    }
+
+    CSV_free(&parsed);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Fluid particles data loaded successfully.");
+}
+
 void FLUIDS_start(void) {
     load_fluid_data();
+    load_fluid_particles_data();
     order_fluids_by_density();
     stagger_move_timers();
     init_dynarr(&mods);
@@ -289,6 +354,10 @@ void FLUIDS_start(void) {
     queued_particles_mutex = SDL_CreateMutex();
     init_dynarr(&splashes);
     splashes_mutex = SDL_CreateMutex();
+    init_dynarr(&ripples);
+    ripples_mutex = SDL_CreateMutex();
+    ripples_idx = 0;
+    SDL_SetAtomicInt(&ripples_ticks, 0);
     particles = SDL_calloc(STARTING_FLUIDS_PARTICLES_DYNARR_CAP,
                            sizeof(fluid_particle));
     particles_cap = STARTING_FLUIDS_PARTICLES_DYNARR_CAP;
@@ -300,6 +369,7 @@ void FLUIDS_stop(void) {
     clear_queue(&mods, &mods_mutex);
     clear_queue(&queued_particles, &queued_particles_mutex);
     clear_queue(&splashes, &splashes_mutex);
+    clear_queue(&ripples, &ripples_mutex);
     SDL_memset(grid, 0, sizeof(grid));
     SDL_memset(move_timers, 0, sizeof(move_timers));
     SDL_free(particles);
@@ -743,7 +813,7 @@ static void simulate_fluid_particles(void) {
     size_t i = 0;
     while (i < particles_len) {
         fluid_particle* p = &particles[i];
-        p->vel_y += FLUID_PARTICLES_GRAVITY * dt;
+        p->vel_y += particles_data.gravity * dt;
         double dx = p->vel_x * dt;
         double dy = p->vel_y * dt;
         Uint32 steps = SDL_ceil(SDL_max(SDL_fabs(dx) / FLUIDS_CELL_W,
@@ -815,63 +885,51 @@ static double take_from_cell(long x, long y, double wanted, double* taken) {
 // Must be called with `particles_mutex` locked, since it adds particles
 // straight into the simulation.
 static void apply_splash(void* item) {
-    Uint32 x = ((splash*)item)->x;
-    Uint32 y = ((splash*)item)->y;
-    if (is_wall(x, y)) return;
-    long sides_x[2] = {(long)x - 1, (long)x + 1};
-    long sides_y[2] = {0};
-    bool open[2] = {0};
-    double origin_x[2] = {0};
-    double origin_y[2] = {0};
-    for (Uint8 i = 0; i < 2; i++) {
+    splash sp = *(splash*)item;
+    double body_max_speed = particles_data.splash_body_max_speed;
+    double strength = SDL_min(sp.speed, body_max_speed) / body_max_speed;
+    if (strength < EPSILON || sp.w == 0) return;
+
+    double fan = particles_data.splash_fan_angle * SDL_PI_D / 180.0f;
+    double jitter = particles_data.splash_angle_jitter * SDL_PI_D / 180.0f;
+    double slice = fan / sp.w;
+
+    for (Uint32 i = 0; i < sp.w; i++) {
+        long x = (long)sp.x + i;
+        long y = 0;
         // Particles spawn on the cell above the surface, so it can't be a wall
         // or they would be destroyed.
-        open[i] = find_surface_near(sides_x[i], y, &sides_y[i]) &&
-                  !is_wall(sides_x[i], sides_y[i] - 1);
-        origin_x[i] = (sides_x[i] + 0.5f) * FLUIDS_CELL_W;
-        origin_y[i] = sides_y[i] * FLUIDS_CELL_H - 1.0f;
-    }
-    Uint8 open_count = open[0] + open[1];
-    if (open_count == 0) return;
+        if (!find_surface_near(x, sp.y, &y) || is_wall(x, y - 1)) continue;
 
-    double fan = FLUID_SPLASH_FAN_ANGLE * SDL_PI_D / 180.0f;
-    double jitter = FLUID_SPLASH_ANGLE_JITTER * SDL_PI_D / 180.0f;
+        double taken[FLUIDS_TOTAL] = {0};
+        double wanted = take_from_cell(
+            x, y, strength * particles_data.splash_volume, taken);
+        if (wanted > EPSILON) take_from_cell(x, y + 1, wanted, taken);
 
-    double taken[FLUIDS_TOTAL] = {0};
-    for (Uint8 i = 0; i < 2; i++) {
-        if (!open[i]) continue;
-        double wanted = take_from_cell(sides_x[i], sides_y[i], 1.0f, taken);
-        if (wanted > EPSILON)
-            take_from_cell(sides_x[i], sides_y[i] + 1, wanted, taken);
-    }
+        // This column's slice of the fan, pointing up, the leftmost column
+        // getting the leftmost slice.
+        double from = slice * i - fan / 2;
+        for (Uint8 type = 0; type < FLUIDS_TOTAL; type++) {
+            double total = taken[type];
+            double vol = data[type].particle_vol;
+            Uint32 count = vol > EPSILON ? (Uint32)SDL_floor(total / vol) : 0;
+            grid[x][y].volume[type] += SDL_max(total - count * vol, 0.0f);
 
-    for (Uint8 type = 0; type < FLUIDS_TOTAL; type++) {
-        double total = taken[type];
-        double vol = data[type].particle_vol;
-        Uint32 count = vol > EPSILON ? (Uint32)SDL_floor(total / vol) : 0;
-        double remainder = SDL_max(total - count * vol, 0.0f);
-        for (Uint8 i = 0; i < 2; i++) {
-            if (open[i])
-                grid[sides_x[i]][sides_y[i]].volume[type] +=
-                    remainder / open_count;
-        }
-
-        // Spreads the particles evenly over the fan, pointing up, each with a
-        // random nudge in its direction and a random speed. The left half of
-        // the fan spawns above the left cell and the right half above the right
-        // one.
-        for (Uint32 n = 0; n < count; n++) {
-            double angle = count > 1 ? fan * n / (count - 1) - fan / 2 : 0.0f;
-            angle += (SDL_randf() * 2.0f - 1.0f) * jitter;
-            Uint8 side = open_count == 2 ? n * 2 >= count : open[1];
-            double speed = SDL_randf() * FLUID_SPLASH_SPEED;
-            add_fluid_particle((fluid_particle){
-                .x = origin_x[side],
-                .y = origin_y[side],
-                .vel_x = speed * SDL_sin(angle),
-                .vel_y = -speed * SDL_cos(angle),
-                .type = type,
-            });
+            // Spreads the particles evenly over the slice, each with a random
+            // nudge in its direction and a random speed.
+            for (Uint32 n = 0; n < count; n++) {
+                double angle = from + slice * (n + 0.5f) / count;
+                angle += (SDL_randf() * 2.0f - 1.0f) * jitter;
+                double speed = SDL_randf() * strength *
+                               particles_data.splash_particle_max_speed;
+                add_fluid_particle((fluid_particle){
+                    .x = (x + 0.5f) * FLUIDS_CELL_W,
+                    .y = y * FLUIDS_CELL_H - 1.0f,
+                    .vel_x = speed * SDL_sin(angle),
+                    .vel_y = -speed * SDL_cos(angle),
+                    .type = type,
+                });
+            }
         }
     }
 }
@@ -923,6 +981,8 @@ void FLUIDS_step(void) {
     drain_queue(&queued_particles, queued_particles_mutex, add_queued_particle);
     simulate_fluid_particles();
     SDL_UnlockMutex(particles_mutex);
+
+    SDL_AddAtomicInt(&ripples_ticks, 1);
 }
 
 
@@ -993,15 +1053,24 @@ static double quarter_px(double vol) {
 // 1. If two adjacent neighbors are the same material and lighter than the
 //    pixel, while the other two are fluids, the pixel is a corner poking into
 //    that material and is painted as it. Corners poking into air are painted as
-//    air, which renders nothing. Conversely, if two adjacent neighbors are the
+//    air. Conversely, if two adjacent neighbors are the
 //    same fluid and denser than the pixel, while the other two are the same
 //    material as the pixel, it's an inner corner of that fluid and is painted
-//    as it. Inner corners of air get contoured on step 2.
-// 2. It calls the function of the pixel's fluid, like `water()` on
-//    `src/gpu/includes/water.hlsli`, with the pixel and its neighbors, which
-//    returns its final color. Each fluid gets its base color from the `_Colors`
-//    uniform, which `set_shader_colors()` fills from the fluid data every
-//    frame, and brightens pixels next to air to draw a contour.
+//    as it. Inner corners of air get contoured on step 4.
+// 2. Pixels without fluid are painted with `_PreFluids`, everything the
+//    renderer drew before the fluids, as is, so the shader covers the whole
+//    render target.
+// 3. Fluid pixels sample `_PreFluids` offset by the normal of the ripples'
+//    height at the pixel, from `_Ripples`, the latest of
+//    `fluids_canvas.ripples`, so ripples refract what's under the fluid. See
+//    `step_ripples()`.
+// 4. It calls the function of the pixel's fluid, like `water()` on
+//    `src/gpu/includes/water.hlsli`, with the pixel, the refracted sample, the
+//    ripples' normal and its neighbors, which returns its final color. Each
+//    fluid gets its base color from the `_Colors` uniform, which
+//    `set_shader_uniforms()` fills from the fluid data every frame, blends it
+//    with the refracted sample, lights the ripples with their normal and
+//    brightens pixels next to air to draw a contour.
 //
 // Adding a fluid requires a new `IDX_*` define, a new include with its
 // function, a call to it on `main()` and increasing the size of `_Colors`.
@@ -1075,7 +1144,7 @@ static void draw_particles(SDL_Renderer* renderer) {
         float x = SDL_floor(p.x);
         float y = SDL_floor(p.y);
         int n =
-            data[p.type].particle_vol < FLUID_PARTICLES_SIZE_THRESHOLD ? 1 : 4;
+            data[p.type].particle_vol < particles_data.size_threshold ? 1 : 4;
         SDL_FPoint points[4] = {
             {x, y}, {x + 1.0f, y}, {x, y + 1.0f}, {x + 1.0f, y + 1.0f}};
 #ifndef TEST
@@ -1094,37 +1163,104 @@ static void draw_particles(SDL_Renderer* renderer) {
 }
 
 #ifndef TEST
-static void set_shader_colors(SDL_GPURenderState* render_state) {
+// Matches the fluids shader's uniforms on
+// `src/gpu/includes/fluids-uniforms.hlsli`, padded to a multiple of 16 bytes.
+typedef struct {
     // Each fluid's color indexed by type.
-    float colors[FLUIDS_TOTAL][4] = {0};
+    float colors[FLUIDS_TOTAL][4];
+    // Camera position in uv units, so world pixels over the screen's size.
+    float cam_pos[2];
+    // Seconds since the game started.
+    float time;
+    float padding;
+} shader_uniforms;
+
+// TODO: set `cam_pos` from the camera once there is one.
+static void set_shader_uniforms(SDL_GPURenderState* render_state) {
+    shader_uniforms uniforms = {.cam_pos = {0.0f, 0.0f},
+                                .time = SDL_GetTicks() / 1000.0f};
     for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
-        colors[t][0] = data[t].col_r / 255.0f;
-        colors[t][1] = data[t].col_g / 255.0f;
-        colors[t][2] = data[t].col_b / 255.0f;
-        colors[t][3] = data[t].col_a / 255.0f;
+        uniforms.colors[t][0] = data[t].col_r / 255.0f;
+        uniforms.colors[t][1] = data[t].col_g / 255.0f;
+        uniforms.colors[t][2] = data[t].col_b / 255.0f;
+        uniforms.colors[t][3] = data[t].col_a / 255.0f;
     }
     SDL_SetGPURenderStateFragmentUniforms(
-        render_state, 0, colors, sizeof(colors));
+        render_state, 0, &uniforms, sizeof(uniforms));
 }
 #endif
 
-void FLUIDS_draw(SDL_Renderer* renderer,
-                 SDL_Texture* texture,
-                 SDL_GPURenderState* render_state) {
+// Ripples are simulated on two float textures the size of `fluids_texture`,
+// `fluids_canvas.ripples`, holding each pixel's current height on red and its
+// previous height on green. On the first tick of a draw, the queued ripples
+// are added to the current height of the latest one, a `FLUIDS_RIPPLE_SIZE`
+// square of pixels each, so they build on the ripples already there instead of
+// flattening them. Then, each tick, the latest is drawn into the other
+// with the ripples shader, `src/gpu/ripples.frag.hlsl`, which ticks them and
+// makes that one the latest. The shader samples `fluids_texture`, drawn just
+// before, so ripples only spread through pixels of the same fluid type,
+// bouncing off anything else, and pixels that aren't fluid are flattened.
+//
+// Since rendering must happen on the main thread, ripples aren't ticked on
+// `FLUIDS_step()`. It counts ticks on `ripples_ticks` instead, which are all
+// run here, so ripples run at the fluids thread's rate. When the main thread
+// falls behind, ticks over `FLUIDS_RIPPLES_MAX_TICKS` are dropped.
+static void step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas) {
+    int ticks = SDL_SetAtomicInt(&ripples_ticks, 0);
+    if (ticks <= 0) return;
+    ticks = SDL_min(ticks, FLUIDS_RIPPLES_MAX_TICKS);
+
+#ifndef TEST
+    SDL_SetRenderTarget(renderer, canvas->ripples[ripples_idx]);
+    SDL_BlendMode blend_mode = SDL_BLENDMODE_NONE;
+    SDL_GetRenderDrawBlendMode(renderer, &blend_mode);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_ADD);
+
+    // SDL mutexes are recursive, so it stays locked while draining.
+    SDL_LockMutex(ripples_mutex);
+    for (size_t i = 0; i < ripples.len; i++) {
+        ripple* r = ripples.at[i];
+        SDL_SetRenderDrawColorFloat(renderer, r->strength, 0.0f, 0.0f, 1.0f);
+        SDL_FRect rect = {r->x - FLUIDS_RIPPLE_SIZE / 2.0f,
+                          r->y - FLUIDS_RIPPLE_SIZE / 2.0f,
+                          FLUIDS_RIPPLE_SIZE,
+                          FLUIDS_RIPPLE_SIZE};
+        SDL_RenderFillRect(renderer, &rect);
+    }
+    drain_queue(&ripples, ripples_mutex, NULL);
+    SDL_UnlockMutex(ripples_mutex);
+    SDL_SetRenderDrawBlendMode(renderer, blend_mode);
+
+    SDL_SetGPURenderState(renderer, canvas->ripples_state);
+    for (int i = 0; i < ticks; i++) {
+        SDL_Texture* from = canvas->ripples[ripples_idx];
+        SDL_SetRenderTarget(renderer, canvas->ripples[1 - ripples_idx]);
+        SDL_RenderTexture(renderer, from, NULL, NULL);
+        ripples_idx = 1 - ripples_idx;
+    }
+    SDL_SetGPURenderState(renderer, NULL);
+#else
+    drain_queue(&ripples, ripples_mutex, NULL);
+#endif
+}
+
+void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas) {
 #ifndef TEST
     SDL_Texture* target = SDL_GetRenderTarget(renderer);
-    SDL_SetRenderTarget(renderer, texture);
+    SDL_SetRenderTarget(renderer, canvas->texture);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
 #endif
 
     draw_grid(renderer);
+    step_ripples(renderer, canvas);
 
 #ifndef TEST
+    SDL_GPURenderState* render_state = canvas->render_states[ripples_idx];
     SDL_SetRenderTarget(renderer, target);
-    set_shader_colors(render_state);
+    set_shader_uniforms(render_state);
     SDL_SetGPURenderState(renderer, render_state);
-    SDL_RenderTexture(renderer, texture, NULL, NULL);
+    SDL_RenderTexture(renderer, canvas->texture, NULL, NULL);
     SDL_SetGPURenderState(renderer, NULL);
 #endif
 
@@ -1145,7 +1281,12 @@ int FLUIDS_add_particle(
     return 0;
 }
 
-void FLUIDS_splash_at(Uint32 x, Uint32 y) {
-    splash sp = {.x = x, .y = y};
+void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed) {
+    splash sp = {.x = x, .y = y, .w = w, .speed = speed};
     queue_item(&splashes, splashes_mutex, &sp, sizeof(sp));
+}
+
+void FLUIDS_ripple_at(Uint32 x, Uint32 y, double strength) {
+    ripple r = {.x = x, .y = y, .strength = strength};
+    queue_item(&ripples, ripples_mutex, &r, sizeof(r));
 }
