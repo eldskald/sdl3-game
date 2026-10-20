@@ -271,6 +271,10 @@ void PLAYER_SPRITE_create(void) {
             .coords_y = data.coords_y,
             .coords_w = data.coords_w,
             .coords_h = data.coords_h,
+            .tint_r = 2.0,
+            .tint_g = 2.0,
+            .tint_b = 2.0,
+            .tint_a = 1.0,
         },
         &state.sprite_id);
     state.created = true;

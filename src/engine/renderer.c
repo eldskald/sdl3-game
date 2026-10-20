@@ -3,20 +3,65 @@
 #include "engine/fluids.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
+#include "services/csv.h"
 #include <SDL3/SDL.h>
 
 #ifndef TEST
 static SDL_Window* window = NULL;
 static SDL_Texture* base_screen = NULL;
+static SDL_Texture* final_screen = NULL;
+static SDL_Texture* bloom_prefilter = NULL;
+static SDL_Texture* bloom_chain[BLOOM_MAX_ITERATIONS] = {0};
 static SDL_Texture* pre_fluids_texture = NULL;
 static SDL_GPUDevice* device = NULL;
 static SDL_GPUShader* fluids_shader = NULL;
 static SDL_GPUShader* ripples_shader = NULL;
+static SDL_GPUShader* tonemap_shader = NULL;
+static SDL_GPURenderState* tonemap_state = NULL;
+static SDL_GPUShader* tint_shader = NULL;
+static SDL_GPURenderState* tint_state = NULL;
+static SDL_GPUShader* bloom_prefilter_shader = NULL;
+static SDL_GPURenderState* bloom_prefilter_state = NULL;
+static SDL_GPUShader* box_sample_shader = NULL;
+static SDL_GPURenderState* downsample_state = NULL;
+static SDL_GPURenderState* upsample_state = NULL;
 static SDL_GPUSampler* nearest_sampler = NULL;
 #endif
 static SDL_Renderer* renderer = NULL;
 static SDL_Texture* spritesheet = NULL;
 static fluids_canvas fluids = (fluids_canvas){0};
+static float bloom_threshold = 1.0f;
+static float bloom_soft_threshold = 0.5f;
+static int bloom_iterations = 4;
+
+
+
+#ifndef TEST
+// Float render target, so colors can go beyond 1.0. It's half float since
+// SDL's GPU renderer doesn't support RGBA128_FLOAT, it would silently make a
+// native RGBA64_FLOAT texture behind it, linear and without a GPU texture
+// pointer to bind to shaders. Its colorspace is sRGB, otherwise float textures
+// default to linear and SDL would convert everything drawn on it.
+static SDL_Texture* create_hdr_target(int w, int h) {
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetNumberProperty(props,
+                          SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER,
+                          SDL_PIXELFORMAT_RGBA64_FLOAT);
+    SDL_SetNumberProperty(
+        props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_TARGET);
+    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, w);
+    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, h);
+    SDL_SetNumberProperty(
+        props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_SRGB);
+    SDL_Texture* texture = SDL_CreateTextureWithProperties(renderer, props);
+    SDL_DestroyProperties(props);
+    if (texture) {
+        SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE);
+    }
+    return texture;
+}
+#endif
 
 
 
@@ -72,36 +117,85 @@ static int start_graphics_pipeline() {
     }
     SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "SDL_Renderer created successfully.");
 
-    // Creating SDL_Texture for the base game
-    base_screen = SDL_CreateTexture(renderer,
-                                    SDL_PIXELFORMAT_ABGR8888,
-                                    SDL_TEXTUREACCESS_TARGET,
-                                    WINDOW_SIZE_X,
-                                    WINDOW_SIZE_Y);
+    // Creating SDL_Texture for the base game. It's HDR for post processing,
+    // and tone mapped onto final_screen.
+    base_screen = create_hdr_target(WINDOW_SIZE_X, WINDOW_SIZE_Y);
     if (!base_screen) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
                      "Couldn't create SDL_Texture base_screen: %s",
                      SDL_GetError());
         return 1;
     }
-    SDL_SetTextureScaleMode(base_screen, SDL_SCALEMODE_NEAREST);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture base_screen created successfully.");
 
+    // Creating SDL_Texture for the parts of base_screen bright enough to bloom.
+    // It's filtered linearly for the downsampling to blur it.
+    bloom_prefilter = create_hdr_target(WINDOW_SIZE_X, WINDOW_SIZE_Y);
+    if (!bloom_prefilter) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create SDL_Texture bloom_prefilter: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_SetTextureScaleMode(bloom_prefilter, SDL_SCALEMODE_LINEAR);
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
+                "SDL_Texture bloom_prefilter created successfully.");
+
+    // Creating SDL_Textures for the bloom's downsampling chain, each half the
+    // size of the previous one, starting at half of bloom_prefilter. Also
+    // filtered linearly. The chain is cut short when it would get too small.
+    for (int i = 0; i < bloom_iterations; i++) {
+        int w = WINDOW_SIZE_X >> (i + 1);
+        int h = WINDOW_SIZE_Y >> (i + 1);
+        if (w < 1 || h < 1) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_GPU,
+                        "Bloom iterations cut from %d to %d, the screen is "
+                        "too small for more.",
+                        bloom_iterations,
+                        i);
+            bloom_iterations = i;
+            break;
+        }
+        bloom_chain[i] = create_hdr_target(w, h);
+        if (!bloom_chain[i]) {
+            SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                         "Couldn't create SDL_Texture bloom_chain: %s",
+                         SDL_GetError());
+            return 1;
+        }
+        SDL_SetTextureScaleMode(bloom_chain[i], SDL_SCALEMODE_LINEAR);
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
+                "SDL_Texture bloom_chain created successfully.");
+
+    // Creating SDL_Texture for base_screen tone mapped, which is what's drawn
+    // on the window
+    final_screen = SDL_CreateTexture(renderer,
+                                     SDL_PIXELFORMAT_ABGR8888,
+                                     SDL_TEXTUREACCESS_TARGET,
+                                     WINDOW_SIZE_X,
+                                     WINDOW_SIZE_Y);
+    if (!final_screen) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create SDL_Texture final_screen: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_SetTextureScaleMode(final_screen, SDL_SCALEMODE_NEAREST);
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
+                "SDL_Texture final_screen created successfully.");
+
     // Creating SDL_Texture for everything drawn before the fluids, for them to
-    // refract
-    pre_fluids_texture = SDL_CreateTexture(renderer,
-                                           SDL_PIXELFORMAT_ABGR8888,
-                                           SDL_TEXTUREACCESS_TARGET,
-                                           WINDOW_SIZE_X,
-                                           WINDOW_SIZE_Y);
+    // refract. It's HDR, since it's drawn as is on base_screen where there are
+    // no fluids.
+    pre_fluids_texture = create_hdr_target(WINDOW_SIZE_X, WINDOW_SIZE_Y);
     if (!pre_fluids_texture) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
                      "Couldn't create SDL_Texture pre_fluids_texture: %s",
                      SDL_GetError());
         return 1;
     }
-    SDL_SetTextureScaleMode(pre_fluids_texture, SDL_SCALEMODE_NEAREST);
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture pre_fluids_texture created successfully.");
 
@@ -198,6 +292,33 @@ static SDL_GPUShader* load_fragment_shader(const Uint8* spirv,
     return SDL_CreateGPUShader(device, &info);
 }
 #endif
+
+static void load_bloom_data_from_csv(void) {
+    char csv[] = {
+#embed BLOOM_CSV_PATH suffix(, '\0')
+    };
+
+    dynarr parsed = CSV_parse(csv);
+
+    for (int i = 0; i < parsed.len; i++) {
+        if (((dynarr*)parsed.at[i])->len < 2) continue;
+        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
+        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
+        if (SDL_strcmp(key, "threshold") == 0)
+            bloom_threshold = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "soft_threshold") == 0)
+            bloom_soft_threshold = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "iterations") == 0)
+            bloom_iterations = SDL_strtol(val, NULL, 10);
+    }
+
+    CSV_free(&parsed);
+
+    bloom_iterations = SDL_clamp(bloom_iterations, 1, BLOOM_MAX_ITERATIONS);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Bloom data loaded successfully.");
+}
 
 static int load_graphics_files(void) {
 #ifndef TEST
@@ -303,6 +424,146 @@ static int load_graphics_files(void) {
         return 1;
     }
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Ripples shader loaded successfully.");
+
+    // Tone mapping shader and render state
+    static const Uint8 tonemap_spirv[] = {
+#embed TONEMAP_FRAG_SPIRV_PATH
+    };
+    static const Uint8 tonemap_dxil[] = {
+#embed TONEMAP_FRAG_DXIL_PATH
+    };
+    tonemap_shader = load_fragment_shader(tonemap_spirv,
+                                          sizeof(tonemap_spirv),
+                                          tonemap_dxil,
+                                          sizeof(tonemap_dxil),
+                                          1,
+                                          0);
+    if (!tonemap_shader) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create tonemap_shader: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    tonemap_state =
+        SDL_CreateGPURenderState(renderer,
+                                 &(SDL_GPURenderStateCreateInfo){
+                                     .fragment_shader = tonemap_shader,
+                                 });
+    if (!tonemap_state) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create tonemap_render_state: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Tonemap shader loaded successfully.");
+
+    // Tint shader and render state, for sprites. Its uniforms are set per
+    // sprite.
+    static const Uint8 tint_spirv[] = {
+#embed TINT_FRAG_SPIRV_PATH
+    };
+    static const Uint8 tint_dxil[] = {
+#embed TINT_FRAG_DXIL_PATH
+    };
+    tint_shader = load_fragment_shader(
+        tint_spirv, sizeof(tint_spirv), tint_dxil, sizeof(tint_dxil), 1, 1);
+    if (!tint_shader) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create tint_shader: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    tint_state = SDL_CreateGPURenderState(renderer,
+                                          &(SDL_GPURenderStateCreateInfo){
+                                              .fragment_shader = tint_shader,
+                                          });
+    if (!tint_state) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create tint_render_state: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Tint shader loaded successfully.");
+
+    // Bloom prefilter shader and render state. Its thresholds never change, so
+    // its uniforms are set once here.
+    static const Uint8 bloom_prefilter_spirv[] = {
+#embed BLOOM_PREFILTER_FRAG_SPIRV_PATH
+    };
+    static const Uint8 bloom_prefilter_dxil[] = {
+#embed BLOOM_PREFILTER_FRAG_DXIL_PATH
+    };
+    bloom_prefilter_shader = load_fragment_shader(bloom_prefilter_spirv,
+                                                  sizeof(bloom_prefilter_spirv),
+                                                  bloom_prefilter_dxil,
+                                                  sizeof(bloom_prefilter_dxil),
+                                                  1,
+                                                  1);
+    if (!bloom_prefilter_shader) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create bloom_prefilter_shader: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    bloom_prefilter_state =
+        SDL_CreateGPURenderState(renderer,
+                                 &(SDL_GPURenderStateCreateInfo){
+                                     .fragment_shader = bloom_prefilter_shader,
+                                 });
+    if (!bloom_prefilter_state) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create bloom_prefilter_render_state: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    float bloom_prefilter_uniforms[2] = {bloom_threshold, bloom_soft_threshold};
+    SDL_SetGPURenderStateFragmentUniforms(bloom_prefilter_state,
+                                          0,
+                                          bloom_prefilter_uniforms,
+                                          sizeof(bloom_prefilter_uniforms));
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
+                "Bloom prefilter shader loaded successfully.");
+
+    // Box sample shader and its render states, one for downsampling and one
+    // for upsampling. Uniforms belong to the render state, so each _Delta
+    // gets its own state instead of changing it between draws in a frame.
+    static const Uint8 box_sample_spirv[] = {
+#embed BOX_SAMPLE_FRAG_SPIRV_PATH
+    };
+    static const Uint8 box_sample_dxil[] = {
+#embed BOX_SAMPLE_FRAG_DXIL_PATH
+    };
+    box_sample_shader = load_fragment_shader(box_sample_spirv,
+                                             sizeof(box_sample_spirv),
+                                             box_sample_dxil,
+                                             sizeof(box_sample_dxil),
+                                             1,
+                                             1);
+    if (!box_sample_shader) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create box_sample_shader: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    SDL_GPURenderStateCreateInfo box_sample_info =
+        (SDL_GPURenderStateCreateInfo){
+            .fragment_shader = box_sample_shader,
+    };
+    downsample_state = SDL_CreateGPURenderState(renderer, &box_sample_info);
+    upsample_state = SDL_CreateGPURenderState(renderer, &box_sample_info);
+    if (!downsample_state || !upsample_state) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                     "Couldn't create box_sample_render_state: %s",
+                     SDL_GetError());
+        return 1;
+    }
+    float downsample_delta = 1.0f;
+    float upsample_delta = 0.5f;
+    SDL_SetGPURenderStateFragmentUniforms(
+        downsample_state, 0, &downsample_delta, sizeof(downsample_delta));
+    SDL_SetGPURenderStateFragmentUniforms(
+        upsample_state, 0, &upsample_delta, sizeof(upsample_delta));
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Box sample shader loaded successfully.");
 #endif
 
     return 0;
@@ -320,7 +581,11 @@ static void render_base_screen(void) {
     SDL_RenderClear(renderer);
 #endif
 
-    SPRITES_draw(renderer, spritesheet);
+#ifndef TEST
+    SPRITES_draw(renderer, spritesheet, tint_state);
+#else
+    SPRITES_draw(renderer, spritesheet, NULL);
+#endif
 
 #ifndef TEST
     SDL_SetRenderTarget(renderer, base_screen);
@@ -338,6 +603,45 @@ static void render_base_screen(void) {
 
 
 
+// Bloom: the parts of base_screen bright enough to bloom are filtered onto
+// bloom_prefilter, which is downsampled down bloom_chain, blurring it more each
+// time. Then it's upsampled back up, each level added onto the one above it,
+// and the first one is added onto base_screen. Then base_screen is tone mapped
+// onto final_screen.
+static void render_post_processing(void) {
+#ifndef TEST
+    SDL_SetRenderTarget(renderer, bloom_prefilter);
+    SDL_SetGPURenderState(renderer, bloom_prefilter_state);
+    SDL_RenderTexture(renderer, base_screen, NULL, NULL);
+
+    SDL_SetGPURenderState(renderer, downsample_state);
+    SDL_Texture* source = bloom_prefilter;
+    for (int i = 0; i < bloom_iterations; i++) {
+        SDL_SetTextureBlendMode(source, SDL_BLENDMODE_NONE);
+        SDL_SetRenderTarget(renderer, bloom_chain[i]);
+        SDL_RenderTexture(renderer, source, NULL, NULL);
+        source = bloom_chain[i];
+    }
+
+    SDL_SetGPURenderState(renderer, upsample_state);
+    for (int i = bloom_iterations - 1; i > 0; i--) {
+        SDL_SetTextureBlendMode(bloom_chain[i], SDL_BLENDMODE_ADD);
+        SDL_SetRenderTarget(renderer, bloom_chain[i - 1]);
+        SDL_RenderTexture(renderer, bloom_chain[i], NULL, NULL);
+    }
+    SDL_SetTextureBlendMode(bloom_chain[0], SDL_BLENDMODE_ADD);
+    SDL_SetRenderTarget(renderer, base_screen);
+    SDL_RenderTexture(renderer, bloom_chain[0], NULL, NULL);
+
+    SDL_SetRenderTarget(renderer, final_screen);
+    SDL_SetGPURenderState(renderer, tonemap_state);
+    SDL_RenderTexture(renderer, base_screen, NULL, NULL);
+    SDL_SetGPURenderState(renderer, NULL);
+#endif
+}
+
+
+
 static void render_final_screen(void) {
 #ifndef TEST
     SDL_SetRenderTarget(renderer, NULL);
@@ -349,7 +653,7 @@ static void render_final_screen(void) {
     float window_ar = (float)window_w / (float)window_h;
     float base_ar = (float)WINDOW_SIZE_X / (float)WINDOW_SIZE_Y;
 
-    // Center and stretch base_screen
+    // Center and stretch final_screen
     int x, y, w, h;
     if (window_ar >= base_ar) {
         h = window_h;
@@ -363,14 +667,14 @@ static void render_final_screen(void) {
         y = (window_h - h) / 2;
     }
 
-    // Render base_screen
+    // Render final_screen
     SDL_FRect dstrect = (SDL_FRect){
         .x = x,
         .y = y,
         .w = w,
         .h = h,
     };
-    SDL_RenderTexture(renderer, base_screen, NULL, &dstrect);
+    SDL_RenderTexture(renderer, final_screen, NULL, &dstrect);
 
     SDL_RenderPresent(renderer);
 #endif
@@ -379,6 +683,7 @@ static void render_final_screen(void) {
 
 
 int RENDERER_start(void) {
+    load_bloom_data_from_csv();
     if (start_graphics_pipeline()) return 1;
     if (load_graphics_files()) return 1;
     return 0;
@@ -387,6 +692,15 @@ int RENDERER_start(void) {
 
 void RENDERER_stop(void) {
 #ifndef TEST
+    SDL_DestroyGPURenderState(upsample_state);
+    SDL_DestroyGPURenderState(downsample_state);
+    SDL_ReleaseGPUShader(device, box_sample_shader);
+    SDL_DestroyGPURenderState(bloom_prefilter_state);
+    SDL_ReleaseGPUShader(device, bloom_prefilter_shader);
+    SDL_DestroyGPURenderState(tint_state);
+    SDL_ReleaseGPUShader(device, tint_shader);
+    SDL_DestroyGPURenderState(tonemap_state);
+    SDL_ReleaseGPUShader(device, tonemap_shader);
     SDL_DestroyGPURenderState(fluids.ripples_state);
     SDL_ReleaseGPUShader(device, ripples_shader);
     for (Uint8 i = 0; i < 2; i++) {
@@ -397,6 +711,10 @@ void RENDERER_stop(void) {
     SDL_ReleaseGPUSampler(device, nearest_sampler);
     SDL_DestroyTexture(fluids.texture);
     SDL_DestroyTexture(pre_fluids_texture);
+    for (int i = 0; i < bloom_iterations; i++)
+        SDL_DestroyTexture(bloom_chain[i]);
+    SDL_DestroyTexture(bloom_prefilter);
+    SDL_DestroyTexture(final_screen);
     SDL_DestroyTexture(base_screen);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyGPUDevice(device);
@@ -408,5 +726,6 @@ void RENDERER_stop(void) {
 
 void RENDERER_update(void) {
     render_base_screen();
+    render_post_processing();
     render_final_screen();
 }
