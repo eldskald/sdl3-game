@@ -14,7 +14,7 @@
 #define LAVA_BLOBS_THRESHOLD 0.7
 #define LAVA_BLOBS_STRENGTH 2.5
 #define LAVA_BLOBS_TINT 0.7
-#define LAVA_BLOBS_COLOR float3(0.6, 0.15, 0.0)
+#define LAVA_BLOBS_COLOR float3(0.6, 0.3, 0.0)
 
 #define LAVA_CONTOUR 0.4
 #define LAVA_BACKGROUND_BLEND 0.1
