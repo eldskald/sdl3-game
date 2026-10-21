@@ -24,7 +24,7 @@ static SDL_GPUShader* bloom_prefilter_shader = NULL;
 static SDL_GPURenderState* bloom_prefilter_state = NULL;
 static SDL_GPUShader* box_sample_shader = NULL;
 static SDL_GPURenderState* downsample_state = NULL;
-static SDL_GPURenderState* upsample_state = NULL;
+static SDL_GPURenderState* upsample_states[BLOOM_MAX_ITERATIONS] = {0};
 static SDL_GPUSampler* nearest_sampler = NULL;
 #endif
 static SDL_Renderer* renderer = NULL;
@@ -33,6 +33,7 @@ static fluids_canvas fluids = (fluids_canvas){0};
 static float bloom_threshold = 1.0f;
 static float bloom_soft_threshold = 0.5f;
 static int bloom_iterations = 4;
+static float bloom_intensities[BLOOM_MAX_ITERATIONS] = {0};
 static bool window_resized = false;
 
 
@@ -299,6 +300,9 @@ static void load_bloom_data_from_csv(void) {
 #embed BLOOM_CSV_PATH suffix(, '\0')
     };
 
+    for (int i = 0; i < BLOOM_MAX_ITERATIONS; i++)
+        bloom_intensities[i] = 1.0f;
+
     dynarr parsed = CSV_parse(csv);
 
     for (int i = 0; i < parsed.len; i++) {
@@ -309,8 +313,12 @@ static void load_bloom_data_from_csv(void) {
             bloom_threshold = SDL_strtod(val, NULL);
         else if (SDL_strcmp(key, "soft_threshold") == 0)
             bloom_soft_threshold = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "iterations") == 0)
-            bloom_iterations = SDL_strtol(val, NULL, 10);
+        else if (SDL_strcmp(key, "intensities") == 0) {
+            dynarr* row = (dynarr*)parsed.at[i];
+            bloom_iterations = row->len - 1;
+            for (int j = 1; j < row->len && j <= BLOOM_MAX_ITERATIONS; j++)
+                bloom_intensities[j - 1] = SDL_strtod((char*)row->at[j], NULL);
+        }
     }
 
     CSV_free(&parsed);
@@ -526,8 +534,9 @@ static int load_graphics_files(void) {
                 "Bloom prefilter shader loaded successfully.");
 
     // Box sample shader and its render states, one for downsampling and one
-    // for upsampling. Uniforms belong to the render state, so each _Delta
-    // gets its own state instead of changing it between draws in a frame.
+    // for each upsampling level. Uniforms belong to the render state, so each
+    // _Delta and _Intensity gets its own state instead of changing it between
+    // draws in a frame.
     static const Uint8 box_sample_spirv[] = {
 #embed BOX_SAMPLE_FRAG_SPIRV_PATH
     };
@@ -551,19 +560,30 @@ static int load_graphics_files(void) {
             .fragment_shader = box_sample_shader,
     };
     downsample_state = SDL_CreateGPURenderState(renderer, &box_sample_info);
-    upsample_state = SDL_CreateGPURenderState(renderer, &box_sample_info);
-    if (!downsample_state || !upsample_state) {
+    if (!downsample_state) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
                      "Couldn't create box_sample_render_state: %s",
                      SDL_GetError());
         return 1;
     }
-    float downsample_delta = 1.0f;
-    float upsample_delta = 0.5f;
+    float downsample_uniforms[2] = {1.0f, 1.0f};
     SDL_SetGPURenderStateFragmentUniforms(
-        downsample_state, 0, &downsample_delta, sizeof(downsample_delta));
-    SDL_SetGPURenderStateFragmentUniforms(
-        upsample_state, 0, &upsample_delta, sizeof(upsample_delta));
+        downsample_state, 0, downsample_uniforms, sizeof(downsample_uniforms));
+    for (int i = 0; i < bloom_iterations; i++) {
+        upsample_states[i] =
+            SDL_CreateGPURenderState(renderer, &box_sample_info);
+        if (!upsample_states[i]) {
+            SDL_LogError(SDL_LOG_CATEGORY_GPU,
+                         "Couldn't create box_sample_render_state: %s",
+                         SDL_GetError());
+            return 1;
+        }
+        float upsample_uniforms[2] = {0.5f, bloom_intensities[i]};
+        SDL_SetGPURenderStateFragmentUniforms(upsample_states[i],
+                                              0,
+                                              upsample_uniforms,
+                                              sizeof(upsample_uniforms));
+    }
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Box sample shader loaded successfully.");
 #endif
 
@@ -606,9 +626,9 @@ static void render_base_screen(void) {
 
 // Bloom: the parts of base_screen bright enough to bloom are filtered onto
 // bloom_prefilter, which is downsampled down bloom_chain, blurring it more each
-// time. Then it's upsampled back up, each level added onto the one above it,
-// and the first one is added onto base_screen. Then base_screen is tone mapped
-// onto final_screen.
+// time. Then it's upsampled back up, each level multiplied by its intensity and
+// added onto the one above it, and the first one is added onto base_screen.
+// Then base_screen is tone mapped onto final_screen.
 static void render_post_processing(void) {
 #ifndef TEST
     SDL_SetRenderTarget(renderer, bloom_prefilter);
@@ -624,12 +644,13 @@ static void render_post_processing(void) {
         source = bloom_chain[i];
     }
 
-    SDL_SetGPURenderState(renderer, upsample_state);
     for (int i = bloom_iterations - 1; i > 0; i--) {
+        SDL_SetGPURenderState(renderer, upsample_states[i]);
         SDL_SetTextureBlendMode(bloom_chain[i], SDL_BLENDMODE_ADD);
         SDL_SetRenderTarget(renderer, bloom_chain[i - 1]);
         SDL_RenderTexture(renderer, bloom_chain[i], NULL, NULL);
     }
+    SDL_SetGPURenderState(renderer, upsample_states[0]);
     SDL_SetTextureBlendMode(bloom_chain[0], SDL_BLENDMODE_ADD);
     SDL_SetRenderTarget(renderer, base_screen);
     SDL_RenderTexture(renderer, bloom_chain[0], NULL, NULL);
@@ -703,7 +724,8 @@ int RENDERER_start(void) {
 
 void RENDERER_stop(void) {
 #ifndef TEST
-    SDL_DestroyGPURenderState(upsample_state);
+    for (int i = 0; i < bloom_iterations; i++)
+        SDL_DestroyGPURenderState(upsample_states[i]);
     SDL_DestroyGPURenderState(downsample_state);
     SDL_ReleaseGPUShader(device, box_sample_shader);
     SDL_DestroyGPURenderState(bloom_prefilter_state);
