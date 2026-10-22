@@ -38,6 +38,7 @@ typedef struct {
     body body;
     bool sleeping;
     double splash_cooldown;
+    double drop_timer;
 } body_data;
 
 
@@ -70,8 +71,6 @@ static Uint16 clamp_tile(double tile, Uint16 size) {
     return SDL_clamp(tile, 0.0, (double)(size - 1));
 }
 
-// Cells occupied by a rect snapped to pixels, w and h must be positive. Edges
-// exactly on a cell border don't occupy the next cell.
 static nbcoords get_rect_nbcoords(double x, double y, double w, double h) {
     double l = SDL_round(x);
     double t = SDL_round(y);
@@ -149,17 +148,13 @@ static bool are_intersecting(double ax,
 
 
 
-static void move_body_horizontally(body* b, double d) {
+static void move_body_horizontally(body_data* b, double d) {
 
     // tiles the corners of the body is in, snapped to pixels
-    double tl_x = SDL_round(b->x);
-    double tl_y = SDL_round(b->y);
-    double tr_x = SDL_round(b->x + b->w);
-    // double tr_y = SDL_round(b->y);
-    // double bl_x = SDL_round(b->x);
-    double bl_y = SDL_round(b->y + b->h);
-    // double br_x = SDL_round(b->x + b->w);
-    // double br_y = SDL_round(b->y + b->h);
+    double tl_x = SDL_round(b->body.x);
+    double tl_y = SDL_round(b->body.y);
+    double tr_x = SDL_round(b->body.x + b->body.w);
+    double bl_y = SDL_round(b->body.y + b->body.h);
 
     // when moving right
     if (d >= 0.0f) {
@@ -172,20 +167,21 @@ static void move_body_horizontally(body* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat) {
-                    if (SDL_roundf(b->y + b->h) <= SPRITESHEET_CELL_Y * j ||
-                        SDL_roundf(b->y) >= SPRITESHEET_CELL_Y * (j + 1))
+                if (r == 1 || (data.mat && !data.platform)) {
+                    if (SDL_roundf(b->body.y + b->body.h) <=
+                            SPRITESHEET_CELL_Y * j ||
+                        SDL_roundf(b->body.y) >= SPRITESHEET_CELL_Y * (j + 1))
                         continue;
                     found = true;
-                    b->x = SPRITESHEET_CELL_X * i - b->w;
-                    b->vel_x = 0.0f;
+                    b->body.x = SPRITESHEET_CELL_X * i - b->body.w;
+                    b->body.vel_x = 0.0f;
                     break;
                 }
             }
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->x += d;
+        if (!found) b->body.x += d;
     }
     // when moving left
     else {
@@ -198,36 +194,34 @@ static void move_body_horizontally(body* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat) {
-                    if (SDL_roundf(b->y + b->h) <= SPRITESHEET_CELL_Y * j ||
-                        SDL_roundf(b->y) >= SPRITESHEET_CELL_Y * (j + 1))
+                if (r == 1 || (data.mat && !data.platform)) {
+                    if (SDL_roundf(b->body.y + b->body.h) <=
+                            SPRITESHEET_CELL_Y * j ||
+                        SDL_roundf(b->body.y) >= SPRITESHEET_CELL_Y * (j + 1))
                         continue;
                     found = true;
-                    b->x = SPRITESHEET_CELL_X * (i + 1);
-                    b->vel_x = 0.0f;
+                    b->body.x = SPRITESHEET_CELL_X * (i + 1);
+                    b->body.vel_x = 0.0f;
                     break;
                 }
             }
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->x += d;
+        if (!found) b->body.x += d;
     }
 }
 
-static void move_body_vertically(body* b, double d) {
+static void move_body_vertically(body_data* b, double d) {
 
     // tiles the corners of the body is in
-    double tl_x = SDL_round(b->x);
-    double tl_y = SDL_round(b->y);
-    double tr_x = SDL_round(b->x + b->w);
-    // double tr_y = SDL_round(b->y);
-    // double bl_x = SDL_round(b->x);
-    double bl_y = SDL_round(b->y + b->h);
-    // double br_x = SDL_round(b->x + b->w);
-    // double br_y = SDL_round(b->y + b->h);
+    double tl_x = SDL_round(b->body.x);
+    double tl_y = SDL_round(b->body.y);
+    double tr_x = SDL_round(b->body.x + b->body.w);
+    double bl_y = SDL_round(b->body.y + b->body.h);
 
-    // when moving down
+    // when moving down, only here we care if tile is platform or if body is
+    // dropping down
     if (d >= 0.0f) {
         bool found = false;
         Uint16 from_y = pos_to_tile_y(bl_y);
@@ -239,19 +233,23 @@ static void move_body_vertically(body* b, double d) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
                 if (r == 1 || data.mat) {
-                    if (SDL_roundf(b->x + b->w) <= SPRITESHEET_CELL_X * i ||
-                        SDL_roundf(b->x) >= SPRITESHEET_CELL_X * (i + 1))
+                    if (data.platform &&
+                        (b->drop_timer > 0.0f || bl_y > SPRITESHEET_CELL_Y * j))
+                        continue;
+                    if (SDL_roundf(b->body.x + b->body.w) <=
+                            SPRITESHEET_CELL_X * i ||
+                        SDL_roundf(b->body.x) >= SPRITESHEET_CELL_X * (i + 1))
                         continue;
                     found = true;
-                    b->y = SPRITESHEET_CELL_Y * j - b->h;
-                    b->vel_y = 0.0f;
+                    b->body.y = SPRITESHEET_CELL_Y * j - b->body.h;
+                    b->body.vel_y = 0.0f;
                     break;
                 }
             }
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->y += d;
+        if (!found) b->body.y += d;
     }
     // when moving up
     else {
@@ -264,20 +262,21 @@ static void move_body_vertically(body* b, double d) {
             for (Uint16 j = from_y; j >= to_y; j--) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat) {
-                    if (SDL_roundf(b->x + b->w) <= SPRITESHEET_CELL_X * i ||
-                        SDL_roundf(b->x) >= SPRITESHEET_CELL_X * (i + 1))
+                if (r == 1 || (data.mat && !data.platform)) {
+                    if (SDL_roundf(b->body.x + b->body.w) <=
+                            SPRITESHEET_CELL_X * i ||
+                        SDL_roundf(b->body.x) >= SPRITESHEET_CELL_X * (i + 1))
                         continue;
                     found = true;
-                    b->y = SPRITESHEET_CELL_Y * (j + 1);
-                    b->vel_y = 0.0f;
+                    b->body.y = SPRITESHEET_CELL_Y * (j + 1);
+                    b->body.vel_y = 0.0f;
                     break;
                 }
             }
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->y += d;
+        if (!found) b->body.y += d;
     }
 }
 
@@ -456,6 +455,24 @@ int PHYSICS_set_velocity(size_t body_id, double vel_x, double vel_y) {
     return 0;
 }
 
+int PHYSICS_drop_down(size_t body_id) {
+    if (body_id >= bodies_cap || body_id < 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to drop down body_id=%lu but this is outside the "
+                    "buffer range",
+                    body_id);
+        return 3;
+    }
+    if (bodies[body_id].body.w == 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to drop down inexistent body at body_id=%lu",
+                    body_id);
+        return 1;
+    }
+    bodies[body_id].drop_timer = PHYSICS_DROP_TIMER;
+    return 0;
+}
+
 int PHYSICS_set_position(size_t body_id, double x, double y) {
     if (body_id >= bodies_cap || body_id < 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
@@ -533,6 +550,7 @@ void PHYSICS_update(void) {
         if (bodies[i].body.w == 0 || bodies[i].body.h == 0) continue;
         if (bodies[i].sleeping) continue;
         bodies[i].splash_cooldown -= dt;
+        bodies[i].drop_timer -= dt;
         if (SDL_fabs(bodies[i].body.vel_x) <= EPSILON &&
             SDL_fabs(bodies[i].body.vel_y) <= EPSILON)
             continue;
@@ -548,8 +566,8 @@ void PHYSICS_update(void) {
         double x0 = bodies[i].body.x;
         double y0 = bodies[i].body.y;
         if (bodies[i].body.type == physics_actor) {
-            move_body_horizontally(&bodies[i].body, dvx);
-            move_body_vertically(&bodies[i].body, dvy);
+            move_body_horizontally(&bodies[i], dvx);
+            move_body_vertically(&bodies[i], dvy);
         } else {
             bodies[i].body.x += dvx;
             bodies[i].body.y += dvy;
@@ -651,6 +669,45 @@ int PHYSICS_is_on_floor(size_t body_id, bool* check) {
     return 0;
 }
 
+int PHYSICS_is_on_platform(size_t body_id, bool* check) {
+    if (body_id >= bodies_cap || body_id < 0) {
+        SDL_LogWarn(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "Tried to check body_id=%lu but this is outside the buffer range",
+            body_id);
+        return 3;
+    }
+    if (bodies[body_id].body.w == 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to check inexistent body at body_id=%lu",
+                    body_id);
+        return 1;
+    }
+    body b = bodies[body_id].body;
+    double by = SDL_round(b.y + b.h);
+    if ((int)by % SPRITESHEET_CELL_Y != 0) {
+        *check = false;
+        return 0;
+    }
+    double bl = SDL_round(b.x);
+    double br = SDL_round(b.x + b.w);
+    Uint16 ytile = pos_to_tile_y(by);
+    Uint16 from = pos_to_tile_x(bl);
+    Uint16 to = pos_to_tile_x(br) - ((int)br % SPRITESHEET_CELL_X == 0 ? 1 : 0);
+    bool found = false;
+    for (Uint16 i = from; i <= to; i++) {
+        tile data = (tile){0};
+        int r = TILEMAP_get_at(i, ytile, &data);
+        if (r == 1 || (data.mat && !data.platform)) {
+            *check = false;
+            return 0;
+        }
+        if (data.platform) found = true;
+    }
+    *check = found;
+    return 0;
+}
+
 int PHYSICS_is_on_ceiling(size_t body_id, bool* check) {
     if (body_id >= bodies_cap || body_id < 0) {
         SDL_LogWarn(
@@ -683,7 +740,7 @@ int PHYSICS_is_on_ceiling(size_t body_id, bool* check) {
     for (Uint16 i = from; i <= to; i++) {
         tile data = (tile){0};
         int r = TILEMAP_get_at(i, ytile, &data);
-        if (r == 1 || data.mat) {
+        if (r == 1 || (data.mat && !data.platform)) {
             *check = true;
             return 0;
         }

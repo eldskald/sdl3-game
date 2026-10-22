@@ -67,6 +67,11 @@ int PHYSICS_set_velocity(size_t body_id, double vel_x, double vel_y);
 // index, `0` when everything went right.
 int PHYSICS_add_velocity(size_t body_id, double vel_x, double vel_y);
 
+// Causes the body to drop down from platforms. Returns `3` when `body_id` is
+// outside the array's range, `1` when there is no body at that index, `0` when
+// everything went right.
+int PHYSICS_drop_down(size_t body_id);
+
 // Sets the body at `body_id` to position `(x,y)` without taking collisions
 // into account. Returns `3` when `body_id` is outside the array's range, `1`
 // when there is no body at that index, `0` when everything went right.
@@ -87,6 +92,12 @@ int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr);
 // range, `1` when there is no body at that index, `0` when everything went
 // right.
 int PHYSICS_is_on_floor(size_t body_id, bool* check);
+
+// Checks if the body at `body_id` is only touching platform tiles below it,
+// setting `check` to true if that's the case. Returns `3` when `body_id` is
+// outside the array's range, `1` when there is no body at that index, `0` when
+// everything went right.
+int PHYSICS_is_on_platform(size_t body_id, bool* check);
 
 // Checks if the body at `body_id` is touching tiles above, setting `check` to
 // true if that's the case. Returns `3` when `body_id` is outside the array's

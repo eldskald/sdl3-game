@@ -21,6 +21,13 @@ static material get_material_from_coords(Uint8 x) {
     return 0;
 }
 
+static bool get_platform_from_coords(Uint8 x, Uint8 y) {
+    return (x >= SPRITESHEET_STONE_PLAT_X0 && x <= SPRITESHEET_STONE_PLAT_X &&
+            y >= SPRITESHEET_STONE_PLAT_Y0 && y <= SPRITESHEET_STONE_PLAT_Y) ||
+           (x >= SPRITESHEET_WOOD_PLAT_X0 && x <= SPRITESHEET_WOOD_PLAT_X &&
+            y >= SPRITESHEET_WOOD_PLAT_Y0 && y <= SPRITESHEET_WOOD_PLAT_Y);
+}
+
 static chunk load_from_json(const char* json) {
     jsondata* data = JSON_parse(json);
     int w = (int)((jsondata*)get_from_hashmap("width", &data->obj))->num;
@@ -51,6 +58,8 @@ static chunk load_from_json(const char* json) {
                         curr / (SPRITESHEET_X / SPRITESHEET_CELL_X);
                     (*map)[i][j].mat =
                         get_material_from_coords((*map)[i][j].coords_x);
+                    (*map)[i][j].platform = get_platform_from_coords(
+                        (*map)[i][j].coords_x, (*map)[i][j].coords_y);
                 }
             }
         }

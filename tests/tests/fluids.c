@@ -162,8 +162,6 @@ void test_fluids(void) {
                SDL_fabs(probe[3][3].volume[fluid_water] - 1.0f) < EPSILON,
            });
 
-    // Mods are applied at the end of a step, so the first step only sets the
-    // uneven surface and the second one is the one that has to level it.
     FLUIDS_set_at(6, 2, 1, 1, fluid_water, 0.8f);
     FLUIDS_set_at(7, 2, 1, 1, fluid_water, 0.2f);
     FLUIDS_set_at(8, 2, 1, 1, fluid_water, 0.3f);
@@ -205,8 +203,39 @@ void test_fluids(void) {
                SDL_fabs(probe[3][3].volume[fluid_lava] - 1.0f) < EPSILON,
            });
 
-    // A closed square room of tiles over all the previous ones, so its fluid
-    // cells 2 to 9 are the only open ones.
+    tile plat_room[6][6] = {0};
+    for (int x = 0; x < 6; x++)
+        for (int y = 0; y < 6; y++)
+            if (x == 0 || y == 0 || x == 5 || y == 5)
+                plat_room[x][y] = (tile){.mat = tile_stone};
+    for (int x = 1; x < 5; x++)
+        plat_room[x][2] = (tile){.mat = tile_wood,
+                                 .platform = true,
+                                 .coords_x = SPRITESHEET_WOOD_PLAT_X0,
+                                 .coords_y = SPRITESHEET_WOOD_PLAT_Y0};
+    TILEMAP_set_at(0, 0, 6, 6, &plat_room);
+    FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
+    FLUIDS_clear_at(0, 0, 12, 12, fluid_lava);
+    FLUIDS_set_at(2, 2, 8, 2, fluid_water, 1.0f);
+    FLUIDS_step();
+    fluid_cell plats[8][2] = {0};
+    FLUIDS_get_at(2, 4, 8, 2, &plats);
+    bool open = true;
+    for (int x = 0; x < 8; x++)
+        for (int y = 0; y < 2; y++)
+            if (plats[x][y].solid) open = false;
+    double above = sum_water(2, 2, 8, 2);
+    step_for(20 * WATER_MOVE_TIME);
+    expect("Put platforms across the room with water above them, checking if "
+           "they aren't solid and the water fell through them...",
+           4,
+           (bool[]){
+               open,
+               SDL_fabs(above - 16.0f) < EPSILON,
+               SDL_fabs(sum_water(2, 8, 8, 2) - 16.0f) < EPSILON,
+               SDL_fabs(sum_water(2, 2, 8, 6)) < EPSILON,
+           });
+
     tile room[6][6] = {0};
     for (int x = 0; x < 6; x++)
         for (int y = 0; y < 6; y++)
@@ -217,7 +246,6 @@ void test_fluids(void) {
     FLUIDS_clear_at(0, 0, 12, 12, fluid_lava);
     FLUIDS_step();
 
-    // Shoots left from the middle of cell (4,4) into the wall at column 1.
     bool added = true;
     for (int i = 0; i < 10; i++)
         if (FLUIDS_add_particle(fluid_water,
@@ -239,7 +267,6 @@ void test_fluids(void) {
                 EPSILON,
         });
 
-    // Shoots down from above the middle of the room at the puddle.
     step_for(20 * WATER_MOVE_TIME);
     added = true;
     for (int i = 0; i < 5; i++)
@@ -262,10 +289,60 @@ void test_fluids(void) {
                 EPSILON,
         });
 
-    // A pool two cells deep at the bottom of the room. Splashes are applied
-    // and their particles thrown up in the same step, so right after it the
-    // water missing from the grid is what was splashed, up to a particle per
-    // column short from what doesn't make a whole one being put back.
+    step_for(20 * WATER_MOVE_TIME);
+    for (int x = 1; x < 5; x++)
+        room[x][2] = (tile){.mat = tile_wood,
+                            .platform = true,
+                            .coords_x = SPRITESHEET_WOOD_PLAT_X0,
+                            .coords_y = SPRITESHEET_WOOD_PLAT_Y0};
+    TILEMAP_set_at(0, 0, 6, 6, &room);
+    added = true;
+    for (int i = 0; i < 5; i++)
+        if (FLUIDS_add_particle(fluid_water,
+                                6.0f * FLUIDS_CELL_W,
+                                3.5f * FLUIDS_CELL_H,
+                                0.0f,
+                                300.0f) != 0)
+            added = false;
+    for (int i = 0; i < 10; i++)
+        FLUIDS_step();
+    expect(
+        "Put platforms across the room and shot water particles down "
+        "through them, checking if they landed in the puddle...",
+        3,
+        (bool[]){
+            added,
+            SDL_fabs(sum_water(2, 9, 8, 1) - 20 * WATER_PARTICLE_VOL) < EPSILON,
+            SDL_fabs(sum_water(2, 2, 8, 7)) < EPSILON,
+        });
+
+    added = true;
+    for (int i = 0; i < 5; i++)
+        if (FLUIDS_add_particle(fluid_water,
+                                6.0f * FLUIDS_CELL_W,
+                                6.5f * FLUIDS_CELL_H,
+                                0.0f,
+                                -300.0f) != 0)
+            added = false;
+    bool reached_ceiling = false;
+    for (int i = 0; i < 10; i++) {
+        FLUIDS_step();
+        if (sum_water(2, 2, 8, 1) > EPSILON) reached_ceiling = true;
+    }
+    step_for(20 * WATER_MOVE_TIME);
+    expect("Shot water particles up through the platforms, checking if they "
+           "reached the ceiling and fell back into the puddle...",
+           3,
+           (bool[]){
+               added,
+               reached_ceiling,
+               SDL_fabs(sum_water(0, 0, 12, 12) - 25 * WATER_PARTICLE_VOL) <
+                   EPSILON,
+           });
+    for (int x = 1; x < 5; x++)
+        room[x][2] = (tile){0};
+    TILEMAP_set_at(0, 0, 6, 6, &room);
+
     FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
     FLUIDS_set_at(2, 8, 8, 2, fluid_water, 1.0f);
     FLUIDS_step();
@@ -294,9 +371,6 @@ void test_fluids(void) {
                    full < 2 * SPLASH_VOLUME + EPSILON,
            });
 
-    // Drops a body one fluid cell wide into the pool at the max speed. It
-    // takes 2 updates to reach the surface and a third one moves it within
-    // the water, which mustn't splash again.
     step_for(40 * WATER_MOVE_TIME);
     PHYSICS_start();
     size_t id = 0;

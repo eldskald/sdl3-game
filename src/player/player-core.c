@@ -142,29 +142,38 @@ static void update_body(Sint8 dir) {
             }
         }
     } else {
-        // Jumping
         action_state jump_state = INPUTS_get_action_state(action_jump);
-        bool can_jump =
-            (state.coyote_jump_timer < data.coyote_jump_time) && !state.jumping;
-        bool pressed_jump =
-            jump_state.just_pressed ||
-            (jump_state.held && jump_state.time_held < data.jump_buffer_time);
-        if (can_jump && pressed_jump) {
-            state.jumping = true;
-            new_y = -data.jump_speed;
-        } else if (state.jumping && jump_state.just_released) {
-            state.jumping = false;
-            new_y = b.vel_y * data.jump_cut;
-        } else if (state.jumping && (-b.vel_y <= EPSILON || can_jump))
-            state.jumping = false;
+        bool is_on_platform = false;
+        PHYSICS_is_on_platform(state.body_id, &is_on_platform);
+        action_state down_state = INPUTS_get_action_state(action_down);
+        if (is_on_platform && jump_state.just_pressed && down_state.held) {
+            PHYSICS_drop_down(state.body_id);
+            // No coyote jump after dropping down
+            state.coyote_jump_timer = data.coyote_jump_time;
+        } else {
+            // Jumping
+            bool can_jump = (state.coyote_jump_timer < data.coyote_jump_time) &&
+                            !state.jumping;
+            bool pressed_jump = jump_state.just_pressed ||
+                                (jump_state.held &&
+                                 jump_state.time_held < data.jump_buffer_time);
+            if (can_jump && pressed_jump) {
+                state.jumping = true;
+                new_y = -data.jump_speed;
+            } else if (state.jumping && jump_state.just_released) {
+                state.jumping = false;
+                new_y = b.vel_y * data.jump_cut;
+            } else if (state.jumping && (-b.vel_y <= EPSILON || can_jump))
+                state.jumping = false;
 
-        // Coyote time
-        bool is_on_floor = false;
-        PHYSICS_is_on_floor(state.body_id, &is_on_floor);
-        if (is_on_floor)
-            state.coyote_jump_timer = 0.0f;
-        else
-            state.coyote_jump_timer += dt;
+            // Coyote time
+            bool is_on_floor = false;
+            PHYSICS_is_on_floor(state.body_id, &is_on_floor);
+            if (is_on_floor)
+                state.coyote_jump_timer = 0.0f;
+            else
+                state.coyote_jump_timer += dt;
+        }
     }
 
     // Gravity
