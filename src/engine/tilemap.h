@@ -22,6 +22,7 @@ typedef enum { TILES_TYPES } material;
 // ```
 typedef struct {
     material mat;
+    bool platform;
     Uint8 coords_x;
     Uint8 coords_y;
 } tile;

@@ -76,24 +76,40 @@ static const Uint8 DIRT_AUTOTILE[256][2] = {
 static tile (*map)[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = NULL;
 
 
+// Whether `t` is of material `mat` and its sprite is in that material's
+// autotile group, so other sprites of the same material aren't autotiled.
+static bool is_autotile(material mat, tile t) {
+    if (t.mat != mat || t.coords_y > SPRITESHEET_AUTOTILE_MAX_Y) return false;
+    switch (mat) {
+    case tile_dirt:
+        return t.coords_x >= SPRITESHEET_DIRT_MIN_X &&
+               t.coords_x <= SPRITESHEET_DIRT_MAX_X;
+    case tile_stone:
+        return t.coords_x >= SPRITESHEET_STONE_MIN_X &&
+               t.coords_x <= SPRITESHEET_STONE_MAX_X;
+    default:
+        return false;
+    }
+}
+
 // These args must be int because they can be -1
-static bool offset(int x, int y, int u, int v) {
+static bool offset(material mat, int x, int y, int u, int v) {
     if (x + u < 0 || x + u >= TILEMAP_SIZE_X || y + v < 0 ||
         y + v >= TILEMAP_SIZE_Y)
         return true;
-    return (*map)[x + u][y + v].mat == tile_dirt;
+    return is_autotile(mat, (*map)[x + u][y + v]);
 }
 
-static Uint8 check_adjacent_dirt(Uint16 x, Uint16 y) {
+static Uint8 check_adjacent_autotile(material mat, Uint16 x, Uint16 y) {
     Uint8 val = 0;
-    if (offset(x, y, -1, -1)) val += 1; ///////  1  2  4
-    if (offset(x, y, 0, -1)) val += 2;  ///////  8     16
-    if (offset(x, y, 1, -1)) val += 4;  ///////  32 64 128
-    if (offset(x, y, -1, 0)) val += 8;
-    if (offset(x, y, 1, 0)) val += 16;
-    if (offset(x, y, -1, 1)) val += 32;
-    if (offset(x, y, 0, 1)) val += 64;
-    if (offset(x, y, 1, 1)) val += 128;
+    if (offset(mat, x, y, -1, -1)) val += 1; ///////  1  2  4
+    if (offset(mat, x, y, 0, -1)) val += 2;  ///////  8     16
+    if (offset(mat, x, y, 1, -1)) val += 4;  ///////  32 64 128
+    if (offset(mat, x, y, -1, 0)) val += 8;
+    if (offset(mat, x, y, 1, 0)) val += 16;
+    if (offset(mat, x, y, -1, 1)) val += 32;
+    if (offset(mat, x, y, 0, 1)) val += 64;
+    if (offset(mat, x, y, 1, 1)) val += 128;
     return val;
 }
 
@@ -117,8 +133,41 @@ static int update_dirt_tile(Uint16 x, Uint16 y, bool suppress_warnings) {
         return 2;
     }
 
-    Uint8 val = check_adjacent_dirt(x, y);
+    // Only autotiled dirt sprites get updated, leaving others as they are
+    if (!is_autotile(tile_dirt, (*map)[x][y])) return 3;
+
+    Uint8 val = check_adjacent_autotile(tile_dirt, x, y);
     (*map)[x][y].coords_x = DIRT_AUTOTILE[val][0];
+    (*map)[x][y].coords_y = DIRT_AUTOTILE[val][1];
+    return 0;
+}
+
+static int update_stone_tile(Uint16 x, Uint16 y, bool suppress_warnings) {
+    if (x < 0 || y < 0 || x >= TILEMAP_SIZE_X || y >= TILEMAP_SIZE_Y) {
+        if (!suppress_warnings)
+            SDL_LogWarn(
+                SDL_LOG_CATEGORY_APPLICATION,
+                "Tried to update stone tile at %d, %d, which is outside "
+                "map range",
+                x,
+                y);
+        return 1;
+    }
+    if ((*map)[x][y].mat != tile_stone) {
+        if (!suppress_warnings)
+            SDL_LogWarn(
+                SDL_LOG_CATEGORY_APPLICATION,
+                "Tried to update stone tile at %d, %d, which is not stone",
+                x,
+                y);
+        return 2;
+    }
+
+    // Only autotiled stone sprites get updated, leaving platforms and others
+    if (!is_autotile(tile_stone, (*map)[x][y])) return 3;
+
+    Uint8 val = check_adjacent_autotile(tile_stone, x, y);
+    (*map)[x][y].coords_x = DIRT_AUTOTILE[val][0] + SPRITESHEET_STONE_MIN_X;
     (*map)[x][y].coords_y = DIRT_AUTOTILE[val][1];
     return 0;
 }
@@ -147,6 +196,7 @@ int TILEMAP_set_at(Uint16 x, Uint16 y, Uint16 w, Uint16 h, tile (*data)[w][h]) {
     for (int i = -1; i <= w; i++) {
         for (int j = -1; j <= h; j++) {
             update_dirt_tile(x + i, y + j, true);
+            update_stone_tile(x + i, y + j, true);
         }
     }
     return 0;

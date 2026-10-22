@@ -341,5 +341,136 @@ void test_physics(void) {
            (bool[]){check == false});
 
     TILEMAP_clear();
+
+    tile map3[7][7] = {0};
+    for (int x = 0; x < 7; x++)
+        for (int y = 0; y < 7; y++)
+            if (x == 0 || y == 0 || x == 6 || y == 6)
+                map3[x][y] = (tile){.mat = tile_dirt};
+    for (int x = 1; x < 5; x++)
+        map3[x][3] = (tile){.mat = tile_wood, .platform = true};
+    map3[5][3] = (tile){.mat = tile_dirt};
+    TILEMAP_set_at(0, 0, 7, 7, &map3);
+
+    PHYSICS_set_position(
+        last_id, 3.0f * SPRITESHEET_CELL_X, 1.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_set_velocity(last_id, 0.0f, 4.0f * SPRITESHEET_CELL_Y);
+    for (int i = 0; i < 40; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    expect("Made a room with platforms and dropped the body on them, checking "
+           "if it landed on top...",
+           2,
+           (bool[]){SDL_fabs(data.y - 2.0f * SPRITESHEET_CELL_Y) <= EPSILON,
+                    data.vel_y == 0.0f});
+
+    PHYSICS_is_on_floor(last_id, &check);
+    bool on_platform = false;
+    PHYSICS_is_on_platform(last_id, &on_platform);
+    expect("Checking is on floor and is on platform while on platforms...",
+           2,
+           (bool[]){check == true, on_platform == true});
+
+    PHYSICS_set_position(
+        last_id, 4.5f * SPRITESHEET_CELL_X, 2.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_floor(last_id, &check);
+    PHYSICS_is_on_platform(last_id, &on_platform);
+    expect("Teleporting body to half platform half solid tile, checking is on "
+           "floor and is on platform...",
+           2,
+           (bool[]){check == true, on_platform == false});
+
+    PHYSICS_set_position(
+        last_id, 3.0f * SPRITESHEET_CELL_X, 4.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_on_ceiling(last_id, &check);
+    expect("Teleporting body right under the platforms, checking is on "
+           "ceiling...",
+           1,
+           (bool[]){check == false});
+
+    PHYSICS_set_position(
+        last_id, 3.0f * SPRITESHEET_CELL_X, 5.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_set_velocity(last_id, 0.0f, -8.0f * SPRITESHEET_CELL_Y);
+    for (int i = 0; i < 60; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    expect("Teleporting body to the floor and setting velocity to up, checking "
+           "if it went through the platforms and hit the ceiling...",
+           2,
+           (bool[]){SDL_fabs(data.y - 1.0f * SPRITESHEET_CELL_Y) <= EPSILON,
+                    data.vel_y == 0.0f});
+
+    PHYSICS_set_position(
+        last_id, 3.0f * SPRITESHEET_CELL_X, 2.5f * SPRITESHEET_CELL_Y);
+    PHYSICS_set_velocity(last_id, 0.0f, 4.0f * SPRITESHEET_CELL_Y);
+    for (int i = 0; i < 60; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    expect("Teleporting body to halfway through the platforms and setting "
+           "velocity to down, checking if it fell to the floor...",
+           2,
+           (bool[]){SDL_fabs(data.y - 5.0f * SPRITESHEET_CELL_Y) <= EPSILON,
+                    data.vel_y == 0.0f});
+
+    PHYSICS_set_position(
+        last_id, 1.0f * SPRITESHEET_CELL_X, 3.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_set_velocity(last_id, 4.0f * SPRITESHEET_CELL_X, 0.0f);
+    for (int i = 0; i < 60; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    expect("Teleporting body inside the platforms row and setting velocity to "
+           "the right, checking if it went through them and hit the solid "
+           "tile...",
+           3,
+           (bool[]){SDL_fabs(data.x - 4.0f * SPRITESHEET_CELL_X) <= EPSILON,
+                    SDL_fabs(data.y - 3.0f * SPRITESHEET_CELL_Y) <= EPSILON,
+                    data.vel_x == 0.0f});
+
+    PHYSICS_set_velocity(last_id, -4.0f * SPRITESHEET_CELL_X, 0.0f);
+    for (int i = 0; i < 60; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    expect("Setting velocity to the left, checking if it went through the "
+           "platforms and hit the wall...",
+           3,
+           (bool[]){SDL_fabs(data.x - 1.0f * SPRITESHEET_CELL_X) <= EPSILON,
+                    SDL_fabs(data.y - 3.0f * SPRITESHEET_CELL_Y) <= EPSILON,
+                    data.vel_x == 0.0f});
+
+    PHYSICS_set_position(
+        last_id, 3.0f * SPRITESHEET_CELL_X, 2.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_set_velocity(last_id, 0.0f, 2.0f * SPRITESHEET_CELL_Y);
+    for (int i = 0; i < 30; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    bool stayed = SDL_fabs(data.y - 2.0f * SPRITESHEET_CELL_Y) <= EPSILON;
+    PHYSICS_set_velocity(last_id, 0.0f, 2.0f * SPRITESHEET_CELL_Y);
+    int drop_res = PHYSICS_drop_down(last_id);
+    for (int i = 0; i < 120; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    expect("Teleporting body on the platforms and moving it down slowly, then "
+           "dropping down, checking if it stayed on them before and fell to "
+           "the floor after...",
+           4,
+           (bool[]){stayed,
+                    drop_res == 0,
+                    SDL_fabs(data.y - 5.0f * SPRITESHEET_CELL_Y) <= EPSILON,
+                    data.vel_y == 0.0f});
+
+    PHYSICS_set_position(
+        last_id, 4.5f * SPRITESHEET_CELL_X, 2.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_set_velocity(last_id, 0.0f, 2.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_drop_down(last_id);
+    for (int i = 0; i < 120; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(last_id, &data);
+    expect("Teleporting body to half platform half solid tile and dropping "
+           "down, checking if the solid tile held it...",
+           2,
+           (bool[]){SDL_fabs(data.y - 2.0f * SPRITESHEET_CELL_Y) <= EPSILON,
+                    data.vel_y == 0.0f});
+
+    TILEMAP_clear();
     PHYSICS_stop();
 }

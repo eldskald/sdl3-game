@@ -385,7 +385,7 @@ void FLUIDS_stop(void) {
 static bool is_solid(Uint32 x, Uint32 y) {
     tile data = (tile){0};
     TILEMAP_get_at(x / FLUIDS_SPLIT_X, y / FLUIDS_SPLIT_Y, &data);
-    return data.mat;
+    return data.mat && !data.platform;
 }
 
 #define TOP [1][0]
