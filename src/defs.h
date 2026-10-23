@@ -71,11 +71,12 @@
 #define CHUNK_003_PATH "data/chunks/003.json"
 #define CHUNK_004_PATH "data/chunks/004.json"
 
-// Tilemaps
+
+
+// Tilemap
 #define TILEMAP_SIZE_X 1024
 #define TILEMAP_SIZE_Y 1024
 #define TILES_TYPES tile_dirt = 1, tile_stone, tile_wood, tile_metal,
-
 
 // Fluids
 #define FLUIDS_SPLIT_X 2
@@ -101,6 +102,11 @@
 #define STARTING_FLUIDS_PARTICLES_DYNARR_CAP 1024
 #define FLUID_SPLASH_SURFACE_RANGE 2
 #define FLUIDS_STAGGER_SECONDS 10
+
+// Reactions
+#define REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD 0.5
+#define REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH                               \
+    "data/simulation/reactions/fluid-fluid-into-tile.csv"
 
 // Physics
 #define STARTING_BODIES_DYNARR_CAP 1024

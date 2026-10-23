@@ -45,19 +45,19 @@ void test_fluids(void) {
 
     tile data0[3][3] = {
         {
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
         {
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
         {
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
     };
     TILEMAP_set_at(0, 0, 3, 3, &data0);
@@ -79,19 +79,19 @@ void test_fluids(void) {
 
     tile data1[3][3] = {
         {
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
         {
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
         {
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
     };
     TILEMAP_set_at(0, 2, 3, 3, &data1);
@@ -131,17 +131,17 @@ void test_fluids(void) {
         {
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
         {
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
         {
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
-            (tile){.mat = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
+            (tile){.type = tile_stone, .coords_x = 0, .coords_y = 0},
         },
     };
     TILEMAP_set_at(3, 0, 3, 3, &data2);
@@ -207,9 +207,9 @@ void test_fluids(void) {
     for (int x = 0; x < 6; x++)
         for (int y = 0; y < 6; y++)
             if (x == 0 || y == 0 || x == 5 || y == 5)
-                plat_room[x][y] = (tile){.mat = tile_stone};
+                plat_room[x][y] = (tile){.type = tile_stone};
     for (int x = 1; x < 5; x++)
-        plat_room[x][2] = (tile){.mat = tile_wood,
+        plat_room[x][2] = (tile){.type = tile_wood,
                                  .platform = true,
                                  .coords_x = SPRITESHEET_WOOD_PLAT_X0,
                                  .coords_y = SPRITESHEET_WOOD_PLAT_Y0};
@@ -240,7 +240,7 @@ void test_fluids(void) {
     for (int x = 0; x < 6; x++)
         for (int y = 0; y < 6; y++)
             if (x == 0 || y == 0 || x == 5 || y == 5)
-                room[x][y] = (tile){.mat = tile_stone};
+                room[x][y] = (tile){.type = tile_stone};
     TILEMAP_set_at(0, 0, 6, 6, &room);
     FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
     FLUIDS_clear_at(0, 0, 12, 12, fluid_lava);
@@ -291,7 +291,7 @@ void test_fluids(void) {
 
     step_for(20 * WATER_MOVE_TIME);
     for (int x = 1; x < 5; x++)
-        room[x][2] = (tile){.mat = tile_wood,
+        room[x][2] = (tile){.type = tile_wood,
                             .platform = true,
                             .coords_x = SPRITESHEET_WOOD_PLAT_X0,
                             .coords_y = SPRITESHEET_WOOD_PLAT_Y0};

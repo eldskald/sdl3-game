@@ -213,7 +213,7 @@ void test_drawing(void) {
 
 
     tile data[1][1] = {
-        {(tile){.mat = tile_stone, .coords_x = 6, .coords_y = 7}}};
+        {(tile){.type = tile_stone, .coords_x = 6, .coords_y = 12}}};
     TILEMAP_set_at(3, 2, 1, 1, &data);
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
@@ -249,7 +249,7 @@ void test_drawing(void) {
                calls[2].dst.h == SPRITESHEET_CELL_Y,
                calls[2].flip_mode == SDL_FLIP_VERTICAL,
                calls[3].src.x == 6 * SPRITESHEET_CELL_X,
-               calls[3].src.y == 7 * SPRITESHEET_CELL_Y,
+               calls[3].src.y == 12 * SPRITESHEET_CELL_Y,
                calls[3].src.w == SPRITESHEET_CELL_X,
                calls[3].src.h == SPRITESHEET_CELL_Y,
                calls[3].dst.x == 3 * SPRITESHEET_CELL_X,

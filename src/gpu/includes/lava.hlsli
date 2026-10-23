@@ -2,7 +2,7 @@
 #include "includes/fluids-common.hlsli"
 #include "includes/normals.hlsli"
 #include "includes/simplex-noise.hlsli"
-#include "includes/cellular-noise.hlsli"
+// #include "includes/cellular-noise.hlsli"
 
 #define LAVA_NOISE_FREQUENCY 16.0
 #define LAVA_NOISE_SPEED 0.5
@@ -18,7 +18,7 @@
 
 #define LAVA_CONTOUR 0.4
 #define LAVA_BACKGROUND_BLEND 0.1
-#define LAVA_GLOW 2.0
+#define LAVA_GLOW 1.8
 
 #define LAVA_LIGHT_DIR float2(1.0, 1.0)
 #define LAVA_HIGHLIGHT 0.0
@@ -36,14 +36,14 @@ float lava_noise(float2 uv) {
 // point in cells, animated by `_Time` and offset by `_CamPos` like
 // `lava_noise()`. It's over `LAVA_BLOBS_THRESHOLD` within circles around the
 // points, which grow and shrink as time moves through them in 3D.
-float lava_blobs(float2 uv) {
-    uv += _CamPos;
-    uv.x *= LAVA_NOISE_ASPECT;
-    float2 F =
-        cellular(float3(uv * LAVA_BLOBS_FREQUENCY, _Time * LAVA_BLOBS_SPEED),
-                 LAVA_BLOBS_JITTER);
-    return 1.0 - sqrt(F.x);
-}
+// float lava_blobs(float2 uv) {
+//     uv += _CamPos;
+//     uv.x *= LAVA_NOISE_ASPECT;
+//     float2 F =
+//         cellular(float3(uv * LAVA_BLOBS_FREQUENCY, _Time * LAVA_BLOBS_SPEED),
+//                  LAVA_BLOBS_JITTER);
+//     return 1.0 - sqrt(F.x);
+// }
 
 // `1.0` when neighbor `s` of lava sample `o` is air or another fluid.
 float lava_edge(float o, float s) {
@@ -66,11 +66,11 @@ float4 lava(float2 uv,
         light_normal(col.rgb, n, LAVA_LIGHT_DIR, LAVA_HIGHLIGHT, LAVA_SHADOW);
 
     // Blobs.
-    col.rgb = lerp(
-        col.rgb,
-        LAVA_BLOBS_COLOR,
-        saturate(lava_blobs(uv) * LAVA_BLOBS_STRENGTH - LAVA_BLOBS_THRESHOLD) *
-            LAVA_BLOBS_TINT);
+    // col.rgb = lerp(
+    //     col.rgb,
+    //     LAVA_BLOBS_COLOR,
+    //     saturate(lava_blobs(uv) * LAVA_BLOBS_STRENGTH - LAVA_BLOBS_THRESHOLD) *
+    //         LAVA_BLOBS_TINT);
 
     // Contour.
     float edge = saturate(lava_edge(o, u) + lava_edge(o, l) + lava_edge(o, d) +
