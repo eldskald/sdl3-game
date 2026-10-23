@@ -39,40 +39,40 @@ void test_physics(void) {
 
     tile map[5][5] = {
         {
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
         },
         {
 
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
             (tile){0},
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
         },
         {
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
             (tile){0},
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
         },
         {
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
             (tile){0},
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
         },
         {
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
         },
     };
     TILEMAP_set_at(0, 0, 5, 5, &map);
@@ -218,18 +218,18 @@ void test_physics(void) {
 
     tile map2[5][5] = {
         {
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
             (tile){0},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
         },
         {
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
             (tile){0},
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
         },
         {
             (tile){0},
@@ -239,18 +239,18 @@ void test_physics(void) {
             (tile){0},
         },
         {
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
             (tile){0},
             (tile){0},
             (tile){0},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
         },
         {
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
             (tile){0},
-            (tile){.mat = tile_dirt},
-            (tile){.mat = tile_dirt},
+            (tile){.type = tile_dirt},
+            (tile){.type = tile_dirt},
         },
     };
     TILEMAP_set_at(0, 0, 5, 5, &map2);
@@ -346,10 +346,10 @@ void test_physics(void) {
     for (int x = 0; x < 7; x++)
         for (int y = 0; y < 7; y++)
             if (x == 0 || y == 0 || x == 6 || y == 6)
-                map3[x][y] = (tile){.mat = tile_dirt};
+                map3[x][y] = (tile){.type = tile_dirt};
     for (int x = 1; x < 5; x++)
-        map3[x][3] = (tile){.mat = tile_wood, .platform = true};
-    map3[5][3] = (tile){.mat = tile_dirt};
+        map3[x][3] = (tile){.type = tile_wood, .platform = true};
+    map3[5][3] = (tile){.type = tile_dirt};
     TILEMAP_set_at(0, 0, 7, 7, &map3);
 
     PHYSICS_set_position(

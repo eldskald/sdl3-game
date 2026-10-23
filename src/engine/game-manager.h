@@ -21,6 +21,11 @@ void GAME_MANAGER_quit(void);
 // Current thread's delta time.
 double GAME_MANAGER_get_current_dt(void);
 
+// Whether the current thread is the fluids thread. Always `false` before the
+// fluids thread starts, so calls from the main thread on tests aren't mistaken
+// for it.
+bool GAME_MANAGER_is_fluids_thread(void);
+
 // Main thread's delta time.
 double GAME_MANAGER_get_main_dt(void);
 

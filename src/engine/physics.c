@@ -167,7 +167,7 @@ static void move_body_horizontally(body_data* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || (data.mat && !data.platform)) {
+                if (r == 1 || (data.type && !data.platform)) {
                     if (SDL_roundf(b->body.y + b->body.h) <=
                             SPRITESHEET_CELL_Y * j ||
                         SDL_roundf(b->body.y) >= SPRITESHEET_CELL_Y * (j + 1))
@@ -194,7 +194,7 @@ static void move_body_horizontally(body_data* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || (data.mat && !data.platform)) {
+                if (r == 1 || (data.type && !data.platform)) {
                     if (SDL_roundf(b->body.y + b->body.h) <=
                             SPRITESHEET_CELL_Y * j ||
                         SDL_roundf(b->body.y) >= SPRITESHEET_CELL_Y * (j + 1))
@@ -232,7 +232,7 @@ static void move_body_vertically(body_data* b, double d) {
             for (Uint16 j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || data.mat) {
+                if (r == 1 || data.type) {
                     if (data.platform &&
                         (b->drop_timer > 0.0f || bl_y > SPRITESHEET_CELL_Y * j))
                         continue;
@@ -262,7 +262,7 @@ static void move_body_vertically(body_data* b, double d) {
             for (Uint16 j = from_y; j >= to_y; j--) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
-                if (r == 1 || (data.mat && !data.platform)) {
+                if (r == 1 || (data.type && !data.platform)) {
                     if (SDL_roundf(b->body.x + b->body.w) <=
                             SPRITESHEET_CELL_X * i ||
                         SDL_roundf(b->body.x) >= SPRITESHEET_CELL_X * (i + 1))
@@ -660,7 +660,7 @@ int PHYSICS_is_on_floor(size_t body_id, bool* check) {
     for (Uint16 i = from; i <= to; i++) {
         tile data = (tile){0};
         int r = TILEMAP_get_at(i, ytile, &data);
-        if (r == 1 || data.mat) {
+        if (r == 1 || data.type) {
             *check = true;
             return 0;
         }
@@ -698,7 +698,7 @@ int PHYSICS_is_on_platform(size_t body_id, bool* check) {
     for (Uint16 i = from; i <= to; i++) {
         tile data = (tile){0};
         int r = TILEMAP_get_at(i, ytile, &data);
-        if (r == 1 || (data.mat && !data.platform)) {
+        if (r == 1 || (data.type && !data.platform)) {
             *check = false;
             return 0;
         }
@@ -740,7 +740,7 @@ int PHYSICS_is_on_ceiling(size_t body_id, bool* check) {
     for (Uint16 i = from; i <= to; i++) {
         tile data = (tile){0};
         int r = TILEMAP_get_at(i, ytile, &data);
-        if (r == 1 || (data.mat && !data.platform)) {
+        if (r == 1 || (data.type && !data.platform)) {
             *check = true;
             return 0;
         }

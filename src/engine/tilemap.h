@@ -1,4 +1,5 @@
 #pragma once
+#include "data-structs/hashmap.h"
 #include "defs.h"
 #include <SDL3/SDL.h>
 
@@ -7,21 +8,23 @@
 // ```
 // enum { TILES_TYPES };
 // ```
-typedef enum { TILES_TYPES } material;
+typedef enum { TILES_TYPES } tile_type;
 
 // Tile information. The `coords_x` and `coords_y` mean this tile's sprite
 // coords in the spritesheet in tiles, so if they're `0 0` it means the first
-// tile, `0 1` means the tile to its right and so on. The `mat` is its material.
+// tile, `0 1` means the tile to its right and so on. The `type` is its
+// material.
 //
 // ```
 // struct tile {
-//     material mat;
+//     tile_type type;
+//     bool platform;
 //     Uint8 coords_x;
 //     Uint8 coords_y;
 // };
 // ```
 typedef struct {
-    material mat;
+    tile_type type;
     bool platform;
     Uint8 coords_x;
     Uint8 coords_y;
@@ -42,3 +45,10 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet);
 
 // Clears the tilemap. Need to call this when quitting the game.
 void TILEMAP_clear(void);
+
+
+
+// Get a `string-->tile_type` map, used to translate the tile material names
+// written on CSV files into their corresponding `fluid_type`. Needed mostly for
+// reactions.
+hashmap TILEMAP_get_string_tile_types_map(void);

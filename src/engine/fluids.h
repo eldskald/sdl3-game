@@ -1,4 +1,5 @@
 #pragma once
+#include "data-structs/hashmap.h"
 #include "defs.h"
 #include <SDL3/SDL.h>
 
@@ -53,11 +54,13 @@ void FLUIDS_stop(void);
 
 
 // Sets the fluid cells at rect `(x,y,w,h)` in fluid cell coords, all of type
-// `type` and and volume `volume` on each cell.
+// `type` and and volume `volume` on each cell. Applied right away when called
+// from the fluids thread, otherwise queued and applied on the next step.
 void FLUIDS_set_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type, double volume);
 
-// Clear all fluids on rect `(x,y,w,h)`.
+// Clear all fluids of type `type` on rect `(x,y,w,h)`. Applied right away when
+// called from the fluids thread, otherwise queued and applied on the next step.
 void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type);
 
 // Sets `cells` to be the rect `(x,y,w,h)`. Cells outside range are treated as
@@ -103,3 +106,9 @@ void FLUIDS_step(void);
 // `FLUIDS_RIPPLES_MAX_TICKS`, then draws it on the current render target with
 // the fluids shader. Call on renderer update.
 void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas);
+
+
+
+// Get a `string-->fluid_type` map, used to translate the fluid names written on
+// CSV files into their corresponding `fluid_type`. Needed mostly for reactions.
+hashmap FLUIDS_get_string_fluid_types_map(void);

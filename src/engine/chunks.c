@@ -9,7 +9,7 @@
 
 static chunk chunks[CHUNKS_TOTAL] = {0};
 
-static material get_material_from_coords(Uint8 x) {
+static tile_type get_material_from_coords(Uint8 x) {
     if (x >= SPRITESHEET_DIRT_MIN_X && x <= SPRITESHEET_DIRT_MAX_X)
         return tile_dirt;
     if (x >= SPRITESHEET_WOOD_MIN_X && x <= SPRITESHEET_WOOD_MAX_X)
@@ -56,7 +56,7 @@ static chunk load_from_json(const char* json) {
                         curr % (SPRITESHEET_X / SPRITESHEET_CELL_X);
                     (*map)[i][j].coords_y =
                         curr / (SPRITESHEET_X / SPRITESHEET_CELL_X);
-                    (*map)[i][j].mat =
+                    (*map)[i][j].type =
                         get_material_from_coords((*map)[i][j].coords_x);
                     (*map)[i][j].platform = get_platform_from_coords(
                         (*map)[i][j].coords_x, (*map)[i][j].coords_y);

@@ -1,4 +1,5 @@
 #include "engine/tilemap.h"
+#include "data-structs/hashmap.h"
 #include "defs.h"
 #include <SDL3/SDL.h>
 
@@ -76,11 +77,10 @@ static const Uint8 DIRT_AUTOTILE[256][2] = {
 static tile (*map)[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = NULL;
 
 
-// Whether `t` is of material `mat` and its sprite is in that material's
-// autotile group, so other sprites of the same material aren't autotiled.
-static bool is_autotile(material mat, tile t) {
-    if (t.mat != mat || t.coords_y > SPRITESHEET_AUTOTILE_MAX_Y) return false;
-    switch (mat) {
+
+static bool is_autotile(tile_type type, tile t) {
+    if (t.type != type || t.coords_y > SPRITESHEET_AUTOTILE_MAX_Y) return false;
+    switch (type) {
     case tile_dirt:
         return t.coords_x >= SPRITESHEET_DIRT_MIN_X &&
                t.coords_x <= SPRITESHEET_DIRT_MAX_X;
@@ -93,23 +93,23 @@ static bool is_autotile(material mat, tile t) {
 }
 
 // These args must be int because they can be -1
-static bool offset(material mat, int x, int y, int u, int v) {
+static bool offset(tile_type mat, int x, int y, int u, int v) {
     if (x + u < 0 || x + u >= TILEMAP_SIZE_X || y + v < 0 ||
         y + v >= TILEMAP_SIZE_Y)
         return true;
     return is_autotile(mat, (*map)[x + u][y + v]);
 }
 
-static Uint8 check_adjacent_autotile(material mat, Uint16 x, Uint16 y) {
+static Uint8 check_adjacent_autotile(tile_type type, Uint16 x, Uint16 y) {
     Uint8 val = 0;
-    if (offset(mat, x, y, -1, -1)) val += 1; ///////  1  2  4
-    if (offset(mat, x, y, 0, -1)) val += 2;  ///////  8     16
-    if (offset(mat, x, y, 1, -1)) val += 4;  ///////  32 64 128
-    if (offset(mat, x, y, -1, 0)) val += 8;
-    if (offset(mat, x, y, 1, 0)) val += 16;
-    if (offset(mat, x, y, -1, 1)) val += 32;
-    if (offset(mat, x, y, 0, 1)) val += 64;
-    if (offset(mat, x, y, 1, 1)) val += 128;
+    if (offset(type, x, y, -1, -1)) val += 1; ///////  1  2  4
+    if (offset(type, x, y, 0, -1)) val += 2;  ///////  8     16
+    if (offset(type, x, y, 1, -1)) val += 4;  ///////  32 64 128
+    if (offset(type, x, y, -1, 0)) val += 8;
+    if (offset(type, x, y, 1, 0)) val += 16;
+    if (offset(type, x, y, -1, 1)) val += 32;
+    if (offset(type, x, y, 0, 1)) val += 64;
+    if (offset(type, x, y, 1, 1)) val += 128;
     return val;
 }
 
@@ -123,7 +123,7 @@ static int update_dirt_tile(Uint16 x, Uint16 y, bool suppress_warnings) {
                         y);
         return 1;
     }
-    if ((*map)[x][y].mat != tile_dirt) {
+    if ((*map)[x][y].type != tile_dirt) {
         if (!suppress_warnings)
             SDL_LogWarn(
                 SDL_LOG_CATEGORY_APPLICATION,
@@ -153,7 +153,7 @@ static int update_stone_tile(Uint16 x, Uint16 y, bool suppress_warnings) {
                 y);
         return 1;
     }
-    if ((*map)[x][y].mat != tile_stone) {
+    if ((*map)[x][y].type != tile_stone) {
         if (!suppress_warnings)
             SDL_LogWarn(
                 SDL_LOG_CATEGORY_APPLICATION,
@@ -228,7 +228,7 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
 
     for (int i = 0; i < TILEMAP_SIZE_X; i++) {
         for (int j = 0; j < TILEMAP_SIZE_Y; j++) {
-            if (!(*map)[i][j].mat) continue;
+            if (!(*map)[i][j].type) continue;
             SDL_FRect srcrect = (SDL_FRect){
                 .x = SPRITESHEET_CELL_X * (*map)[i][j].coords_x,
                 .y = SPRITESHEET_CELL_Y * (*map)[i][j].coords_y,
@@ -248,4 +248,16 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
 #endif
         }
     }
+}
+
+
+
+hashmap TILEMAP_get_string_tile_types_map(void) {
+    hashmap map;
+    init_hashmap(&map);
+    set_on_hashmap((void*)tile_dirt, "dirt", &map);
+    set_on_hashmap((void*)tile_stone, "stone", &map);
+    set_on_hashmap((void*)tile_wood, "wood", &map);
+    set_on_hashmap((void*)tile_metal, "metal", &map);
+    return map;
 }

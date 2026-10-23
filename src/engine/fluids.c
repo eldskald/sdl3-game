@@ -196,10 +196,7 @@ static void load_fluid_data(void) {
         set_on_hashmap((void*)i, (char*)((dynarr*)parsed.at[0])->at[i], &props);
 
     // Get hashmap of fluid names
-    hashmap names = (hashmap){0};
-    init_hashmap(&names);
-    set_on_hashmap((void*)fluid_water, "water", &names);
-    set_on_hashmap((void*)fluid_lava, "lava", &names);
+    hashmap names = FLUIDS_get_string_fluid_types_map();
 
     // Sets fluids data
     for (size_t i = 1; i <= FLUIDS_TOTAL; i++) {
@@ -385,7 +382,7 @@ void FLUIDS_stop(void) {
 static bool is_solid(Uint32 x, Uint32 y) {
     tile data = (tile){0};
     TILEMAP_get_at(x / FLUIDS_SPLIT_X, y / FLUIDS_SPLIT_Y, &data);
-    return data.mat && !data.platform;
+    return data.type && !data.platform;
 }
 
 #define TOP [1][0]
@@ -990,12 +987,18 @@ void FLUIDS_step(void) {
 void FLUIDS_set_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type, double volume) {
     mod m = {.x = x, .y = y, .w = w, .h = h, .type = type, .volume = volume};
-    queue_item(&mods, mods_mutex, &m, sizeof(mod));
+    if (GAME_MANAGER_is_fluids_thread())
+        apply_mod(&m);
+    else
+        queue_item(&mods, mods_mutex, &m, sizeof(mod));
 }
 
 void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type) {
     mod m = {.x = x, .y = y, .w = w, .h = h, .type = type, .clear = true};
-    queue_item(&mods, mods_mutex, &m, sizeof(mod));
+    if (GAME_MANAGER_is_fluids_thread())
+        apply_mod(&m);
+    else
+        queue_item(&mods, mods_mutex, &m, sizeof(mod));
 }
 
 void FLUIDS_get_at(
@@ -1289,4 +1292,14 @@ void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed) {
 void FLUIDS_ripple_at(Uint32 x, Uint32 y, double strength) {
     ripple r = {.x = x, .y = y, .strength = strength};
     queue_item(&ripples, ripples_mutex, &r, sizeof(r));
+}
+
+
+
+hashmap FLUIDS_get_string_fluid_types_map(void) {
+    hashmap map;
+    init_hashmap(&map);
+    set_on_hashmap((void*)fluid_water, "water", &map);
+    set_on_hashmap((void*)fluid_lava, "lava", &map);
+    return map;
 }
