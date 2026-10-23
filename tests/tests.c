@@ -1,4 +1,7 @@
 #include "tests.h"
+#include "defs.h"
+#include "engine/fluids.h"
+#include "engine/tilemap.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
@@ -39,4 +42,15 @@ void expect(const char* desc, size_t n, bool expectations[n]) {
 
 bool get_tests_result(void) {
     return errors > 0;
+}
+
+void clear_tiles_and_fluids(void) {
+    TILEMAP_clear();
+    for (Uint8 type = 0; type < FLUIDS_TOTAL; type++)
+        FLUIDS_clear_at(0,
+                        0,
+                        TILEMAP_SIZE_X * FLUIDS_SPLIT_X,
+                        TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y,
+                        type);
+    FLUIDS_step();
 }

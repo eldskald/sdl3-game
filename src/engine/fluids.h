@@ -48,6 +48,10 @@ typedef struct {
 // game.
 void FLUIDS_start(void);
 
+// Same as `FLUIDS_start()`, but loads the game's data instead of the mocks
+// used on tests. Only defined on test builds.
+void FLUIDS_start_with_non_mocked(void);
+
 // Frees allocated memory at `FLUIDS_start()`. Call when quitting the game.
 void FLUIDS_stop(void);
 

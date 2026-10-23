@@ -15,3 +15,7 @@
 void expect(const char* desc, size_t n, bool expectations[n]);
 
 bool get_tests_result(void);
+
+// Clears the whole tilemap and every fluid on the whole fluids grid. Steps the
+// fluids once to apply the clears, since tests don't run on the fluids thread.
+void clear_tiles_and_fluids(void);
