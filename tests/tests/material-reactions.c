@@ -1,4 +1,4 @@
-#include "tests/reactions.h"
+#include "tests/material-reactions.h"
 #include "engine/fluids.h"
 #include "engine/reactions.h"
 #include "engine/tilemap.h"
@@ -6,8 +6,8 @@
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
-void test_reactions(void) {
-    printf(YELLOW "\nTesting reactions...\n" RESET);
+void test_material_reactions(void) {
+    printf(YELLOW "\nTesting material reactions...\n" RESET);
 
     tile data0[3][3] = {
         {
@@ -27,15 +27,13 @@ void test_reactions(void) {
         },
     };
     TILEMAP_set_at(0, 0, 3, 3, &data0);
-    FLUIDS_start();
-    REACTIONS_start();
+    FLUIDS_start_with_non_mocked();
+    REACTIONS_start_with_non_mocked();
 
-    // Fluids are set at the end of the step, after they move, so they're
-    // still side by side when the reactions are checked.
     FLUIDS_set_at(2, 2, 1, 1, fluid_lava, 1.0f);
     FLUIDS_set_at(3, 2, 1, 1, fluid_water, 1.0f);
     FLUIDS_step();
-    REACTIONS_do_fluid_fluid_to_tile_reactions();
+    REACTIONS_do_fluid_fluid_into_tile_reactions();
 
     // Fluids are cleared on the next step, since this isn't the fluids thread.
     FLUIDS_step();
@@ -58,7 +56,7 @@ void test_reactions(void) {
                probe[1][1].volume[fluid_water] == 0.0f,
            });
 
-    TILEMAP_clear();
+    clear_tiles_and_fluids();
     REACTIONS_stop();
     FLUIDS_stop();
 }

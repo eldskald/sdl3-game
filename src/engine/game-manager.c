@@ -74,7 +74,7 @@ static int SDLCALL fluids_thread(void* _arg) { // NOLINT
         // Fluids thread loop
 
         FLUIDS_step();
-        REACTIONS_do_fluid_fluid_to_tile_reactions();
+        REACTIONS_do_fluid_fluid_into_tile_reactions();
 
         // Calculate and cap tick rate
         if (fluids_t_target_rate > SDL_GetTicksNS() - fluids_t_start) {

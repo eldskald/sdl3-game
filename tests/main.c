@@ -8,8 +8,9 @@
 #include "tests/inputs.h"
 #include "tests/json.h"
 #include "tests/list.h"
+#include "tests/material-reactions.h"
 #include "tests/physics.h"
-#include "tests/reactions.h"
+#include "tests/reactions-engine.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
@@ -31,7 +32,10 @@ int main(int argc, char* argv[]) {
 
     if (argc == 1 || SDL_strcmp(argv[1], "physics") == 0) test_physics();
     if (argc == 1 || SDL_strcmp(argv[1], "fluids") == 0) test_fluids();
-    if (argc == 1 || SDL_strcmp(argv[1], "reactions") == 0) test_reactions();
+    if (argc == 1 || SDL_strcmp(argv[1], "reactions-engine") == 0)
+        test_reactions_engine();
+    if (argc == 1 || SDL_strcmp(argv[1], "material-reactions") == 0)
+        test_material_reactions();
     if (argc == 1 || SDL_strcmp(argv[1], "chunks") == 0) test_chunks();
     if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
     if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();

@@ -27,11 +27,7 @@ static char* read_col(dynarr* row, char* col, hashmap* props) {
     return (char*)row->at[(size_t)get_from_hashmap(col, props)];
 }
 
-static void load_fluid_fluid_into_tile_reactions(void) {
-    char csv[] = {
-#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
-    };
-
+static void load_fluid_fluid_into_tile_reactions(const char* csv) {
     hashmap fluids_map = FLUIDS_get_string_fluid_types_map();
     hashmap tiles_map = TILEMAP_get_string_tile_types_map();
 
@@ -77,9 +73,32 @@ static void load_fluid_fluid_into_tile_reactions(void) {
 
 
 
-void REACTIONS_start(void) {
-    load_fluid_fluid_into_tile_reactions();
+static void start_with(const char* fluid_fluid_into_tile_csv) {
+    load_fluid_fluid_into_tile_reactions(fluid_fluid_into_tile_csv);
 }
+
+void REACTIONS_start(void) {
+#ifndef TEST
+    char ffit_csv[] = {
+#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
+    };
+    start_with(ffit_csv);
+#else
+    char mocked_ffit_csv[] = {
+#embed "tests/mocks/fluid-fluid-into-tile.csv" suffix(, '\0')
+    };
+    start_with(mocked_ffit_csv);
+#endif
+}
+
+#ifdef TEST
+void REACTIONS_start_with_non_mocked(void) {
+    char ffit_csv[] = {
+#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
+    };
+    start_with(ffit_csv);
+}
+#endif
 
 void REACTIONS_stop(void) {
     SDL_free(ffit_data);
@@ -132,7 +151,7 @@ static void clear_all_fluids(Uint32 x, Uint32 y, Uint32 w, Uint32 h) {
         FLUIDS_clear_at(x, y, w, h, type);
 }
 
-void REACTIONS_do_fluid_fluid_to_tile_reactions(void) {
+void REACTIONS_do_fluid_fluid_into_tile_reactions(void) {
     for (Uint16 x = 0; x < FLUIDS_SIMULATE_X; x++) {
         for (Uint16 y = 0; y < FLUIDS_SIMULATE_Y; y++) {
             tile t = (tile){0};

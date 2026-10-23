@@ -175,17 +175,7 @@ static double read_prop(dynarr* row, char* prop, hashmap* props) {
                       NULL);
 }
 
-static void load_fluid_data(void) {
-#ifndef TEST
-    char csv[] = {
-#embed FLUIDS_CSV_PATH suffix(, '\0')
-    };
-#else
-    char csv[] = {
-#embed "tests/mocks/fluids.csv" suffix(, '\0')
-    };
-#endif
-
+static void load_fluid_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
 
     // Get hashmap of property indexes
@@ -301,17 +291,7 @@ static void stagger_move_timers(void) {
     }
 }
 
-static void load_fluid_particles_data(void) {
-#ifndef TEST
-    char csv[] = {
-#embed FLUID_PARTICLES_CSV_PATH suffix(, '\0')
-    };
-#else
-    char csv[] = {
-#embed "tests/mocks/fluid-particles.csv" suffix(, '\0')
-    };
-#endif
-
+static void load_fluid_particles_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
 
     for (int i = 0; i < parsed.len; i++) {
@@ -340,9 +320,9 @@ static void load_fluid_particles_data(void) {
                 "Fluid particles data loaded successfully.");
 }
 
-void FLUIDS_start(void) {
-    load_fluid_data();
-    load_fluid_particles_data();
+static void start_with(const char* data_csv, const char* particles_csv) {
+    load_fluid_data(data_csv);
+    load_fluid_particles_data(particles_csv);
     order_fluids_by_density();
     stagger_move_timers();
     init_dynarr(&mods);
@@ -361,6 +341,44 @@ void FLUIDS_start(void) {
     particles_len = 0;
     particles_mutex = SDL_CreateMutex();
 }
+
+void FLUIDS_start(void) {
+#ifndef TEST
+    char fluids_csv[] = {
+#embed FLUIDS_CSV_PATH suffix(, '\0')
+    };
+
+    char fluid_particles_csv[] = {
+#embed FLUID_PARTICLES_CSV_PATH suffix(, '\0')
+    };
+
+    start_with(fluids_csv, fluid_particles_csv);
+#else
+    char mocked_fluids_csv[] = {
+#embed "tests/mocks/fluids.csv" suffix(, '\0')
+    };
+
+    char mocked_fluid_particles_csv[] = {
+#embed "tests/mocks/fluid-particles.csv" suffix(, '\0')
+    };
+
+    start_with(mocked_fluids_csv, mocked_fluid_particles_csv);
+#endif
+}
+
+#ifdef TEST
+void FLUIDS_start_with_non_mocked(void) {
+    char fluids_csv[] = {
+#embed FLUIDS_CSV_PATH suffix(, '\0')
+    };
+
+    char fluid_particles_csv[] = {
+#embed FLUID_PARTICLES_CSV_PATH suffix(, '\0')
+    };
+
+    start_with(fluids_csv, fluid_particles_csv);
+}
+#endif
 
 void FLUIDS_stop(void) {
     clear_queue(&mods, &mods_mutex);
