@@ -201,12 +201,14 @@ static int start_graphics_pipeline() {
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture pre_fluids_texture created successfully.");
 
-    // Creating SDL_Texture for the fluids
-    fluids.texture = SDL_CreateTexture(renderer,
-                                       SDL_PIXELFORMAT_ABGR8888,
-                                       SDL_TEXTUREACCESS_TARGET,
-                                       WINDOW_SIZE_X,
-                                       WINDOW_SIZE_Y);
+    // Creating SDL_Texture for the fluids. It's bigger than the screen so the
+    // ripples can be simulated off screen too.
+    fluids.texture =
+        SDL_CreateTexture(renderer,
+                          SDL_PIXELFORMAT_ABGR8888,
+                          SDL_TEXTUREACCESS_TARGET,
+                          FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_X,
+                          FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_Y);
     if (!fluids.texture) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
                      "Couldn't create SDL_Texture fluids_texture: %s",
@@ -218,14 +220,16 @@ static int start_graphics_pipeline() {
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
                 "SDL_Texture fluids_texture created successfully.");
 
-    // Creating SDL_Textures for the ripples. They are float so heights can be
-    // negative, and start cleared since GPU textures start undefined.
+    // Creating SDL_Textures for the ripples, the same size as the fluids'. They
+    // are float so heights can be negative, and start cleared since GPU
+    // textures start undefined.
     for (Uint8 i = 0; i < 2; i++) {
-        fluids.ripples[i] = SDL_CreateTexture(renderer,
-                                              SDL_PIXELFORMAT_RGBA64_FLOAT,
-                                              SDL_TEXTUREACCESS_TARGET,
-                                              WINDOW_SIZE_X,
-                                              WINDOW_SIZE_Y);
+        fluids.ripples[i] = SDL_CreateTexture(
+            renderer,
+            SDL_PIXELFORMAT_RGBA64_FLOAT,
+            SDL_TEXTUREACCESS_TARGET,
+            FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_X,
+            FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_Y);
         if (!fluids.ripples[i]) {
             SDL_LogError(SDL_LOG_CATEGORY_GPU,
                          "Couldn't create SDL_Texture ripples: %s",

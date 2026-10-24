@@ -13,6 +13,19 @@ SamplerState _RipplesSampler : register(s1, space2);
 Texture2D<float4> _PreFluids : register(t2, space2);
 SamplerState _PreFluidsSampler : register(s2, space2);
 
+// `_Texture` and `_Ripples` are bigger than the screen and centered on it, so
+// ripples are simulated off screen too, and only their part on screen is drawn.
+// Converts `uv` on them to uv on the screen, which `_PreFluids` covers and
+// effects anchored to the world, like lava's noise, are scaled by.
+float2 to_screen_uv(float2 uv) {
+    uint width, height, screen_width, screen_height;
+    _Texture.GetDimensions(width, height);
+    _PreFluids.GetDimensions(screen_width, screen_height);
+    float2 size = float2(width, height);
+    float2 screen = float2(screen_width, screen_height);
+    return (uv * size - (size - screen) / 2.0) / screen;
+}
+
 // How much the ripples' slopes tilt their normals.
 #define RIPPLES_NORMAL_STRENGTH 16.0
 
@@ -117,8 +130,8 @@ float2 waved(float2 uv, float2 dx, float2 dy) {
 
         float lava_limit = depth_limit(lava_depth);
         float fade = 1.0 - saturate(abs(h * WAVES_STRENGTH) / WAVES_HEIGHT);
-        float bubble =
-            clamp(lava_noise(p) * WAVES_HEIGHT, -lava_limit, lava_limit) * fade;
+        float noise = lava_noise(to_screen_uv(p)) * WAVES_HEIGHT;
+        float bubble = clamp(noise, -lava_limit, lava_limit) * fade;
 
         float w = clamp(round(wave + bubble), -WAVES_HEIGHT, WAVES_HEIGHT);
 
@@ -174,21 +187,25 @@ float4 main(input i) : SV_Target0 {
     x = lerp(x, d, is_inner_corner(o, d, l, r, u, ul, dr));
 
     // Pixels without fluid show what was drawn before the fluids as is.
+    float2 screen_uv = to_screen_uv(i.uv);
     float fluid = is_fluid(x.r);
-    col += (1.0 - fluid) * _PreFluids.Sample(_PreFluidsSampler, i.uv);
+    col += (1.0 - fluid) * _PreFluids.Sample(_PreFluidsSampler, screen_uv);
 
     // Fluids refract it, offset by the ripples' normal. A flat heightmap has no
     // offset.
     float3 n = height_to_normal(
         _Ripples, _RipplesSampler, i.uv, RIPPLES_NORMAL_STRENGTH);
     float2 offset = n.xy * RIPPLES_REFRACTION * float2(dx.x, dy.y);
-    float4 bg = _PreFluids.Sample(_PreFluidsSampler, i.uv + offset);
+    float4 bg =
+        _PreFluids.Sample(_PreFluidsSampler, to_screen_uv(i.uv + offset));
 
     // Check if it's water
-    col += is_type(x.r, IDX_WATER) * water(i.uv, bg, n, x.r, u.r, l.r, d.r, r.r);
+    col += is_type(x.r, IDX_WATER) *
+           water(screen_uv, bg, n, x.r, u.r, l.r, d.r, r.r);
 
     // Check if it's lava
-    col += is_type(x.r, IDX_LAVA) * lava(i.uv, bg, n, x.r, u.r, l.r, d.r, r.r);
+    col += is_type(x.r, IDX_LAVA) *
+           lava(screen_uv, bg, n, x.r, u.r, l.r, d.r, r.r);
 
     // It covers the whole screen, so it's always opaque.
     col.a = 1.0;

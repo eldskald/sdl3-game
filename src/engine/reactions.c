@@ -152,8 +152,11 @@ static void clear_all_fluids(Uint32 x, Uint32 y, Uint32 w, Uint32 h) {
 }
 
 void REACTIONS_do_fluid_fluid_into_tile_reactions(void) {
-    for (Uint16 x = 0; x < FLUIDS_SIMULATE_X; x++) {
-        for (Uint16 y = 0; y < FLUIDS_SIMULATE_Y; y++) {
+    SDL_Rect sim = FLUIDS_get_simulated_rect();
+    Uint16 from_x = sim.x / FLUIDS_SPLIT_X;
+    Uint16 from_y = sim.y / FLUIDS_SPLIT_Y;
+    for (Uint16 x = from_x; x < from_x + FLUIDS_SIMULATE_X; x++) {
+        for (Uint16 y = from_y; y < from_y + FLUIDS_SIMULATE_Y; y++) {
             tile t = (tile){0};
             TILEMAP_get_at(x, y, &t);
             if (t.type && !t.platform) continue;
