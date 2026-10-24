@@ -1,6 +1,7 @@
 #include "engine/sprites.h"
 #include "data-structs/list.h"
 #include "defs.h"
+#include "engine/camera.h"
 #include "engine/game-manager.h"
 #include <SDL3/SDL.h>
 
@@ -236,6 +237,8 @@ void SPRITES_draw(SDL_Renderer* renderer,
     float last_tint[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
 #endif
 
+    SDL_FRect cam = CAMERA_get_rect();
+
     for (int i = 0; i < Z_INDEX_TOTAL; i++) {
         node* curr = z_index_map[i].head;
         while (curr) {
@@ -285,13 +288,19 @@ void SPRITES_draw(SDL_Renderer* renderer,
                      sprites[(size_t)curr->val].sprite.coords_h,
             };
             SDL_FRect dstrect = (SDL_FRect){
-                .x = sprites[(size_t)curr->val].sprite.pos_x,
-                .y = sprites[(size_t)curr->val].sprite.pos_y,
+                .x = sprites[(size_t)curr->val].sprite.pos_x - cam.x,
+                .y = sprites[(size_t)curr->val].sprite.pos_y - cam.y,
                 .w = SPRITESHEET_CELL_X *
                      sprites[(size_t)curr->val].sprite.coords_w,
                 .h = SPRITESHEET_CELL_Y *
                      sprites[(size_t)curr->val].sprite.coords_h,
             };
+            if (dstrect.x + dstrect.w <= 0.0f ||
+                dstrect.y + dstrect.h <= 0.0f || dstrect.x >= cam.w ||
+                dstrect.y >= cam.h) {
+                curr = curr->next;
+                continue;
+            }
 #ifndef TEST
             sprite s = sprites[(size_t)curr->val].sprite;
             float tint[4] = {s.tint_r, s.tint_g, s.tint_b, s.tint_a};

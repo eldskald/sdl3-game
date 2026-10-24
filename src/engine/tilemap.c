@@ -1,6 +1,7 @@
 #include "engine/tilemap.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/camera.h"
 #include <SDL3/SDL.h>
 
 #ifdef TEST
@@ -226,8 +227,17 @@ void TILEMAP_clear(void) {
 void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
     if (!map) return;
 
-    for (int i = 0; i < TILEMAP_SIZE_X; i++) {
-        for (int j = 0; j < TILEMAP_SIZE_Y; j++) {
+    // Only the tiles on screen are drawn.
+    SDL_FRect cam = CAMERA_get_rect();
+    int from_x = cam.x / SPRITESHEET_CELL_X;
+    int from_y = cam.y / SPRITESHEET_CELL_Y;
+    int to_x =
+        SDL_min(SDL_ceil((cam.x + cam.w) / SPRITESHEET_CELL_X), TILEMAP_SIZE_X);
+    int to_y =
+        SDL_min(SDL_ceil((cam.y + cam.h) / SPRITESHEET_CELL_Y), TILEMAP_SIZE_Y);
+
+    for (int i = from_x; i < to_x; i++) {
+        for (int j = from_y; j < to_y; j++) {
             if (!(*map)[i][j].type) continue;
             SDL_FRect srcrect = (SDL_FRect){
                 .x = SPRITESHEET_CELL_X * (*map)[i][j].coords_x,
@@ -236,8 +246,8 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
                 .h = SPRITESHEET_CELL_Y,
             };
             SDL_FRect dstrect = (SDL_FRect){
-                .x = SPRITESHEET_CELL_X * i,
-                .y = SPRITESHEET_CELL_Y * j,
+                .x = SPRITESHEET_CELL_X * i - cam.x,
+                .y = SPRITESHEET_CELL_Y * j - cam.y,
                 .w = SPRITESHEET_CELL_X,
                 .h = SPRITESHEET_CELL_Y,
             };

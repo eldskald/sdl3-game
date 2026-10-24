@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/camera.h"
 #include "engine/game-manager.h"
 #include "engine/tilemap.h"
 #include "services/csv.h"
@@ -91,6 +92,10 @@ static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
                   [TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y] = {0};
 static fluids buffer[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X]
                     [FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y] = {0};
+// Top left of the simulated rect on `grid`, in fluid cells. Only cells inside
+// it are simulated, cells outside it are treated as walls by the simulation.
+static long sim_x = 0;
+static long sim_y = 0;
 static fluid_data data[FLUIDS_TOTAL] = {0};
 static fluid_particles_data particles_data = {0};
 static dynarr mods = (dynarr){0};
@@ -103,6 +108,10 @@ static dynarr ripples = (dynarr){0};
 static SDL_Mutex* ripples_mutex = NULL;
 // Which of `fluids_canvas.ripples` has the latest ripples.
 static Uint8 ripples_idx = 0;
+// Top left of the area the ripples were last drawn at, in world pixels. See
+// `get_ripples_area()`.
+static float ripples_x = 0.0f;
+static float ripples_y = 0.0f;
 // Ripples ticks due, added by `FLUIDS_step()` and run by `FLUIDS_draw()`.
 static SDL_AtomicInt ripples_ticks = {0};
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
@@ -334,6 +343,8 @@ static void start_with(const char* data_csv, const char* particles_csv) {
     init_dynarr(&ripples);
     ripples_mutex = SDL_CreateMutex();
     ripples_idx = 0;
+    ripples_x = 0.0f;
+    ripples_y = 0.0f;
     SDL_SetAtomicInt(&ripples_ticks, 0);
     particles = SDL_calloc(STARTING_FLUIDS_PARTICLES_DYNARR_CAP,
                            sizeof(fluid_particle));
@@ -414,21 +425,39 @@ static bool is_solid(Uint32 x, Uint32 y) {
 
 #define SELF [1][1]
 
+// `buffer` only holds the simulated rect, so it's indexed relative to it.
+#define BUFFER(x, y) buffer[(x) - sim_x][(y) - sim_y]
+
 static void initiate_buffer(void) {
     for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++)
-        SDL_memcpy(buffer[x], grid[x], sizeof(buffer[x]));
+        SDL_memcpy(buffer[x], &grid[sim_x + x][sim_y], sizeof(buffer[x]));
 }
 
 static void transfer_buffer(void) {
     for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++)
-        SDL_memcpy(grid[x], buffer[x], sizeof(buffer[x]));
+        SDL_memcpy(&grid[sim_x + x][sim_y], buffer[x], sizeof(buffer[x]));
+}
+
+// Centers the simulated rect on the camera, snapped to whole tiles so its cells
+// line up with the tilemap's, and clamped to the tilemap bounds.
+static void update_simulated_rect(void) {
+    SDL_FRect cam = CAMERA_get_rect();
+    double x = (cam.x + cam.w / 2) / SPRITESHEET_CELL_X - FLUIDS_SIMULATE_X / 2;
+    double y = (cam.y + cam.h / 2) / SPRITESHEET_CELL_Y - FLUIDS_SIMULATE_Y / 2;
+    sim_x =
+        SDL_clamp((long)SDL_round(x), 0, TILEMAP_SIZE_X - FLUIDS_SIMULATE_X) *
+        FLUIDS_SPLIT_X;
+    sim_y =
+        SDL_clamp((long)SDL_round(y), 0, TILEMAP_SIZE_Y - FLUIDS_SIMULATE_Y) *
+        FLUIDS_SPLIT_Y;
 }
 
 
 
 static bool is_outside(long x, long y) {
-    return x < 0 || y < 0 || x >= FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X ||
-           y >= FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+    return x < sim_x || y < sim_y ||
+           x >= sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X ||
+           y >= sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
 }
 
 static bool is_wall(long x, long y) {
@@ -576,24 +605,26 @@ static bool level_stretch(stretch* s, double vol, fluid_type type) {
 
 static void pour_into_stretch(const stretch* s, fluid_type type) {
     for (Uint32 i = 0; i < s->len; i++)
-        buffer[s->x + s->dir * (long)i][s->y].volume[type] += s->deltas[i];
+        BUFFER(s->x + s->dir * (long)i, s->y).volume[type] += s->deltas[i];
 }
 
 
 static void step_move_down(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (Uint32 y = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y-- > 0;) {
-            double vol = buffer[x][y].volume[type];
+    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+         x++) {
+        for (Uint32 y = sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+             y-- > sim_y;) {
+            double vol = BUFFER(x, y).volume[type];
             if (vol < EPSILON || is_wall(x, y) || is_wall(x, y + 1)) continue;
 
-            double space = 1.0f - get_fill(buffer[x][y + 1], ordered_type);
+            double space = 1.0f - get_fill(BUFFER(x, y + 1), ordered_type);
             if (space < EPSILON) continue;
 
             double qty = SDL_min(vol, space);
-            buffer[x][y].volume[type] -= qty;
-            buffer[x][y + 1].volume[type] += qty;
+            BUFFER(x, y).volume[type] -= qty;
+            BUFFER(x, y + 1).volume[type] += qty;
         }
     }
     transfer_buffer();
@@ -602,8 +633,10 @@ static void step_move_down(Uint8 ordered_type) {
 static void step_move_diagonally(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (Uint32 y = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y-- > 0;) {
+    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+         x++) {
+        for (Uint32 y = sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+             y-- > sim_y;) {
             double vol = grid[x][y].volume[type];
             if (vol < EPSILON || is_wall(x, y)) continue;
 
@@ -628,7 +661,7 @@ static void step_move_diagonally(Uint8 ordered_type) {
             if (r_share > 0.0f && level_stretch(&right, r_share, type))
                 continue;
 
-            buffer[x][y].volume[type] -= l_share + r_share;
+            BUFFER(x, y).volume[type] -= l_share + r_share;
             if (l_share > 0.0f) pour_into_stretch(&left, type);
             if (r_share > 0.0f) pour_into_stretch(&right, type);
         }
@@ -639,8 +672,10 @@ static void step_move_diagonally(Uint8 ordered_type) {
 static void step_move_sideways(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (Uint32 y = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y-- > 0;) {
+    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+         x++) {
+        for (Uint32 y = sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+             y-- > sim_y;) {
             double vol = grid[x][y].volume[type];
             if (vol < EPSILON || is_wall(x, y)) continue;
 
@@ -681,8 +716,8 @@ static void step_move_sideways(Uint8 ordered_type) {
 
             for (Uint32 i = 1; i < len; i++) {
                 if (!active[i]) continue;
-                buffer[x][y].volume[type] -= level - base[i];
-                buffer[xs[i]][y].volume[type] += level - base[i];
+                BUFFER(x, y).volume[type] -= level - base[i];
+                BUFFER(xs[i], y).volume[type] += level - base[i];
             }
         }
     }
@@ -692,9 +727,10 @@ static void step_move_sideways(Uint8 ordered_type) {
 static void step_stabilize_surfaces(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
-        Uint32 x = 0;
-        while (x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X) {
+    for (Uint32 y = sim_y; y < sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+         y++) {
+        Uint32 x = sim_x;
+        while (x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X) {
             if (grid[x][y].volume[type] <= EPSILON || !is_surface(x, y, type)) {
                 x++;
                 continue;
@@ -754,7 +790,7 @@ static void step_stabilize_surfaces(Uint8 ordered_type) {
             bool active[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X] = {0};
             double level = level_fills(base, active, len, total);
             for (Uint32 i = 0; i < len; i++)
-                buffer[start + i][y].volume[type] +=
+                BUFFER(start + i, y).volume[type] +=
                     (active[i] ? level - base[i] : 0.0f) -
                     grid[start + i][y].volume[type];
         }
@@ -765,8 +801,10 @@ static void step_stabilize_surfaces(Uint8 ordered_type) {
 static void step_depressurize(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
+    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+         x++) {
+        for (Uint32 y = sim_y; y < sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+             y++) {
             double vol = grid[x][y].volume[type];
             if (vol < EPSILON || is_wall(x, y)) continue;
 
@@ -784,9 +822,9 @@ static void step_depressurize(Uint8 ordered_type) {
                              get_space(nbs RIGHT),
                              &l_share,
                              &r_share);
-            buffer[x][y].volume[type] -= l_share + r_share;
-            if (l_share > 0.0f) buffer[x - 1][y].volume[type] += l_share;
-            if (r_share > 0.0f) buffer[x + 1][y].volume[type] += r_share;
+            BUFFER(x, y).volume[type] -= l_share + r_share;
+            if (l_share > 0.0f) BUFFER(x - 1, y).volume[type] += l_share;
+            if (r_share > 0.0f) BUFFER(x + 1, y).volume[type] += r_share;
             excess -= l_share + r_share;
             if (excess < EPSILON) continue;
 
@@ -805,12 +843,12 @@ static void step_depressurize(Uint8 ordered_type) {
                 }
             }
             if (len > 0) {
-                buffer[x][y].volume[type] -= excess;
+                BUFFER(x, y).volume[type] -= excess;
                 for (Uint8 n = 0; n < len; n++)
-                    buffer[free_x[n]][free_y[n]].volume[type] += excess / len;
+                    BUFFER(free_x[n], free_y[n]).volume[type] += excess / len;
             } else if (!nbs TOP.solid) {
-                buffer[x][y].volume[type] -= excess;
-                buffer[x][y - 1].volume[type] += excess;
+                BUFFER(x, y).volume[type] -= excess;
+                BUFFER(x, y - 1).volume[type] += excess;
             }
         }
     }
@@ -846,7 +884,7 @@ static void simulate_fluid_particles(void) {
 
             if (to_x != x || to_y != y) {
                 if (is_wall(to_x, to_y)) {
-                    if (!is_wall(x, y))
+                    if (!is_solid(x, y))
                         grid[x][y].volume[p->type] +=
                             data[p->type].particle_vol;
                     landed = true;
@@ -971,6 +1009,7 @@ static void apply_mod(void* item) {
 
 void FLUIDS_step(void) {
     double dt = GAME_MANAGER_get_current_dt();
+    update_simulated_rect();
     void (*const moves[3])(Uint8) = {
         step_move_down, step_move_diagonally, step_move_sideways};
 
@@ -1044,8 +1083,9 @@ static double quarter_px(double vol) {
 }
 
 // Fluid cells aren't drawn in their colors. Instead, they are drawn into
-// `fluids_texture`, owned by `renderer.c` and the size of `base_screen`, with
-// colors that encode what each pixel is. That texture is then drawn on
+// `fluids_texture`, owned by `renderer.c`, with colors that encode what each
+// pixel is. It covers the ripples area, see `get_ripples_area()`, bigger than
+// the screen and centered on it. The part of it on screen is then drawn on
 // `base_screen` with the fluids shader, `src/gpu/fluids.frag.hlsl`, which reads
 // those codes and decides the actual colors. This lets the shader look at the
 // pixels around each one to smooth out edges and add effects, which it couldn't
@@ -1098,12 +1138,21 @@ static double quarter_px(double vol) {
 //
 // Particles aren't drawn into `fluids_texture`, they are drawn directly with
 // their fluid's color.
-static void draw_grid(SDL_Renderer* renderer) {
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++) {
-        for (Uint32 y = 0; y < FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y; y++) {
+//
+// Only the cells on `area`, the ripples area, are drawn, relative to its top
+// left.
+static void draw_grid(SDL_Renderer* renderer, SDL_FRect area) {
+    Uint32 from_x = SDL_max(SDL_floor(area.x / FLUIDS_CELL_W), 0.0f);
+    Uint32 from_y = SDL_max(SDL_floor(area.y / FLUIDS_CELL_H), 0.0f);
+    Uint32 to_x = SDL_min(SDL_ceil((area.x + area.w) / FLUIDS_CELL_W),
+                          TILEMAP_SIZE_X * FLUIDS_SPLIT_X);
+    Uint32 to_y = SDL_min(SDL_ceil((area.y + area.h) / FLUIDS_CELL_H),
+                          TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y);
+    for (Uint32 x = from_x; x < to_x; x++) {
+        for (Uint32 y = from_y; y < to_y; y++) {
             if (is_solid(x, y)) {
-                SDL_FRect rect = {x * FLUIDS_CELL_W,
-                                  y * FLUIDS_CELL_H,
+                SDL_FRect rect = {x * FLUIDS_CELL_W - area.x,
+                                  y * FLUIDS_CELL_H - area.y,
                                   FLUIDS_CELL_W,
                                   FLUIDS_CELL_H};
 #ifndef TEST
@@ -1131,8 +1180,8 @@ static void draw_grid(SDL_Renderer* renderer) {
 
                 // Fluid with more of it on top or falling into nothing fills
                 // the cell, otherwise it sits on top of what's below it.
-                SDL_FRect rect = {x * FLUIDS_CELL_W,
-                                  y * FLUIDS_CELL_H,
+                SDL_FRect rect = {x * FLUIDS_CELL_W - area.x,
+                                  y * FLUIDS_CELL_H - area.y,
                                   FLUIDS_CELL_W,
                                   FLUIDS_CELL_H};
                 if (!gap &&
@@ -1158,12 +1207,14 @@ static void draw_grid(SDL_Renderer* renderer) {
     }
 }
 
-static void draw_particles(SDL_Renderer* renderer) {
+static void draw_particles(SDL_Renderer* renderer, SDL_FRect cam) {
     SDL_LockMutex(particles_mutex);
     for (size_t i = 0; i < particles_len; i++) {
         fluid_particle p = particles[i];
-        float x = SDL_floor(p.x);
-        float y = SDL_floor(p.y);
+        float x = SDL_floor(p.x) - cam.x;
+        float y = SDL_floor(p.y) - cam.y;
+        if (x + 1.0f < 0.0f || y + 1.0f < 0.0f || x >= cam.w || y >= cam.h)
+            continue;
         int n =
             data[p.type].particle_vol < particles_data.size_threshold ? 1 : 4;
         SDL_FPoint points[4] = {
@@ -1196,9 +1247,9 @@ typedef struct {
     float padding;
 } shader_uniforms;
 
-// TODO: set `cam_pos` from the camera once there is one.
-static void set_shader_uniforms(SDL_GPURenderState* render_state) {
-    shader_uniforms uniforms = {.cam_pos = {0.0f, 0.0f},
+static void set_shader_uniforms(SDL_GPURenderState* render_state,
+                                SDL_FRect cam) {
+    shader_uniforms uniforms = {.cam_pos = {cam.x / cam.w, cam.y / cam.h},
                                 .time = SDL_GetTicks() / 1000.0f};
     for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
         uniforms.colors[t][0] = data[t].col_r / 255.0f;
@@ -1221,12 +1272,17 @@ static void set_shader_uniforms(SDL_GPURenderState* render_state) {
 // makes that one the latest. The shader samples `fluids_texture`, drawn just
 // before, so ripples only spread through pixels of the same fluid type,
 // bouncing off anything else, and pixels that aren't fluid are flattened.
+// Ripples reaching the textures' edges, off screen, are absorbed instead.
 //
 // Since rendering must happen on the main thread, ripples aren't ticked on
 // `FLUIDS_step()`. It counts ticks on `ripples_ticks` instead, which are all
 // run here, so ripples run at the fluids thread's rate. When the main thread
 // falls behind, ticks over `FLUIDS_RIPPLES_MAX_TICKS` are dropped.
-static void step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas) {
+//
+// Queued ripples are in world pixels, so they're drawn relative to the top left
+// of `area`, the ripples area.
+static void
+step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas, SDL_FRect area) {
     int ticks = SDL_SetAtomicInt(&ripples_ticks, 0);
     if (ticks <= 0) return;
     ticks = SDL_min(ticks, FLUIDS_RIPPLES_MAX_TICKS);
@@ -1242,8 +1298,8 @@ static void step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas) {
     for (size_t i = 0; i < ripples.len; i++) {
         ripple* r = ripples.at[i];
         SDL_SetRenderDrawColorFloat(renderer, r->strength, 0.0f, 0.0f, 1.0f);
-        SDL_FRect rect = {r->x - FLUIDS_RIPPLE_SIZE / 2.0f,
-                          r->y - FLUIDS_RIPPLE_SIZE / 2.0f,
+        SDL_FRect rect = {r->x - area.x - FLUIDS_RIPPLE_SIZE / 2.0f,
+                          r->y - area.y - FLUIDS_RIPPLE_SIZE / 2.0f,
                           FLUIDS_RIPPLE_SIZE,
                           FLUIDS_RIPPLE_SIZE};
         SDL_RenderFillRect(renderer, &rect);
@@ -1265,7 +1321,45 @@ static void step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas) {
 #endif
 }
 
+// Ripples are kept on textures covering `area`, the ripples area, so when it
+// moves the latest is drawn into the other shifted the opposite way, making
+// that one the latest, so they stay in place in the world. Ripples shifted in
+// from outside it start flat.
+static void
+shift_ripples(SDL_Renderer* renderer, fluids_canvas* canvas, SDL_FRect area) {
+    float dx = area.x - ripples_x;
+    float dy = area.y - ripples_y;
+    if (dx == 0.0f && dy == 0.0f) return;
+    ripples_x = area.x;
+    ripples_y = area.y;
+
+#ifndef TEST
+    SDL_SetRenderTarget(renderer, canvas->ripples[1 - ripples_idx]);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    SDL_RenderClear(renderer);
+    SDL_FRect dst = {-dx, -dy, area.w, area.h};
+    SDL_RenderTexture(renderer, canvas->ripples[ripples_idx], NULL, &dst);
+    ripples_idx = 1 - ripples_idx;
+#endif
+}
+
+// Area covered by `fluids_canvas.texture` and `fluids_canvas.ripples`, in world
+// pixels, `FLUIDS_RIPPLES_TEXTURE_RES_FACTOR` times the size of the camera at
+// `cam` and centered on it. Ripples are simulated on all of it, so they
+// aren't cut off at the screen's edges as the camera moves.
+static SDL_FRect get_ripples_area(SDL_FRect cam) {
+    return (SDL_FRect){
+        .x = cam.x - (FLUIDS_RIPPLES_TEXTURE_RES_FACTOR - 1) * cam.w / 2,
+        .y = cam.y - (FLUIDS_RIPPLES_TEXTURE_RES_FACTOR - 1) * cam.h / 2,
+        .w = FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * cam.w,
+        .h = FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * cam.h,
+    };
+}
+
 void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas) {
+    SDL_FRect cam = CAMERA_get_rect();
+    SDL_FRect area = get_ripples_area(cam);
+
 #ifndef TEST
     SDL_Texture* target = SDL_GetRenderTarget(renderer);
     SDL_SetRenderTarget(renderer, canvas->texture);
@@ -1273,19 +1367,30 @@ void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas) {
     SDL_RenderClear(renderer);
 #endif
 
-    draw_grid(renderer);
-    step_ripples(renderer, canvas);
+    draw_grid(renderer, area);
+    shift_ripples(renderer, canvas, area);
+    step_ripples(renderer, canvas, area);
 
 #ifndef TEST
     SDL_GPURenderState* render_state = canvas->render_states[ripples_idx];
     SDL_SetRenderTarget(renderer, target);
-    set_shader_uniforms(render_state);
+    set_shader_uniforms(render_state, cam);
     SDL_SetGPURenderState(renderer, render_state);
-    SDL_RenderTexture(renderer, canvas->texture, NULL, NULL);
+    SDL_FRect screen = {cam.x - area.x, cam.y - area.y, cam.w, cam.h};
+    SDL_RenderTexture(renderer, canvas->texture, &screen, NULL);
     SDL_SetGPURenderState(renderer, NULL);
 #endif
 
-    draw_particles(renderer);
+    draw_particles(renderer, cam);
+}
+
+SDL_Rect FLUIDS_get_simulated_rect(void) {
+    return (SDL_Rect){
+        .x = sim_x,
+        .y = sim_y,
+        .w = FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X,
+        .h = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y,
+    };
 }
 
 

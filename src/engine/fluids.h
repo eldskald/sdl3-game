@@ -100,16 +100,26 @@ int FLUIDS_add_particle(
 
 
 
-// Ticks the simulation. Ripples are ticked as many times as this was called
-// on the next `FLUIDS_draw()`, since they're simulated on the GPU. Call on
-// update in any thread.
+// Ticks the simulation on the simulated rect, after centering it on the camera.
+// Ripples are ticked as many times as this was called on the next
+// `FLUIDS_draw()`, since they're simulated on the GPU. Call on update in any
+// thread.
 void FLUIDS_step(void);
 
-// Draws the fluid cells into `canvas->texture`, ticks the ripples as many times
-// as `FLUIDS_step()` was called since the last draw, up to
-// `FLUIDS_RIPPLES_MAX_TICKS`, then draws it on the current render target with
-// the fluids shader. Call on renderer update.
+// Draws the fluid cells around the screen into `canvas->texture`, ticks the
+// ripples as many times as `FLUIDS_step()` was called since the last draw, up
+// to `FLUIDS_RIPPLES_MAX_TICKS`, then draws the part of it on screen on the
+// current render target with the fluids shader. `canvas->texture` and
+// `canvas->ripples` must be `FLUIDS_RIPPLES_TEXTURE_RES_FACTOR` times the
+// screen's size, covering that much of the world centered on
+// the camera. Everything is drawn relative to the camera. Call on renderer
+// update.
 void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas);
+
+// Gets the rect being simulated, in fluid cell coords. It's centered on the
+// camera on each `FLUIDS_step()`, snapped to whole tiles and clamped to the
+// tilemap bounds. Cells outside it are treated as walls by the simulation.
+SDL_Rect FLUIDS_get_simulated_rect(void);
 
 
 

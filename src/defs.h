@@ -97,6 +97,11 @@
 #define FLUIDS_RIPPLE_MAX_SPEED 60
 #define FLUIDS_RIPPLE_SIZE 2
 #define FLUIDS_RIPPLES_MAX_TICKS 4
+// Fluids and ripples are drawn on textures this many times the screen's size,
+// centered on it, so ripples are simulated a bit off screen too and don't get
+// cut off as the camera moves. Must be at least 1, and leave a margin off
+// screen wider than `RIPPLES_SPONGE_WIDTH` on `src/gpu/ripples.frag.hlsl`.
+#define FLUIDS_RIPPLES_TEXTURE_RES_FACTOR 2
 #define FLUIDS_SHADER_IDX_STEP 8
 #define FLUIDS_WALL_COLOR 255, 0, 0, 255
 #define STARTING_FLUIDS_PARTICLES_DYNARR_CAP 1024
@@ -118,6 +123,9 @@
 // Player
 #define PLAYER_BASE_CSV_PATH "data/player/core.csv"
 #define PLAYER_SPRITE_CSV_PATH "data/player/presentation.csv"
+
+// Camera
+#define CAMERA_CSV_PATH "data/player/camera.csv"
 
 
 
