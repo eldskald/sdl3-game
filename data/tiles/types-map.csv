@@ -1,0 +1,4 @@
+type,x,y,w,h
+dirt,0,0,4,12
+stone,4,0,4,14
+wood,8,0,4,7

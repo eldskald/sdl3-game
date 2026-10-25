@@ -60,7 +60,6 @@ void CAMERA_start(void) {
     dynarr parsed = CSV_parse(csv);
 
     for (int i = 0; i < parsed.len; i++) {
-        if (((dynarr*)parsed.at[i])->len < 2) continue;
         char* key = (char*)((dynarr*)parsed.at[i])->at[0];
         char* val = (char*)((dynarr*)parsed.at[i])->at[1];
         if (SDL_strcmp(key, "speed") == 0)

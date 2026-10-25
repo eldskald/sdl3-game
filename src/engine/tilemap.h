@@ -6,9 +6,9 @@
 // Material types, for interactions, properties, etc.
 //
 // ```
-// enum { TILES_TYPES };
+// enum { TILEMAP_TILE_TYPES };
 // ```
-typedef enum { TILES_TYPES } tile_type;
+typedef enum { TILEMAP_TILE_TYPES } tile_type;
 
 // Tile information. The `coords_x` and `coords_y` mean this tile's sprite
 // coords in the spritesheet in tiles, so if they're `0 0` it means the first
@@ -29,6 +29,14 @@ typedef struct {
     Uint8 coords_x;
     Uint8 coords_y;
 } tile;
+
+// Loads the autotiles' first tile coords from `TILEMAP_AUTOTILES_CSV_PATH`.
+// Call it when starting the game, before setting any tiles.
+void TILEMAP_start(void);
+
+// Clears the tilemap and frees memory allocated at `TILEMAP_start()`. Call it
+// when quitting the game.
+void TILEMAP_stop(void);
 
 // Sets `(*data)[w][h]` at coords `x`, `y` on the tilemap. Returns `0` when
 // successful, `1` when `x,y,w,h` reach a tile outside the tilemap's range.

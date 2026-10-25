@@ -1,182 +1,205 @@
 #include "engine/tilemap.h"
+#include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
 #include "engine/camera.h"
+#include "services/json.h"
 #include <SDL3/SDL.h>
 
 #ifdef TEST
 #include "stubs.h"
 #endif
 
-static const Uint8 DIRT_AUTOTILE[256][2] = {
-    {1, 0},  {1, 0},  {2, 4},  {2, 4}, // 0
-    {1, 0},  {1, 0},  {2, 4},  {2, 4},
-    {3, 4},  {3, 4},  {1, 4},  {1, 2}, // 8
-    {3, 4},  {3, 4},  {1, 4},  {1, 2},
-    {2, 3},  {2, 3},  {0, 4},  {0, 4}, // 16
-    {2, 3},  {2, 3},  {0, 2},  {0, 3},
-    {3, 10}, {3, 10}, {1, 7},  {0, 6}, // 24
-    {3, 10}, {3, 10}, {1, 6},  {2, 2},
-    {1, 0},  {1, 0},  {2, 4},  {2, 4}, // 32
-    {1, 0},  {1, 0},  {2, 4},  {2, 4},
-    {3, 4},  {3, 4},  {1, 4},  {1, 2}, // 40
-    {3, 4},  {3, 4},  {1, 4},  {1, 2},
-    {2, 3},  {2, 3},  {0, 4},  {0, 4}, // 48
-    {2, 3},  {2, 3},  {0, 3},  {0, 3},
-    {3, 10}, {3, 10}, {1, 7},  {0, 6}, // 56
-    {3, 10}, {3, 10}, {1, 6},  {2, 2},
-    {3, 3},  {3, 3},  {3, 9},  {3, 9}, // 64
-    {3, 3},  {3, 3},  {3, 9},  {3, 9},
-    {1, 3},  {1, 3},  {0, 7},  {3, 5}, // 72
-    {1, 3},  {1, 3},  {0, 7},  {3, 5},
-    {0, 3},  {0, 3},  {1, 8},  {1, 8}, // 80
-    {0, 3},  {0, 3},  {2, 5},  {2, 5},
-    {0, 8},  {0, 8},  {3, 0},  {0, 11}, // 88
-    {0, 8},  {0, 8},  {1, 11}, {2, 8},
-    {3, 3},  {3, 3},  {3, 9},  {3, 9}, // 96
-    {3, 3},  {3, 3},  {3, 9},  {3, 9},
-    {1, 1},  {1, 1},  {3, 6},  {3, 2}, // 104
-    {1, 1},  {1, 1},  {2, 9},  {3, 2},
-    {0, 3},  {0, 3},  {1, 8},  {1, 8}, // 112
-    {0, 3},  {0, 3},  {2, 5},  {2, 5},
-    {0, 5},  {0, 5},  {2, 11}, {3, 8}, // 120
-    {0, 5},  {0, 5},  {2, 9},  {2, 8},
-    {1, 0},  {1, 0},  {2, 4},  {2, 4}, // 128
-    {1, 0},  {1, 0},  {2, 4},  {2, 4},
-    {3, 4},  {3, 4},  {1, 4},  {1, 2}, // 136
-    {3, 4},  {3, 4},  {1, 4},  {1, 2},
-    {2, 3},  {2, 3},  {0, 4},  {0, 4}, // 144
-    {2, 3},  {2, 3},  {0, 2},  {0, 2},
-    {3, 10}, {3, 10}, {1, 7},  {0, 6}, // 152
-    {3, 10}, {3, 10}, {1, 6},  {2, 2},
-    {1, 0},  {1, 0},  {2, 4},  {2, 4}, // 160
-    {1, 0},  {1, 0},  {2, 4},  {2, 4},
-    {3, 4},  {3, 4},  {1, 4},  {1, 2}, // 168
-    {3, 4},  {3, 4},  {1, 4},  {1, 2},
-    {2, 3},  {2, 3},  {0, 4},  {0, 4}, // 176
-    {2, 3},  {2, 3},  {0, 2},  {0, 2},
-    {3, 10}, {3, 10}, {1, 7},  {0, 6}, // 184
-    {3, 10}, {3, 10}, {1, 6},  {2, 2},
-    {3, 3},  {3, 3},  {3, 9},  {3, 9}, // 192
-    {3, 3},  {3, 3},  {3, 9},  {3, 9},
-    {1, 3},  {1, 3},  {0, 7},  {3, 5}, // 200
-    {1, 3},  {1, 3},  {0, 7},  {3, 5},
-    {0, 1},  {0, 1},  {2, 6},  {2, 6}, // 208
-    {0, 1},  {0, 1},  {2, 1},  {2, 1},
-    {1, 5},  {1, 5},  {3, 11}, {2, 10}, // 216
-    {1, 5},  {1, 5},  {2, 7},  {1, 9},
-    {3, 3},  {3, 3},  {3, 9},  {3, 9}, // 224
-    {3, 3},  {3, 3},  {3, 9},  {3, 9},
-    {1, 1},  {1, 1},  {3, 6},  {3, 2}, // 232
-    {1, 1},  {1, 1},  {3, 6},  {3, 2},
-    {0, 1},  {0, 1},  {2, 6},  {2, 6}, // 240
-    {0, 1},  {0, 1},  {2, 1},  {2, 1},
-    {3, 1},  {3, 1},  {3, 7},  {0, 10}, // 248
-    {3, 1},  {3, 1},  {1, 10}, {2, 0},
-};
+
+
+typedef struct {
+    struct {
+        Uint8 x, y;
+    } coords[256];
+} autotile_table;
+
+
+
+// Neighbor offsets, in the order of their bits on the autotiles' lookup tables:
+//
+// ```
+//  1  2  4
+//  8     16
+//  32 64 128
+// ```
+static const int NEIGHBORS[8][2] = {
+    {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}};
 
 static tile (*map)[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = NULL;
+static dynarr autotiles = (dynarr){0};
+
+// Index on `autotiles` plus one of the autotile each spritesheet tile belongs
+// to, `0` meaning it's not part of any autotile.
+static Uint8 autotile_ids[SPRITESHEET_X / SPRITESHEET_CELL_X]
+                         [SPRITESHEET_Y / SPRITESHEET_CELL_Y] = {0};
 
 
 
-static bool is_autotile(tile_type type, tile t) {
-    if (t.type != type || t.coords_y > SPRITESHEET_AUTOTILE_MAX_Y) return false;
-    switch (type) {
-    case tile_dirt:
-        return t.coords_x >= SPRITESHEET_DIRT_MIN_X &&
-               t.coords_x <= SPRITESHEET_DIRT_MAX_X;
-    case tile_stone:
-        return t.coords_x >= SPRITESHEET_STONE_MIN_X &&
-               t.coords_x <= SPRITESHEET_STONE_MAX_X;
-    default:
-        return false;
+static int get_firstgid(dynarr* tilesets, const char* name) {
+    size_t name_len = SDL_strlen(name);
+    for (size_t i = 0; i < tilesets->len; i++) {
+        hashmap tileset = ((jsondata*)tilesets->at[i])->obj;
+        char* source = ((jsondata*)get_from_hashmap("source", &tileset))->str;
+        size_t source_len = SDL_strlen(source);
+        if (source_len >= name_len &&
+            SDL_strcmp(source + source_len - name_len, name) == 0)
+            return (int)((jsondata*)get_from_hashmap("firstgid", &tileset))
+                ->num;
     }
+    return 0;
+}
+
+static dynarr get_layer_data(dynarr* layers, const char* prefix) {
+    size_t prefix_len = SDL_strlen(prefix);
+    for (size_t i = 0; i < layers->len; i++) {
+        hashmap layer = ((jsondata*)layers->at[i])->obj;
+        char* name = ((jsondata*)get_from_hashmap("name", &layer))->str;
+        if (SDL_strncmp(name, prefix, prefix_len) == 0)
+            return ((jsondata*)get_from_hashmap("data", &layer))->arr;
+    }
+    return (dynarr){0};
+}
+
+// Loads a Tiled automapping rule map into a new lookup table. Each output tile
+// is the center of a 3x3 block on the input layer, where each neighbor is
+// either occupied, empty or 0 for either way.
+static void load_autotile(const char* json) {
+    jsondata* data = JSON_parse(json);
+    int w = (int)((jsondata*)get_from_hashmap("width", &data->obj))->num;
+    dynarr tilesets =
+        ((jsondata*)get_from_hashmap("tilesets", &data->obj))->arr;
+    int rules_gid = get_firstgid(&tilesets, "automap-tiles.tsx");
+    int sheet_gid = get_firstgid(&tilesets, "spritesheet.tsx");
+    dynarr layers = ((jsondata*)get_from_hashmap("layers", &data->obj))->arr;
+    dynarr input = get_layer_data(&layers, "input_");
+    dynarr output = get_layer_data(&layers, "output_");
+
+    autotile_table* table = SDL_calloc(1, sizeof(autotile_table));
+    Uint8 id = autotiles.len + 1;
+    for (size_t i = 0; i < output.len; i++) {
+        // Skips empty cells and automapping tiles on the output layer
+        int out = (int)((jsondata*)output.at[i])->num;
+        if (out < sheet_gid) continue;
+
+        Uint8 coords_x =
+            (out - sheet_gid) % (SPRITESHEET_X / SPRITESHEET_CELL_X);
+        Uint8 coords_y =
+            (out - sheet_gid) / (SPRITESHEET_X / SPRITESHEET_CELL_X);
+        int x = i % w;
+        int y = i / w;
+        Uint8 occupied = 0;
+        Uint8 either = 0;
+        for (int k = 0; k < 8; k++) {
+            int u = x + NEIGHBORS[k][0];
+            int v = y + NEIGHBORS[k][1];
+            int in = (int)((jsondata*)input.at[u + w * v])->num;
+            if (in == 0)
+                either |= 1 << k;
+            else if (in - rules_gid == TILEMAP_AUTOMAP_NON_EMPTY_ID)
+                occupied |= 1 << k;
+        }
+        for (int val = 0; val < 256; val++) {
+            if ((val & ~either) != occupied) continue;
+            table->coords[val].x = coords_x;
+            table->coords[val].y = coords_y;
+        }
+        autotile_ids[coords_x][coords_y] = id;
+    }
+    push_to_dynarr((void*)table, &autotiles);
+
+    JSON_free(data);
+}
+
+// Returns the index on `autotiles` of the autotile `t` belongs to, or `-1` if
+// `t` isn't part of any autotile.
+static int get_autotile(tile t) {
+    if (!t.type || t.coords_x >= SPRITESHEET_X / SPRITESHEET_CELL_X ||
+        t.coords_y >= SPRITESHEET_Y / SPRITESHEET_CELL_Y)
+        return -1;
+    return autotile_ids[t.coords_x][t.coords_y] - 1;
 }
 
 // These args must be int because they can be -1
-static bool offset(tile_type mat, int x, int y, int u, int v) {
+static bool offset(int autotile, int x, int y, int u, int v) {
     if (x + u < 0 || x + u >= TILEMAP_SIZE_X || y + v < 0 ||
         y + v >= TILEMAP_SIZE_Y)
         return true;
-    return is_autotile(mat, (*map)[x + u][y + v]);
+    return get_autotile((*map)[x + u][y + v]) == autotile;
 }
 
-static Uint8 check_adjacent_autotile(tile_type type, Uint16 x, Uint16 y) {
+static Uint8 check_adjacent_autotile(int autotile, Uint16 x, Uint16 y) {
     Uint8 val = 0;
-    if (offset(type, x, y, -1, -1)) val += 1; ///////  1  2  4
-    if (offset(type, x, y, 0, -1)) val += 2;  ///////  8     16
-    if (offset(type, x, y, 1, -1)) val += 4;  ///////  32 64 128
-    if (offset(type, x, y, -1, 0)) val += 8;
-    if (offset(type, x, y, 1, 0)) val += 16;
-    if (offset(type, x, y, -1, 1)) val += 32;
-    if (offset(type, x, y, 0, 1)) val += 64;
-    if (offset(type, x, y, 1, 1)) val += 128;
+    for (int k = 0; k < 8; k++)
+        if (offset(autotile, x, y, NEIGHBORS[k][0], NEIGHBORS[k][1]))
+            val |= 1 << k;
     return val;
 }
 
-static int update_dirt_tile(Uint16 x, Uint16 y, bool suppress_warnings) {
+static int update_autotile(Uint16 x, Uint16 y, bool suppress_warnings) {
     if (x < 0 || y < 0 || x >= TILEMAP_SIZE_X || y >= TILEMAP_SIZE_Y) {
         if (!suppress_warnings)
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "Tried to update dirt tile at %d, %d, which is outside "
+                        "Tried to update autotile at %d, %d, which is outside "
                         "map range",
                         x,
                         y);
         return 1;
     }
-    if ((*map)[x][y].type != tile_dirt) {
-        if (!suppress_warnings)
-            SDL_LogWarn(
-                SDL_LOG_CATEGORY_APPLICATION,
-                "Tried to update dirt tile at %d, %d, which is not dirt",
-                x,
-                y);
-        return 2;
-    }
 
-    // Only autotiled dirt sprites get updated, leaving others as they are
-    if (!is_autotile(tile_dirt, (*map)[x][y])) return 3;
+    int autotile = get_autotile((*map)[x][y]);
+    if (autotile == -1) return 2;
 
-    Uint8 val = check_adjacent_autotile(tile_dirt, x, y);
-    (*map)[x][y].coords_x = DIRT_AUTOTILE[val][0];
-    (*map)[x][y].coords_y = DIRT_AUTOTILE[val][1];
-    return 0;
-}
-
-static int update_stone_tile(Uint16 x, Uint16 y, bool suppress_warnings) {
-    if (x < 0 || y < 0 || x >= TILEMAP_SIZE_X || y >= TILEMAP_SIZE_Y) {
-        if (!suppress_warnings)
-            SDL_LogWarn(
-                SDL_LOG_CATEGORY_APPLICATION,
-                "Tried to update stone tile at %d, %d, which is outside "
-                "map range",
-                x,
-                y);
-        return 1;
-    }
-    if ((*map)[x][y].type != tile_stone) {
-        if (!suppress_warnings)
-            SDL_LogWarn(
-                SDL_LOG_CATEGORY_APPLICATION,
-                "Tried to update stone tile at %d, %d, which is not stone",
-                x,
-                y);
-        return 2;
-    }
-
-    // Only autotiled stone sprites get updated, leaving platforms and others
-    if (!is_autotile(tile_stone, (*map)[x][y])) return 3;
-
-    Uint8 val = check_adjacent_autotile(tile_stone, x, y);
-    (*map)[x][y].coords_x = DIRT_AUTOTILE[val][0] + SPRITESHEET_STONE_MIN_X;
-    (*map)[x][y].coords_y = DIRT_AUTOTILE[val][1];
+    autotile_table* table = autotiles.at[autotile];
+    Uint8 val = check_adjacent_autotile(autotile, x, y);
+    (*map)[x][y].coords_x = table->coords[val].x;
+    (*map)[x][y].coords_y = table->coords[val].y;
     return 0;
 }
 
 
+
+void TILEMAP_start(void) {
+#ifndef TEST
+    char dirt_json[] = {
+#embed TILEMAP_DIRT_AUTOTILE_PATH suffix(, '\0')
+    };
+
+    char stone_json[] = {
+#embed TILEMAP_STONE_AUTOTILE_PATH suffix(, '\0')
+    };
+#else
+    char dirt_json[] = {
+#embed TESTS_TILEMAP_DIRT_AUTOTILE_PATH suffix(, '\0')
+    };
+
+    char stone_json[] = {
+#embed TESTS_TILEMAP_STONE_AUTOTILE_PATH suffix(, '\0')
+    };
+#endif
+
+    init_dynarr(&autotiles);
+    load_autotile(dirt_json);
+    load_autotile(stone_json);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Autotiles data loaded successfully.");
+}
+
+void TILEMAP_stop(void) {
+    TILEMAP_clear();
+    for (size_t i = 0; i < autotiles.len; i++)
+        SDL_free(autotiles.at[i]);
+    clear_dynarr(&autotiles);
+    SDL_memset(autotile_ids, 0, sizeof(autotile_ids));
+}
 
 int TILEMAP_set_at(Uint16 x, Uint16 y, Uint16 w, Uint16 h, tile (*data)[w][h]) {
-    if (x < 0 || y < 0 || x + w >= TILEMAP_SIZE_X || y + h >= TILEMAP_SIZE_Y) {
+    if (x < 0 || y < 0 || x + w > TILEMAP_SIZE_X || y + h > TILEMAP_SIZE_Y) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set dataset of size %d, %d at %d, %d which is "
                     "out of range",
@@ -196,8 +219,7 @@ int TILEMAP_set_at(Uint16 x, Uint16 y, Uint16 w, Uint16 h, tile (*data)[w][h]) {
     }
     for (int i = -1; i <= w; i++) {
         for (int j = -1; j <= h; j++) {
-            update_dirt_tile(x + i, y + j, true);
-            update_stone_tile(x + i, y + j, true);
+            update_autotile(x + i, y + j, true);
         }
     }
     return 0;
@@ -227,7 +249,6 @@ void TILEMAP_clear(void) {
 void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
     if (!map) return;
 
-    // Only the tiles on screen are drawn.
     SDL_FRect cam = CAMERA_get_rect();
     int from_x = cam.x / SPRITESHEET_CELL_X;
     int from_y = cam.y / SPRITESHEET_CELL_Y;

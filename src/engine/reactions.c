@@ -73,32 +73,18 @@ static void load_fluid_fluid_into_tile_reactions(const char* csv) {
 
 
 
-static void start_with(const char* fluid_fluid_into_tile_csv) {
-    load_fluid_fluid_into_tile_reactions(fluid_fluid_into_tile_csv);
-}
-
 void REACTIONS_start(void) {
 #ifndef TEST
     char ffit_csv[] = {
 #embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
     };
-    start_with(ffit_csv);
 #else
-    char mocked_ffit_csv[] = {
-#embed "tests/mocks/fluid-fluid-into-tile.csv" suffix(, '\0')
-    };
-    start_with(mocked_ffit_csv);
-#endif
-}
-
-#ifdef TEST
-void REACTIONS_start_with_non_mocked(void) {
     char ffit_csv[] = {
-#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
+#embed TESTS_REACTIONS_FFIT_CSV_PATH suffix(, '\0')
     };
-    start_with(ffit_csv);
-}
 #endif
+    load_fluid_fluid_into_tile_reactions(ffit_csv);
+}
 
 void REACTIONS_stop(void) {
     SDL_free(ffit_data);

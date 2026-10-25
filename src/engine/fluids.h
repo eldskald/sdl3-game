@@ -48,10 +48,6 @@ typedef struct {
 // game.
 void FLUIDS_start(void);
 
-// Same as `FLUIDS_start()`, but loads the game's data instead of the mocks
-// used on tests. Only defined on test builds.
-void FLUIDS_start_with_non_mocked(void);
-
 // Frees allocated memory at `FLUIDS_start()`. Call when quitting the game.
 void FLUIDS_stop(void);
 
@@ -78,16 +74,17 @@ void FLUIDS_get_at(
 // it, and throws it up as particles from just above it, in its slice of a fan
 // split evenly among the columns, left to right. Both the volume and the
 // particles' speed scale with `speed`, up to `body_max_speed`. Those and the
-// rest of the splash's settings are on `FLUID_PARTICLES_CSV_PATH`. Volume that
+// rest of the splash's settings are on `FLUIDS_PARTICLES_CSV_PATH`. Volume that
 // doesn't make a whole particle is put back. A column with no surface within
-// `FLUID_SPLASH_SURFACE_RANGE` cells of `y`, or with a wall over its surface,
+// `FLUIDS_SPLASH_SURFACE_RANGE` cells of `y`, or with a wall over its surface,
 // is skipped.
 void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed);
 
-// Queues a ripple on the `FLUIDS_RIPPLE_SIZE` square of pixels centered on
-// pixel `(x,y)`, applied on the next ripples tick. It adds `strength` to their
-// height, on top of any ripples already there, then spreads around the body of
-// fluid it's in and fades out over time.
+// Queues a ripple on the `new_ripple_pix_size` square of pixels, set on
+// `FLUIDS_RIPPLES_CSV_PATH`, centered on pixel `(x,y)`, applied on the next
+// ripples tick. It adds `strength` to their height, on top of any ripples
+// already there, then spreads around the body of fluid it's in and fades out
+// over time.
 void FLUIDS_ripple_at(Uint32 x, Uint32 y, double strength);
 
 // Adds a particle of fluid of type `type` at `(x,y)` in world coords, moving

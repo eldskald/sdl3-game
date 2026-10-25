@@ -11,7 +11,7 @@ static SDL_Window* window = NULL;
 static SDL_Texture* base_screen = NULL;
 static SDL_Texture* final_screen = NULL;
 static SDL_Texture* bloom_prefilter = NULL;
-static SDL_Texture* bloom_chain[BLOOM_MAX_ITERATIONS] = {0};
+static SDL_Texture* bloom_chain[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
 static SDL_Texture* pre_fluids_texture = NULL;
 static SDL_GPUDevice* device = NULL;
 static SDL_GPUShader* fluids_shader = NULL;
@@ -24,7 +24,7 @@ static SDL_GPUShader* bloom_prefilter_shader = NULL;
 static SDL_GPURenderState* bloom_prefilter_state = NULL;
 static SDL_GPUShader* box_sample_shader = NULL;
 static SDL_GPURenderState* downsample_state = NULL;
-static SDL_GPURenderState* upsample_states[BLOOM_MAX_ITERATIONS] = {0};
+static SDL_GPURenderState* upsample_states[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
 static SDL_GPUSampler* nearest_sampler = NULL;
 #endif
 static SDL_Renderer* renderer = NULL;
@@ -33,7 +33,7 @@ static fluids_canvas fluids = (fluids_canvas){0};
 static float bloom_threshold = 1.0f;
 static float bloom_soft_threshold = 0.5f;
 static int bloom_iterations = 4;
-static float bloom_intensities[BLOOM_MAX_ITERATIONS] = {0};
+static float bloom_intensities[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
 static bool window_resized = false;
 
 
@@ -301,16 +301,15 @@ static SDL_GPUShader* load_fragment_shader(const Uint8* spirv,
 
 static void load_bloom_data_from_csv(void) {
     char csv[] = {
-#embed BLOOM_CSV_PATH suffix(, '\0')
+#embed RENDERER_BLOOM_CSV_PATH suffix(, '\0')
     };
 
-    for (int i = 0; i < BLOOM_MAX_ITERATIONS; i++)
+    for (int i = 0; i < RENDERER_BLOOM_MAX_ITERATIONS; i++)
         bloom_intensities[i] = 1.0f;
 
     dynarr parsed = CSV_parse(csv);
 
     for (int i = 0; i < parsed.len; i++) {
-        if (((dynarr*)parsed.at[i])->len < 2) continue;
         char* key = (char*)((dynarr*)parsed.at[i])->at[0];
         char* val = (char*)((dynarr*)parsed.at[i])->at[1];
         if (SDL_strcmp(key, "threshold") == 0)
@@ -320,14 +319,16 @@ static void load_bloom_data_from_csv(void) {
         else if (SDL_strcmp(key, "intensities") == 0) {
             dynarr* row = (dynarr*)parsed.at[i];
             bloom_iterations = row->len - 1;
-            for (int j = 1; j < row->len && j <= BLOOM_MAX_ITERATIONS; j++)
+            for (int j = 1; j < row->len && j <= RENDERER_BLOOM_MAX_ITERATIONS;
+                 j++)
                 bloom_intensities[j - 1] = SDL_strtod((char*)row->at[j], NULL);
         }
     }
 
     CSV_free(&parsed);
 
-    bloom_iterations = SDL_clamp(bloom_iterations, 1, BLOOM_MAX_ITERATIONS);
+    bloom_iterations =
+        SDL_clamp(bloom_iterations, 1, RENDERER_BLOOM_MAX_ITERATIONS);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Bloom data loaded successfully.");
@@ -408,7 +409,7 @@ static int load_graphics_files(void) {
                                           ripples_dxil,
                                           sizeof(ripples_dxil),
                                           2,
-                                          0);
+                                          1);
     if (!ripples_shader) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
                      "Couldn't create ripples_shader: %s",
@@ -440,10 +441,10 @@ static int load_graphics_files(void) {
 
     // Tone mapping shader and render state
     static const Uint8 tonemap_spirv[] = {
-#embed TONEMAP_FRAG_SPIRV_PATH
+#embed RENDERER_TONEMAP_FRAG_SPIRV_PATH
     };
     static const Uint8 tonemap_dxil[] = {
-#embed TONEMAP_FRAG_DXIL_PATH
+#embed RENDERER_TONEMAP_FRAG_DXIL_PATH
     };
     tonemap_shader = load_fragment_shader(tonemap_spirv,
                                           sizeof(tonemap_spirv),
@@ -473,10 +474,10 @@ static int load_graphics_files(void) {
     // Tint shader and render state, for sprites. Its uniforms are set per
     // sprite.
     static const Uint8 tint_spirv[] = {
-#embed TINT_FRAG_SPIRV_PATH
+#embed RENDERER_TINT_FRAG_SPIRV_PATH
     };
     static const Uint8 tint_dxil[] = {
-#embed TINT_FRAG_DXIL_PATH
+#embed RENDERER_TINT_FRAG_DXIL_PATH
     };
     tint_shader = load_fragment_shader(
         tint_spirv, sizeof(tint_spirv), tint_dxil, sizeof(tint_dxil), 1, 1);
@@ -501,10 +502,10 @@ static int load_graphics_files(void) {
     // Bloom prefilter shader and render state. Its thresholds never change, so
     // its uniforms are set once here.
     static const Uint8 bloom_prefilter_spirv[] = {
-#embed BLOOM_PREFILTER_FRAG_SPIRV_PATH
+#embed RENDERER_BLOOM_PREFILTER_FRAG_SPIRV_PATH
     };
     static const Uint8 bloom_prefilter_dxil[] = {
-#embed BLOOM_PREFILTER_FRAG_DXIL_PATH
+#embed RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH
     };
     bloom_prefilter_shader = load_fragment_shader(bloom_prefilter_spirv,
                                                   sizeof(bloom_prefilter_spirv),
@@ -542,10 +543,10 @@ static int load_graphics_files(void) {
     // _Delta and _Intensity gets its own state instead of changing it between
     // draws in a frame.
     static const Uint8 box_sample_spirv[] = {
-#embed BOX_SAMPLE_FRAG_SPIRV_PATH
+#embed RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH
     };
     static const Uint8 box_sample_dxil[] = {
-#embed BOX_SAMPLE_FRAG_DXIL_PATH
+#embed RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH
     };
     box_sample_shader = load_fragment_shader(box_sample_spirv,
                                              sizeof(box_sample_spirv),

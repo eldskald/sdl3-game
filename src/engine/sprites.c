@@ -39,17 +39,19 @@ static void double_dynarr(void) {
 
 // The z_index map is our data structure to order sprite ids in order of z_index
 // that we should iterate through to draw them in z_index order. Each z_index is
-// mapped to z_index + Z_INDEX_TOTAL / 2, so they all fit in the array. We need
-// to update the map whenever a new sprite is added, removed or updated.
-static list z_index_map[Z_INDEX_TOTAL] = {{NULL}};
+// mapped to z_index + SPRITES_Z_INDEX_TOTAL / 2, so they all fit in the array.
+// We need to update the map whenever a new sprite is added, removed or updated.
+static list z_index_map[SPRITES_Z_INDEX_TOTAL] = {{NULL}};
 
 static void add_to_z_index_map(size_t sprite_id) {
-    int map_index = sprites[sprite_id].sprite.z_index + (Z_INDEX_TOTAL >> 1);
+    int map_index =
+        sprites[sprite_id].sprite.z_index + (SPRITES_Z_INDEX_TOTAL >> 1);
     push_to_list((void*)sprite_id, &z_index_map[map_index]);
 }
 
 static void remove_from_z_index_map(size_t sprite_id) {
-    int map_index = sprites[sprite_id].sprite.z_index + (Z_INDEX_TOTAL >> 1);
+    int map_index =
+        sprites[sprite_id].sprite.z_index + (SPRITES_Z_INDEX_TOTAL >> 1);
     remove_from_list((void*)sprite_id, &z_index_map[map_index]);
 }
 
@@ -157,8 +159,8 @@ int SPRITES_update_sprite(size_t sprite_id, sprite data) {
 
 
 void SPRITES_start(void) {
-    sprites = SDL_calloc(STARTING_SPRITES_DYNARR_CAP, sizeof(sprite_data));
-    sprites_size = STARTING_SPRITES_DYNARR_CAP;
+    sprites = SDL_calloc(SPRITES_STARTING_DYNARR_CAP, sizeof(sprite_data));
+    sprites_size = SPRITES_STARTING_DYNARR_CAP;
 }
 
 
@@ -239,7 +241,7 @@ void SPRITES_draw(SDL_Renderer* renderer,
 
     SDL_FRect cam = CAMERA_get_rect();
 
-    for (int i = 0; i < Z_INDEX_TOTAL; i++) {
+    for (int i = 0; i < SPRITES_Z_INDEX_TOTAL; i++) {
         node* curr = z_index_map[i].head;
         while (curr) {
             size_t id = (size_t)curr->val;
@@ -335,7 +337,7 @@ void SPRITES_draw(SDL_Renderer* renderer,
 
 
 void SPRITES_stop(void) {
-    for (int i = 0; i < Z_INDEX_TOTAL; i++) {
+    for (int i = 0; i < SPRITES_Z_INDEX_TOTAL; i++) {
         clear_list(&z_index_map[i]);
     }
     SDL_free(sprites);

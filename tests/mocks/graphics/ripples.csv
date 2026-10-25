@@ -1,0 +1,4 @@
+body_max_speed,60
+new_ripple_pix_size,2
+strength,1
+damping,0.95
