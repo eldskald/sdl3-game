@@ -1,6 +1,8 @@
+#include "engine/tilemap.h"
 #include "tests.h"
 #include "tests/chunks.h"
 #include "tests/csv.h"
+#include "tests/data-integrity.h"
 #include "tests/drawing.h"
 #include "tests/dynarr.h"
 #include "tests/fluids.h"
@@ -8,9 +10,9 @@
 #include "tests/inputs.h"
 #include "tests/json.h"
 #include "tests/list.h"
-#include "tests/material-reactions.h"
 #include "tests/physics.h"
-#include "tests/reactions-engine.h"
+#include "tests/reactions.h"
+#include "tests/tilemap.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
@@ -23,6 +25,8 @@ int main(int argc, char* argv[]) {
 
     printf(BLUE "\nRUNNING TESTS\n" RESET);
 
+    TILEMAP_start();
+
     if (argc == 1 || SDL_strcmp(argv[1], "list") == 0) test_list();
     if (argc == 1 || SDL_strcmp(argv[1], "dynarr") == 0) test_dynarr();
     if (argc == 1 || SDL_strcmp(argv[1], "hashmap") == 0) test_hashmap();
@@ -30,15 +34,17 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "json") == 0) test_json();
     if (argc == 1 || SDL_strcmp(argv[1], "csv") == 0) test_csv();
 
+    if (argc == 1 || SDL_strcmp(argv[1], "tilemap") == 0) test_tilemap();
     if (argc == 1 || SDL_strcmp(argv[1], "physics") == 0) test_physics();
     if (argc == 1 || SDL_strcmp(argv[1], "fluids") == 0) test_fluids();
-    if (argc == 1 || SDL_strcmp(argv[1], "reactions-engine") == 0)
-        test_reactions_engine();
-    if (argc == 1 || SDL_strcmp(argv[1], "material-reactions") == 0)
-        test_material_reactions();
+    if (argc == 1 || SDL_strcmp(argv[1], "reactions") == 0) test_reactions();
     if (argc == 1 || SDL_strcmp(argv[1], "chunks") == 0) test_chunks();
     if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
     if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();
+    if (argc == 1 || SDL_strcmp(argv[1], "data-integrity") == 0)
+        test_data_integrity();
+
+    TILEMAP_stop();
 
     bool failed = get_tests_result();
 

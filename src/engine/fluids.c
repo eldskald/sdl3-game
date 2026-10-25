@@ -114,6 +114,10 @@ static float ripples_x = 0.0f;
 static float ripples_y = 0.0f;
 // Ripples ticks due, added by `FLUIDS_step()` and run by `FLUIDS_draw()`.
 static SDL_AtomicInt ripples_ticks = {0};
+// Size of the square of pixels each queued ripple is drawn on.
+static int ripples_size = 0;
+// How much of their height ripples keep per tick, set on the ripples shader.
+static float ripples_damping = 0.0f;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
 static fluid_particle* particles = NULL;
@@ -157,8 +161,6 @@ queue_item(dynarr* queue, SDL_Mutex* mutex, const void* item, size_t size) {
     SDL_UnlockMutex(mutex);
 }
 
-// Applies the queued items in the order they were queued, if `apply` isn't
-// `NULL`, and frees them.
 static void drain_queue(dynarr* queue, SDL_Mutex* mutex, void (*apply)(void*)) {
     SDL_LockMutex(mutex);
     for (size_t i = 0; i < queue->len; i++) {
@@ -329,9 +331,54 @@ static void load_fluid_particles_data(const char* csv) {
                 "Fluid particles data loaded successfully.");
 }
 
-static void start_with(const char* data_csv, const char* particles_csv) {
-    load_fluid_data(data_csv);
-    load_fluid_particles_data(particles_csv);
+static void load_ripples_data(const char* csv) {
+    dynarr parsed = CSV_parse(csv);
+
+    for (int i = 0; i < parsed.len; i++) {
+        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
+        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
+        if (SDL_strcmp(key, "new_ripple_pix_size") == 0)
+            ripples_size = SDL_strtol(val, NULL, 10);
+        else if (SDL_strcmp(key, "damping") == 0)
+            ripples_damping = SDL_strtod(val, NULL);
+    }
+
+    CSV_free(&parsed);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Ripples data loaded successfully.");
+}
+
+void FLUIDS_start(void) {
+#ifndef TEST
+    char fluids_csv[] = {
+#embed FLUIDS_CSV_PATH suffix(, '\0')
+    };
+
+    char fluid_particles_csv[] = {
+#embed FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
+    };
+
+    char ripples_csv[] = {
+#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+    };
+#else
+    char fluids_csv[] = {
+#embed TESTS_FLUIDS_CSV_PATH suffix(, '\0')
+    };
+
+    char fluid_particles_csv[] = {
+#embed TESTS_FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
+    };
+
+    char ripples_csv[] = {
+#embed TESTS_FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+    };
+#endif
+
+    load_fluid_data(fluids_csv);
+    load_fluid_particles_data(fluid_particles_csv);
+    load_ripples_data(ripples_csv);
     order_fluids_by_density();
     stagger_move_timers();
     init_dynarr(&mods);
@@ -346,50 +393,12 @@ static void start_with(const char* data_csv, const char* particles_csv) {
     ripples_x = 0.0f;
     ripples_y = 0.0f;
     SDL_SetAtomicInt(&ripples_ticks, 0);
-    particles = SDL_calloc(STARTING_FLUIDS_PARTICLES_DYNARR_CAP,
+    particles = SDL_calloc(FLUIDS_STARTING_PARTICLES_DYNARR_CAP,
                            sizeof(fluid_particle));
-    particles_cap = STARTING_FLUIDS_PARTICLES_DYNARR_CAP;
+    particles_cap = FLUIDS_STARTING_PARTICLES_DYNARR_CAP;
     particles_len = 0;
     particles_mutex = SDL_CreateMutex();
 }
-
-void FLUIDS_start(void) {
-#ifndef TEST
-    char fluids_csv[] = {
-#embed FLUIDS_CSV_PATH suffix(, '\0')
-    };
-
-    char fluid_particles_csv[] = {
-#embed FLUID_PARTICLES_CSV_PATH suffix(, '\0')
-    };
-
-    start_with(fluids_csv, fluid_particles_csv);
-#else
-    char mocked_fluids_csv[] = {
-#embed "tests/mocks/fluids.csv" suffix(, '\0')
-    };
-
-    char mocked_fluid_particles_csv[] = {
-#embed "tests/mocks/fluid-particles.csv" suffix(, '\0')
-    };
-
-    start_with(mocked_fluids_csv, mocked_fluid_particles_csv);
-#endif
-}
-
-#ifdef TEST
-void FLUIDS_start_with_non_mocked(void) {
-    char fluids_csv[] = {
-#embed FLUIDS_CSV_PATH suffix(, '\0')
-    };
-
-    char fluid_particles_csv[] = {
-#embed FLUID_PARTICLES_CSV_PATH suffix(, '\0')
-    };
-
-    start_with(fluids_csv, fluid_particles_csv);
-}
-#endif
 
 void FLUIDS_stop(void) {
     clear_queue(&mods, &mods_mutex);
@@ -910,7 +919,7 @@ static void simulate_fluid_particles(void) {
 
 
 static bool find_surface_near(long x, long y, long* surface_y) {
-    for (long d = 0; d <= FLUID_SPLASH_SURFACE_RANGE; d++) {
+    for (long d = 0; d <= FLUIDS_SPLASH_SURFACE_RANGE; d++) {
         if (is_any_surface(x, y - d)) {
             *surface_y = y - d;
             return true;
@@ -1265,8 +1274,8 @@ static void set_shader_uniforms(SDL_GPURenderState* render_state,
 // Ripples are simulated on two float textures the size of `fluids_texture`,
 // `fluids_canvas.ripples`, holding each pixel's current height on red and its
 // previous height on green. On the first tick of a draw, the queued ripples
-// are added to the current height of the latest one, a `FLUIDS_RIPPLE_SIZE`
-// square of pixels each, so they build on the ripples already there instead of
+// are added to the current height of the latest one, a `ripples_size` square
+// of pixels each, so they build on the ripples already there instead of
 // flattening them. Then, each tick, the latest is drawn into the other
 // with the ripples shader, `src/gpu/ripples.frag.hlsl`, which ticks them and
 // makes that one the latest. The shader samples `fluids_texture`, drawn just
@@ -1298,16 +1307,18 @@ step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas, SDL_FRect area) {
     for (size_t i = 0; i < ripples.len; i++) {
         ripple* r = ripples.at[i];
         SDL_SetRenderDrawColorFloat(renderer, r->strength, 0.0f, 0.0f, 1.0f);
-        SDL_FRect rect = {r->x - area.x - FLUIDS_RIPPLE_SIZE / 2.0f,
-                          r->y - area.y - FLUIDS_RIPPLE_SIZE / 2.0f,
-                          FLUIDS_RIPPLE_SIZE,
-                          FLUIDS_RIPPLE_SIZE};
+        SDL_FRect rect = {r->x - area.x - ripples_size / 2.0f,
+                          r->y - area.y - ripples_size / 2.0f,
+                          ripples_size,
+                          ripples_size};
         SDL_RenderFillRect(renderer, &rect);
     }
     drain_queue(&ripples, ripples_mutex, NULL);
     SDL_UnlockMutex(ripples_mutex);
     SDL_SetRenderDrawBlendMode(renderer, blend_mode);
 
+    SDL_SetGPURenderStateFragmentUniforms(
+        canvas->ripples_state, 0, &ripples_damping, sizeof(ripples_damping));
     SDL_SetGPURenderState(renderer, canvas->ripples_state);
     for (int i = 0; i < ticks; i++) {
         SDL_Texture* from = canvas->ripples[ripples_idx];

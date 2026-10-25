@@ -4,6 +4,7 @@
 #include "engine/fluids.h"
 #include "engine/game-manager.h"
 #include "engine/tilemap.h"
+#include "services/csv.h"
 #include <SDL3/SDL.h>
 
 
@@ -46,6 +47,9 @@ typedef struct {
 static body_data* bodies = NULL;
 static size_t bodies_cap = 0;
 static dynarr nbsearch[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = {0};
+// Speed at which bodies make the strongest ripples, `ripples_strength`.
+static double ripples_max_speed = 0.0f;
+static double ripples_strength = 0.0f;
 
 static void double_dynarr(void) {
     body_data* new_bodies = SDL_calloc(bodies_cap << 1, sizeof(body_data));
@@ -283,7 +287,7 @@ static void move_body_vertically(body_data* b, double d) {
 
 
 // Queues a ripple at the center of `b` when it's in a fluid cell, as strong as
-// it was moving at `(vel_x,vel_y)`, up to `FLUIDS_RIPPLE_MAX_SPEED`.
+// it was moving at `(vel_x,vel_y)`, up to `ripples_max_speed`.
 static void ripple_fluids(body b, double vel_x, double vel_y) {
     double x = SDL_round(b.x + b.w / 2.0f);
     double y = SDL_round(b.y + b.h / 2.0f);
@@ -295,10 +299,9 @@ static void ripple_fluids(body b, double vel_x, double vel_y) {
     for (Uint8 t = 0; t < FLUIDS_TOTAL; t++)
         vol += cell[0][0].volume[t];
     if (vol < EPSILON) return;
-    double speed = SDL_min(SDL_sqrt(vel_x * vel_x + vel_y * vel_y),
-                           FLUIDS_RIPPLE_MAX_SPEED);
-    FLUIDS_ripple_at(
-        x, y, FLUIDS_RIPPLE_STRENGTH * speed / FLUIDS_RIPPLE_MAX_SPEED);
+    double speed =
+        SDL_min(SDL_sqrt(vel_x * vel_x + vel_y * vel_y), ripples_max_speed);
+    FLUIDS_ripple_at(x, y, ripples_strength * speed / ripples_max_speed);
 }
 
 
@@ -525,9 +528,38 @@ int PHYSICS_update_body(size_t body_id, body data) {
 
 
 
+static void load_ripples_data(const char* csv) {
+    dynarr parsed = CSV_parse(csv);
+
+    for (int i = 0; i < parsed.len; i++) {
+        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
+        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
+        if (SDL_strcmp(key, "body_max_speed") == 0)
+            ripples_max_speed = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "strength") == 0)
+            ripples_strength = SDL_strtod(val, NULL);
+    }
+
+    CSV_free(&parsed);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Ripples data loaded successfully.");
+}
+
 void PHYSICS_start(void) {
-    bodies = SDL_calloc(STARTING_BODIES_DYNARR_CAP, sizeof(body_data));
-    bodies_cap = STARTING_BODIES_DYNARR_CAP;
+#ifndef TEST
+    char ripples_csv[] = {
+#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+    };
+#else
+    char ripples_csv[] = {
+#embed TESTS_FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+    };
+#endif
+
+    load_ripples_data(ripples_csv);
+    bodies = SDL_calloc(PHYSICS_STARTING_BODIES_DYNARR_CAP, sizeof(body_data));
+    bodies_cap = PHYSICS_STARTING_BODIES_DYNARR_CAP;
     // nbsearch cells start zeroed and allocate lazily on their first push
 }
 

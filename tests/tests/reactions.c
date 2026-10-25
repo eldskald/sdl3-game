@@ -1,4 +1,4 @@
-#include "tests/reactions-engine.h"
+#include "tests/reactions.h"
 #include "defs.h"
 #include "engine/fluids.h"
 #include "engine/reactions.h"
@@ -19,8 +19,8 @@ static double sum_fluid(fluid_type type) {
     return sum;
 }
 
-void test_reactions_engine(void) {
-    printf(YELLOW "\nTesting reactions engine...\n" RESET);
+void test_reactions(void) {
+    printf(YELLOW "\nTesting reactions...\n" RESET);
 
     FLUIDS_start();
     REACTIONS_start();
@@ -41,8 +41,8 @@ void test_reactions_engine(void) {
            11,
            (bool[]){
                t.type == tile_metal,
-               t.coords_x == 1,
-               t.coords_y == 2,
+               t.coords_x == 12,
+               t.coords_y == 12,
                probe0[0][0].volume[fluid_water] == 0.0f,
                probe0[1][0].volume[fluid_water] == 0.0f,
                probe0[0][1].volume[fluid_water] == 0.0f,
@@ -71,8 +71,8 @@ void test_reactions_engine(void) {
            10,
            (bool[]){
                t.type == tile_metal,
-               t.coords_x == 1,
-               t.coords_y == 2,
+               t.coords_x == 12,
+               t.coords_y == 12,
                above.type == 0,
                probe1[0][0].volume[fluid_water] == 0.0f,
                probe1[1][0].volume[fluid_water] == 0.0f,
@@ -100,8 +100,8 @@ void test_reactions_engine(void) {
            5,
            (bool[]){
                t.type == tile_metal,
-               t.coords_x == 1,
-               t.coords_y == 2,
+               t.coords_x == 12,
+               t.coords_y == 12,
                probe2[0][0].volume[fluid_water] == 0.0f,
                probe2[1][0].volume[fluid_lava] == 0.0f,
            });
@@ -124,8 +124,8 @@ void test_reactions_engine(void) {
            5,
            (bool[]){
                t.type == tile_metal,
-               t.coords_x == 1,
-               t.coords_y == 2,
+               t.coords_x == 12,
+               t.coords_y == 12,
                probe3[0][0].volume[fluid_water] == 0.0f,
                probe3[0][0].volume[fluid_lava] == 0.0f,
            });
@@ -150,8 +150,8 @@ void test_reactions_engine(void) {
            6,
            (bool[]){
                t.type == tile_metal,
-               t.coords_x == 1,
-               t.coords_y == 2,
+               t.coords_x == 12,
+               t.coords_y == 12,
                above.type == 0,
                probe4[0][0].volume[fluid_water] == 0.0f,
                probe4[0][1].volume[fluid_lava] == 0.0f,

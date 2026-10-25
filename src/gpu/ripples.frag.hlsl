@@ -1,7 +1,5 @@
 #include "includes/fluids-common.hlsli"
 
-#define RIPPLES_DAMPING 0.95
-
 // Ripples fade out over this many pixels from the texture's edges, so they're
 // absorbed there instead of bouncing back off them. It must be thinner than the
 // margin off screen, see `FLUIDS_RIPPLES_TEXTURE_RES_FACTOR`, or ripples would
@@ -19,6 +17,11 @@ SamplerState _Sampler : register(s0, space2);
 
 Texture2D<float4> _Fluids : register(t1, space2);
 SamplerState _FluidsSampler : register(s1, space2);
+
+cbuffer Uniforms : register(b0, space3) {
+    // How much of their height ripples keep per tick.
+    float _Damping;
+};
 
 struct input {
     float4 color : COLOR0;
@@ -63,7 +66,7 @@ float4 main(input i) : SV_Target0 {
     float d = neighbor(i.uv + dy, type, o.r);
     float r = neighbor(i.uv + dx, type, o.r);
 
-    float h = ((u + l + d + r) / 2.0 - o.g) * RIPPLES_DAMPING *
+    float h = ((u + l + d + r) / 2.0 - o.g) * _Damping *
               sponge(i.uv, float2(width, height));
     return float4(h, o.r, 0.0, 1.0) * float4(fluid, fluid, 1.0, 1.0);
 }

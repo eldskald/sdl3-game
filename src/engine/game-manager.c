@@ -7,6 +7,7 @@
 #include "engine/reactions.h"
 #include "engine/renderer.h"
 #include "engine/sprites.h"
+#include "engine/tilemap.h"
 #include "player/player-core.h"
 #include <SDL3/SDL.h>
 
@@ -105,6 +106,7 @@ int GAME_MANAGER_start(void) {
     if (INPUTS_start()) return 1;
     if (RENDERER_start()) return 1;
     SPRITES_start();
+    TILEMAP_start();
     CHUNKS_start();
     PHYSICS_start();
     FLUIDS_start();
@@ -131,6 +133,7 @@ void GAME_MANAGER_stop(void) {
     RENDERER_stop();
     SPRITES_stop();
     CHUNKS_stop();
+    TILEMAP_stop();
     PHYSICS_stop();
     FLUIDS_stop();
     REACTIONS_stop();

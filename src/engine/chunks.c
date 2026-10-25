@@ -4,28 +4,144 @@
 #include "defs.h"
 #include "engine/fluids.h"
 #include "engine/tilemap.h"
+#include "services/csv.h"
 #include "services/json.h"
 #include <SDL3/SDL.h>
 
-static chunk chunks[CHUNKS_TOTAL] = {0};
 
-static tile_type get_material_from_coords(Uint8 x) {
-    if (x >= SPRITESHEET_DIRT_MIN_X && x <= SPRITESHEET_DIRT_MAX_X)
-        return tile_dirt;
-    if (x >= SPRITESHEET_WOOD_MIN_X && x <= SPRITESHEET_WOOD_MAX_X)
-        return tile_wood;
-    if (x >= SPRITESHEET_STONE_MIN_X && x <= SPRITESHEET_STONE_MAX_X)
-        return tile_stone;
-    if (x >= SPRITESHEET_METAL_MIN_X && x <= SPRITESHEET_METAL_MAX_X)
-        return tile_metal;
+
+typedef struct {
+    Uint8 x;
+    Uint8 y;
+    Uint8 w;
+    Uint8 h;
+} platforms_rect;
+
+typedef struct {
+    Uint8 type;
+    Uint8 x;
+    Uint8 y;
+    Uint8 w;
+    Uint8 h;
+} tile_type_rect;
+
+
+
+static chunk chunks[CHUNKS_TOTAL] = {0};
+static dynarr platforms = (dynarr){0};
+static dynarr types_map = (dynarr){0};
+
+
+
+static void* pack_platforms_rect(platforms_rect r) {
+    void* p = NULL;
+    SDL_memcpy(&p, &r, sizeof(r));
+    return p;
+}
+
+static platforms_rect unpack_platforms_rect(void* p) {
+    platforms_rect r;
+    SDL_memcpy(&r, &p, sizeof(r));
+    return r;
+}
+
+static void* pack_tile_type_rect(tile_type_rect r) {
+    void* p = NULL;
+    SDL_memcpy(&p, &r, sizeof(r));
+    return p;
+}
+
+static tile_type_rect unpack_tile_type_rect(void* p) {
+    tile_type_rect r;
+    SDL_memcpy(&r, &p, sizeof(r));
+    return r;
+}
+
+static Uint8 read_prop(dynarr* row, char* prop, hashmap* props) {
+    return SDL_strtol(
+        (char*)row->at[(size_t)get_from_hashmap(prop, props)], NULL, 10);
+}
+
+static void load_platforms_data(const char* csv) {
+    dynarr parsed = CSV_parse(csv);
+
+    // Get hashmap of property indexes
+    hashmap props = (hashmap){0};
+    size_t props_count = ((dynarr*)parsed.at[0])->len;
+    init_hashmap(&props);
+    for (size_t i = 0; i < props_count; i++)
+        set_on_hashmap((void*)i, (char*)((dynarr*)parsed.at[0])->at[i], &props);
+
+    // Set platforms data
+    init_dynarr(&platforms);
+    for (size_t i = 1; i < parsed.len; i++) {
+        dynarr* row = (dynarr*)parsed.at[i];
+        platforms_rect r = (platforms_rect){
+            .x = read_prop(row, "x", &props),
+            .y = read_prop(row, "y", &props),
+            .w = read_prop(row, "w", &props),
+            .h = read_prop(row, "h", &props),
+        };
+        push_to_dynarr(pack_platforms_rect(r), &platforms);
+    }
+
+    clear_hashmap(&props);
+    CSV_free(&parsed);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Platforms data loaded successfully.");
+}
+
+static void load_types_map_data(const char* csv) {
+    hashmap tiles_map = TILEMAP_get_string_tile_types_map();
+
+    dynarr parsed = CSV_parse(csv);
+
+    // Get hashmap of property indexes
+    hashmap props = (hashmap){0};
+    size_t props_count = ((dynarr*)parsed.at[0])->len;
+    init_hashmap(&props);
+    for (size_t i = 0; i < props_count; i++)
+        set_on_hashmap((void*)i, (char*)((dynarr*)parsed.at[0])->at[i], &props);
+
+    // Set types map data
+    init_dynarr(&types_map);
+    for (size_t i = 1; i < parsed.len; i++) {
+        dynarr* row = (dynarr*)parsed.at[i];
+        char* type = (char*)row->at[(size_t)get_from_hashmap("type", &props)];
+        tile_type_rect r = (tile_type_rect){
+            .type = (tile_type)(size_t)get_from_hashmap(type, &tiles_map),
+            .x = read_prop(row, "x", &props),
+            .y = read_prop(row, "y", &props),
+            .w = read_prop(row, "w", &props),
+            .h = read_prop(row, "h", &props),
+        };
+        push_to_dynarr(pack_tile_type_rect(r), &types_map);
+    }
+
+    clear_hashmap(&tiles_map);
+    clear_hashmap(&props);
+    CSV_free(&parsed);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Tile types map data loaded successfully.");
+}
+
+static tile_type get_type_from_coords(Uint8 x, Uint8 y) {
+    for (size_t i = 0; i < types_map.len; i++) {
+        tile_type_rect r = unpack_tile_type_rect(types_map.at[i]);
+        if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+            return (tile_type)r.type;
+    }
     return 0;
 }
 
 static bool get_platform_from_coords(Uint8 x, Uint8 y) {
-    return (x >= SPRITESHEET_STONE_PLAT_X0 && x <= SPRITESHEET_STONE_PLAT_X &&
-            y >= SPRITESHEET_STONE_PLAT_Y0 && y <= SPRITESHEET_STONE_PLAT_Y) ||
-           (x >= SPRITESHEET_WOOD_PLAT_X0 && x <= SPRITESHEET_WOOD_PLAT_X &&
-            y >= SPRITESHEET_WOOD_PLAT_Y0 && y <= SPRITESHEET_WOOD_PLAT_Y);
+    for (size_t i = 0; i < platforms.len; i++) {
+        platforms_rect r = unpack_platforms_rect(platforms.at[i]);
+        if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return true;
+    }
+    return false;
 }
 
 static chunk load_from_json(const char* json) {
@@ -56,8 +172,8 @@ static chunk load_from_json(const char* json) {
                         curr % (SPRITESHEET_X / SPRITESHEET_CELL_X);
                     (*map)[i][j].coords_y =
                         curr / (SPRITESHEET_X / SPRITESHEET_CELL_X);
-                    (*map)[i][j].type =
-                        get_material_from_coords((*map)[i][j].coords_x);
+                    (*map)[i][j].type = get_type_from_coords(
+                        (*map)[i][j].coords_x, (*map)[i][j].coords_y);
                     (*map)[i][j].platform = get_platform_from_coords(
                         (*map)[i][j].coords_x, (*map)[i][j].coords_y);
                 }
@@ -113,30 +229,51 @@ static chunk load_from_json(const char* json) {
 
 void CHUNKS_start(void) {
 #ifndef TEST
+    char platforms_csv[] = {
+#embed CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
+    };
+
+    char types_map_csv[] = {
+#embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
+    };
+#else
+    char platforms_csv[] = {
+#embed TESTS_CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
+    };
+
+    char types_map_csv[] = {
+#embed TESTS_CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
+    };
+#endif
+
+    load_platforms_data(platforms_csv);
+    load_types_map_data(types_map_csv);
+
+#ifndef TEST
     char chunk001[] = {
-#embed CHUNK_001_PATH suffix(, '\0')
+#embed CHUNKS_001_PATH suffix(, '\0')
     };
     chunks[0] = load_from_json(chunk001);
 
     char chunk002[] = {
-#embed CHUNK_002_PATH suffix(, '\0')
+#embed CHUNKS_002_PATH suffix(, '\0')
     };
     chunks[1] = load_from_json(chunk002);
 
     char chunk003[] = {
-#embed CHUNK_003_PATH suffix(, '\0')
+#embed CHUNKS_003_PATH suffix(, '\0')
     };
     chunks[2] = load_from_json(chunk003);
 
     char chunk004[] = {
-#embed CHUNK_004_PATH suffix(, '\0')
+#embed CHUNKS_004_PATH suffix(, '\0')
     };
     chunks[3] = load_from_json(chunk004);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Chunks loaded successfully.");
 #else
     char chunk001[] = {
-#embed "tests/mocks/001.json" suffix(, '\0')
+#embed TESTS_CHUNKS_001_PATH suffix(, '\0')
     };
     chunks[0] = load_from_json(chunk001);
 #endif
@@ -149,6 +286,8 @@ void CHUNKS_stop(void) {
             SDL_free(chunks[i].fluids.at[k]);
         clear_dynarr(&chunks[i].fluids);
     }
+    clear_dynarr(&platforms);
+    clear_dynarr(&types_map);
 }
 
 int CHUNKS_get(size_t id, chunk* data) {
@@ -171,8 +310,8 @@ int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
                     id);
         return 1;
     }
-    if (x + chunks[id].w >= TILEMAP_SIZE_X ||
-        y + chunks[id].h >= TILEMAP_SIZE_Y) {
+    if (x + chunks[id].w > TILEMAP_SIZE_X ||
+        y + chunks[id].h > TILEMAP_SIZE_Y) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to load chunk id=%lu at (%d,%d) but it would loud "
                     "outside the tilemap's tile range",
@@ -182,10 +321,17 @@ int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
         return 2;
     }
     chunk c = chunks[id];
-    TILEMAP_set_at(0, 0, c.w, c.h, (tile(*)[c.w][c.h])c.map);
+    TILEMAP_set_at(x, y, c.w, c.h, (tile(*)[c.w][c.h])c.map);
+
+    // Fluid pools are in fluid cell coords relative to the chunk
     for (size_t i = 0; i < c.fluids.len; i++) {
         fluid_pool* p = c.fluids.at[i];
-        FLUIDS_set_at(p->x, p->y, p->w, p->h, p->type, 1.0f);
+        FLUIDS_set_at(p->x + x * FLUIDS_SPLIT_X,
+                      p->y + y * FLUIDS_SPLIT_Y,
+                      p->w,
+                      p->h,
+                      p->type,
+                      1.0f);
     }
     return 0;
 }

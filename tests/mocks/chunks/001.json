@@ -10,7 +10,7 @@
             201, 202, 203, 204, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
             13, 14, 15, 16, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0],
+            389, 390, 391, 392, 0, 0, 0, 0],
          "height":8,
          "id":1,
          "name":"Main",
@@ -54,7 +54,7 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"..\/..\/spritesheet.tsx"
+         "source":"..\/..\/..\/editor\/spritesheet.tsx"
         }],
  "tilewidth":8,
  "type":"map",

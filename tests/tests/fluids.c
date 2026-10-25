@@ -8,15 +8,16 @@
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
-// Slowest move time of each fluid in `tests/mocks/fluids.csv`, so stepping for
-// `n` of these runs every kind of move of that fluid at least `n` times.
-// UPDATE IF TESTS/MOCKS/FLUIDS.CSV IS CHANGED!!!
+// Slowest move time of each fluid in `tests/mocks/simulation/fluids.csv`, so
+// stepping for `n` of these runs every kind of move of that fluid at least `n`
+// times.
+// UPDATE IF TESTS/MOCKS/SIMULATION/FLUIDS.CSV IS CHANGED!!!
 #define WATER_MOVE_TIME 0.05
 #define LAVA_MOVE_TIME 0.2
 #define WATER_PARTICLE_VOL 0.1
 
-// Splash settings in `tests/mocks/fluid-particles.csv`.
-// UPDATE IF TESTS/MOCKS/FLUID-PARTICLES.CSV IS CHANGED!!!
+// Splash settings in `tests/mocks/simulation/fluid-particles.csv`.
+// UPDATE IF TESTS/MOCKS/SIMULATION/FLUID-PARTICLES.CSV IS CHANGED!!!
 #define SPLASH_VOLUME 2.0
 #define SPLASH_BODY_MAX_SPEED 200
 
@@ -209,10 +210,8 @@ void test_fluids(void) {
             if (x == 0 || y == 0 || x == 5 || y == 5)
                 plat_room[x][y] = (tile){.type = tile_stone};
     for (int x = 1; x < 5; x++)
-        plat_room[x][2] = (tile){.type = tile_wood,
-                                 .platform = true,
-                                 .coords_x = SPRITESHEET_WOOD_PLAT_X0,
-                                 .coords_y = SPRITESHEET_WOOD_PLAT_Y0};
+        plat_room[x][2] = (tile){
+            .type = tile_wood, .platform = true, .coords_x = 8, .coords_y = 5};
     TILEMAP_set_at(0, 0, 6, 6, &plat_room);
     FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
     FLUIDS_clear_at(0, 0, 12, 12, fluid_lava);
@@ -291,10 +290,8 @@ void test_fluids(void) {
 
     step_for(20 * WATER_MOVE_TIME);
     for (int x = 1; x < 5; x++)
-        room[x][2] = (tile){.type = tile_wood,
-                            .platform = true,
-                            .coords_x = SPRITESHEET_WOOD_PLAT_X0,
-                            .coords_y = SPRITESHEET_WOOD_PLAT_Y0};
+        room[x][2] = (tile){
+            .type = tile_wood, .platform = true, .coords_x = 8, .coords_y = 5};
     TILEMAP_set_at(0, 0, 6, 6, &room);
     added = true;
     for (int i = 0; i < 5; i++)
