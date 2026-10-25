@@ -26,7 +26,7 @@
 static void step_for(double seconds) {
     Uint32 frames = SDL_ceil(seconds / GAME_MANAGER_get_current_dt()) + 1;
     for (Uint32 i = 0; i < frames; i++)
-        FLUIDS_step();
+        FLUIDS_update();
 }
 
 // Sums the water on rect `(x,y,w,h)`, which must be inside the 12x12 cells at
@@ -167,13 +167,13 @@ void test_fluids(void) {
     FLUIDS_set_at(7, 2, 1, 1, fluid_water, 0.2f);
     FLUIDS_set_at(8, 2, 1, 1, fluid_water, 0.3f);
     FLUIDS_set_at(9, 2, 1, 1, fluid_water, 0.1f);
-    FLUIDS_step();
+    FLUIDS_update();
     FLUIDS_get_at(6, 0, 6, 6, &probe);
     bool uneven = SDL_fabs(probe[0][2].volume[fluid_water] - 0.8f) < EPSILON &&
                   SDL_fabs(probe[1][2].volume[fluid_water] - 0.2f) < EPSILON &&
                   SDL_fabs(probe[2][2].volume[fluid_water] - 0.3f) < EPSILON &&
                   SDL_fabs(probe[3][2].volume[fluid_water] - 0.1f) < EPSILON;
-    FLUIDS_step();
+    FLUIDS_update();
     FLUIDS_get_at(6, 0, 6, 6, &probe);
     expect("Created an uneven surface on top of the water and stepped once, "
            "checking if it levelled in a single tick...",
@@ -216,7 +216,7 @@ void test_fluids(void) {
     FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
     FLUIDS_clear_at(0, 0, 12, 12, fluid_lava);
     FLUIDS_set_at(2, 2, 8, 2, fluid_water, 1.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     fluid_cell plats[8][2] = {0};
     FLUIDS_get_at(2, 4, 8, 2, &plats);
     bool open = true;
@@ -243,7 +243,7 @@ void test_fluids(void) {
     TILEMAP_set_at(0, 0, 6, 6, &room);
     FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
     FLUIDS_clear_at(0, 0, 12, 12, fluid_lava);
-    FLUIDS_step();
+    FLUIDS_update();
 
     bool added = true;
     for (int i = 0; i < 10; i++)
@@ -254,7 +254,7 @@ void test_fluids(void) {
                                 0.0f) != 0)
             added = false;
     for (int i = 0; i < 5; i++)
-        FLUIDS_step();
+        FLUIDS_update();
     expect(
         "Cleared everything, made a square room and shot water particles "
         "into a wall, checking if they became water next to it...",
@@ -276,7 +276,7 @@ void test_fluids(void) {
                                 300.0f) != 0)
             added = false;
     for (int i = 0; i < 10; i++)
-        FLUIDS_step();
+        FLUIDS_update();
     expect(
         "Let the water settle into a puddle and shot water particles down "
         "at it, checking if they landed in it...",
@@ -302,7 +302,7 @@ void test_fluids(void) {
                                 300.0f) != 0)
             added = false;
     for (int i = 0; i < 10; i++)
-        FLUIDS_step();
+        FLUIDS_update();
     expect(
         "Put platforms across the room and shot water particles down "
         "through them, checking if they landed in the puddle...",
@@ -323,7 +323,7 @@ void test_fluids(void) {
             added = false;
     bool reached_ceiling = false;
     for (int i = 0; i < 10; i++) {
-        FLUIDS_step();
+        FLUIDS_update();
         if (sum_water(2, 2, 8, 1) > EPSILON) reached_ceiling = true;
     }
     step_for(20 * WATER_MOVE_TIME);
@@ -342,18 +342,18 @@ void test_fluids(void) {
 
     FLUIDS_clear_at(0, 0, 12, 12, fluid_water);
     FLUIDS_set_at(2, 8, 8, 2, fluid_water, 1.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     double pool = sum_water(0, 0, 12, 12);
     FLUIDS_splash_at(4, 8, 2, 0.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     double still = sum_water(0, 0, 12, 12);
     FLUIDS_splash_at(4, 8, 2, SPLASH_BODY_MAX_SPEED / 2.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     double half = pool - sum_water(0, 0, 12, 12);
     step_for(40 * WATER_MOVE_TIME);
     double settled = sum_water(0, 0, 12, 12);
     FLUIDS_splash_at(4, 8, 2, SPLASH_BODY_MAX_SPEED * 2.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     double full = pool - sum_water(0, 0, 12, 12);
     expect("Made a pool and splashed 2 of its columns still, at half and at "
            "twice the max speed, checking how much water was thrown up...",
@@ -382,14 +382,14 @@ void test_fluids(void) {
         },
         &id);
     PHYSICS_update();
-    FLUIDS_step();
+    FLUIDS_update();
     double before = sum_water(0, 0, 12, 12);
     PHYSICS_update();
     PHYSICS_update();
-    FLUIDS_step();
+    FLUIDS_update();
     double splashed = before - sum_water(0, 0, 12, 12);
     PHYSICS_update();
-    FLUIDS_step();
+    FLUIDS_update();
     double after = before - sum_water(0, 0, 12, 12);
     PHYSICS_stop();
     expect("Dropped a body into the pool, checking if it splashed its column "

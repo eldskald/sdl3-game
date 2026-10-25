@@ -378,7 +378,7 @@ void test_drawing(void) {
     Uint32 cam_cx = CAM_X / FLUIDS_CELL_W;
     Uint32 cam_cy = CAM_Y / FLUIDS_CELL_H;
     FLUIDS_set_at(cam_cx + 2, cam_cy + 2, 1, 1, fluid_water, 1.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     RENDERER_update();
     SDL_RenderFillRect_call* rect_calls = NULL;
     size_t rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
@@ -426,7 +426,7 @@ void test_drawing(void) {
     FLUIDS_set_at(cam_cx + 10, 76, 1, 1, fluid_water, 1.0f);
     FLUIDS_set_at(cam_cx + 10, 168, 1, 1, fluid_water, 1.0f);
     FLUIDS_set_at(cam_cx - 2, cam_cy + 2, 1, 1, fluid_water, 1.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     RENDERER_update();
     rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
     expect("Added 4 cells of water just outside the ripples area and 1 off "
@@ -455,7 +455,7 @@ void test_drawing(void) {
     if (FLUIDS_add_particle(
             fluid_lava, CAM_X + 100.5f, CAM_Y + 40.1f, 0.0f, 0.0f) != 0)
         added = false;
-    FLUIDS_step();
+    FLUIDS_update();
     RENDERER_update();
     SDL_RenderPoint_call* point_calls = NULL;
     size_t point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
@@ -490,7 +490,7 @@ void test_drawing(void) {
     if (FLUIDS_add_particle(
             fluid_lava, CAM_X - 0.5f, CAM_Y + 80.1f, 0.0f, 0.0f) != 0)
         added = false;
-    FLUIDS_step();
+    FLUIDS_update();
     RENDERER_update();
     point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
     expect("Added 4 particles of lava just off screen and 1 partially on "

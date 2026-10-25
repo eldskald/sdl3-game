@@ -112,7 +112,7 @@ static Uint8 ripples_idx = 0;
 // `get_ripples_area()`.
 static float ripples_x = 0.0f;
 static float ripples_y = 0.0f;
-// Ripples ticks due, added by `FLUIDS_step()` and run by `FLUIDS_draw()`.
+// Ripples ticks due, added by `FLUIDS_update()` and run by `FLUIDS_draw()`.
 static SDL_AtomicInt ripples_ticks = {0};
 // Size of the square of pixels each queued ripple is drawn on.
 static int ripples_size = 0;
@@ -1016,7 +1016,7 @@ static void apply_mod(void* item) {
     }
 }
 
-void FLUIDS_step(void) {
+void FLUIDS_update(void) {
     double dt = GAME_MANAGER_get_current_dt();
     update_simulated_rect();
     void (*const moves[3])(Uint8) = {
@@ -1284,7 +1284,7 @@ static void set_shader_uniforms(SDL_GPURenderState* render_state,
 // Ripples reaching the textures' edges, off screen, are absorbed instead.
 //
 // Since rendering must happen on the main thread, ripples aren't ticked on
-// `FLUIDS_step()`. It counts ticks on `ripples_ticks` instead, which are all
+// `FLUIDS_update()`. It counts ticks on `ripples_ticks` instead, which are all
 // run here, so ripples run at the fluids thread's rate. When the main thread
 // falls behind, ticks over `FLUIDS_RIPPLES_MAX_TICKS` are dropped.
 //

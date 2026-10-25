@@ -27,11 +27,11 @@ void test_reactions(void) {
 
     FLUIDS_set_at(2, 2, 2, 2, fluid_water, 2.0f);
     FLUIDS_set_at(2, 2, 2, 2, fluid_lava, 2.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
     // Fluids are cleared on the next step, since this isn't the fluids thread.
-    FLUIDS_step();
+    FLUIDS_update();
     tile t = (tile){0};
     TILEMAP_get_at(1, 1, &t);
     fluid_cell probe0[2][2] = {0};
@@ -57,10 +57,10 @@ void test_reactions(void) {
 
     FLUIDS_set_at(2, 2, 2, 2, fluid_lava, 1.0f);
     FLUIDS_set_at(2, 1, 2, 1, fluid_water, 1.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
-    FLUIDS_step();
+    FLUIDS_update();
     tile above = (tile){0};
     TILEMAP_get_at(1, 1, &t);
     TILEMAP_get_at(1, 0, &above);
@@ -88,10 +88,10 @@ void test_reactions(void) {
         2, 2, 1, 1, fluid_water, REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD);
     FLUIDS_set_at(
         3, 2, 1, 1, fluid_lava, REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
-    FLUIDS_step();
+    FLUIDS_update();
     TILEMAP_get_at(1, 1, &t);
     fluid_cell probe2[2][1] = {0};
     FLUIDS_get_at(2, 2, 2, 1, &probe2);
@@ -112,10 +112,10 @@ void test_reactions(void) {
         2, 2, 1, 1, fluid_water, REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD);
     FLUIDS_set_at(
         2, 2, 1, 1, fluid_lava, REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
-    FLUIDS_step();
+    FLUIDS_update();
     TILEMAP_get_at(1, 1, &t);
     fluid_cell probe3[1][1] = {0};
     FLUIDS_get_at(2, 2, 1, 1, &probe3);
@@ -136,10 +136,10 @@ void test_reactions(void) {
         2, 2, 1, 1, fluid_lava, REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD);
     FLUIDS_set_at(
         2, 1, 1, 1, fluid_water, REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
-    FLUIDS_step();
+    FLUIDS_update();
     TILEMAP_get_at(1, 1, &t);
     TILEMAP_get_at(1, 0, &above);
     fluid_cell probe4[1][2] = {0};
@@ -162,10 +162,10 @@ void test_reactions(void) {
     double below = REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD - 0.01f;
     FLUIDS_set_at(2, 2, 2, 2, fluid_lava, 1.0f);
     FLUIDS_set_at(2, 2, 2, 2, fluid_water, below);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
-    FLUIDS_step();
+    FLUIDS_update();
     TILEMAP_get_at(1, 1, &t);
     expect("Filled a tile with lava and less than the threshold of water and "
            "reacted, checking if it didn't react...",
@@ -180,10 +180,10 @@ void test_reactions(void) {
 
     FLUIDS_set_at(2, 2, 2, 2, fluid_lava, 1.0f);
     FLUIDS_set_at(2, 0, 2, 1, fluid_water, 1.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
-    FLUIDS_step();
+    FLUIDS_update();
     TILEMAP_get_at(1, 1, &t);
     TILEMAP_get_at(1, 0, &above);
     expect("Filled a tile with lava, put water on the top cells of the tile "
@@ -200,10 +200,10 @@ void test_reactions(void) {
 
     FLUIDS_set_at(2, 3, 2, 1, fluid_lava, 1.0f);
     FLUIDS_set_at(2, 1, 2, 1, fluid_water, 1.0f);
-    FLUIDS_step();
+    FLUIDS_update();
     REACTIONS_do_fluid_fluid_into_tile_reactions();
 
-    FLUIDS_step();
+    FLUIDS_update();
     TILEMAP_get_at(1, 1, &t);
     TILEMAP_get_at(1, 0, &above);
     expect("Put lava on a tile's bottom cells, water on the bottom cells of "

@@ -52,5 +52,5 @@ void clear_tiles_and_fluids(void) {
                         TILEMAP_SIZE_X * FLUIDS_SPLIT_X,
                         TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y,
                         type);
-    FLUIDS_step();
+    FLUIDS_update();
 }
