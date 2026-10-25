@@ -163,7 +163,7 @@ void test_chunks(void) {
 
     FLUIDS_start();
     CHUNKS_load_at(0, 0, 0);
-    FLUIDS_step();
+    FLUIDS_update();
 
     tile tiles[8][8] = {0};
     for (Uint16 i = 0; i < 8; i++) {
@@ -316,7 +316,7 @@ void test_chunks(void) {
 
     clear_tiles_and_fluids();
     int res = CHUNKS_load_at(0, 20, 30);
-    FLUIDS_step();
+    FLUIDS_update();
 
     tile t0 = (tile){0};
     tile t1 = (tile){0};
