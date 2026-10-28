@@ -1,6 +1,7 @@
 #include "engine/physics.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
+#include "engine/camera.h"
 #include "engine/fluids.h"
 #include "engine/game-manager.h"
 #include "engine/tilemap.h"
@@ -32,25 +33,26 @@ typedef struct {
 } fluid_rect;
 
 // Bodies are wrapped with the state the physics engine keeps on them, so it
-// isn't exposed on `body`. `sleeping` turns off physics for it and
-// `splash_cooldown` is how long until it can splash fluids again.
+// isn't exposed on `body`. `splash_cooldown` is how long until it can splash
+// fluids again.
 typedef struct {
     body body;
-    bool sleeping;
     double splash_cooldown;
     double drop_timer;
 } body_data;
 
 // Prop points are wrapped with their previous position so we don't expose it on
-// `prop_point`, as well as acceleration and `sleeping`. The `used` prop is so
-// we know an empty index, bodies have `w` and `h` to tell us, connections have
-// `point_a` and `point_b` but points have nothing.
+// `prop_point`, as well as acceleration. `simulated` is set at the start of
+// each tick, so points pushed out of the simulation space mid-tick still finish
+// it with the rest. The `used` prop is so we know an empty index, bodies have
+// `w` and `h` to tell us, connections have `point_a` and `point_b` but points
+// have nothing.
 typedef struct {
     prop_point point;
     double prev_x, prev_y;
     double prev_dt;
     double acc_x, acc_y;
-    bool sleeping;
+    bool simulated;
     bool used;
     dynarr connections;
 } prop_point_data;
@@ -61,7 +63,6 @@ typedef struct {
     double elasticity;
     double length;
     bool two_ways;
-    bool sleeping;
 } prop_connection_data;
 
 
@@ -69,6 +70,9 @@ typedef struct {
 static body_data* bodies = NULL;
 static size_t bodies_cap = 0;
 static dynarr nbsearch[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = {0};
+
+// Simulation space in tiles, updated at the start of each `PHYSICS_update()`.
+static SDL_Rect sim = (SDL_Rect){0};
 
 static prop_point_data* points = NULL;
 static size_t points_cap = 0;
@@ -148,6 +152,27 @@ static nbcoords get_rect_nbcoords(double x, double y, double w, double h) {
 
 static nbcoords get_body_nbcoords(body b) {
     return get_rect_nbcoords(b.x, b.y, b.w, b.h);
+}
+
+
+
+// Bodies are simulated when any of their tiles is within the simulation space.
+static bool is_body_simulated(body b) {
+    nbcoords c = get_body_nbcoords(b);
+    return c.br.x >= sim.x && c.tl.x < sim.x + sim.w && c.br.y >= sim.y &&
+           c.tl.y < sim.y + sim.h;
+}
+
+static bool is_point_simulated(prop_point p) {
+    Uint16 x = pos_to_tile_x(p.x);
+    Uint16 y = pos_to_tile_y(p.y);
+    return x >= sim.x && x < sim.x + sim.w && y >= sim.y && y < sim.y + sim.h;
+}
+
+// Points outside the simulation space don't move, so they're treated as pinned
+// by the points inside it they're connected to.
+static bool is_point_fixed(prop_point_data* p) {
+    return p->point.pinned || !p->simulated;
 }
 
 static void add_to_nbsearch(nbcoords c, size_t idx) {
@@ -338,9 +363,10 @@ static void move_body_vertically(body_data* b, double d) {
 
 
 
-// First we destroy points whose tile got filled by a solid non-platform tile,
-// like when a reaction creates new tiles, so they only get destroyed here on
-// the physics thread. Then we reset accelerations back to the one set on
+// First we mark which points are within the simulation space this tick, then
+// among those we destroy points whose tile got filled by a solid non-platform
+// tile, like when a reaction creates new tiles, so they only get destroyed here
+// on the physics thread. Then we reset accelerations back to the one set on
 // `prop_point`, then we let other interactions like spring connections apply
 // force and modify the acceleration on `prop_point_data` which will be the one
 // actually used to move them.
@@ -349,13 +375,14 @@ static void prepare_prop_points(void) {
     for (size_t idx = 0; idx < points_cap; idx++) {
         prop_point_data* p = &points[idx];
         if (!p->used) continue;
+        p->simulated = is_point_simulated(p->point);
+        if (!p->simulated) continue;
         TILEMAP_get_at(
             pos_to_tile_x(p->point.x), pos_to_tile_y(p->point.y), &data);
         if (data.type && !data.platform) {
             PHYSICS_del_prop_point(idx);
             continue;
         }
-        if (p->sleeping) continue;
         if (p->point.pinned) continue;
         p->acc_x = p->point.acc_x;
         p->acc_y = p->point.acc_y;
@@ -366,19 +393,21 @@ static void apply_connections(bool springs) {
     for (size_t idx = 0; idx < connections_cap; idx++) {
         prop_connection_data* c = &connections[idx];
         if (c->point_a == c->point_b) continue;
-        if (c->sleeping) continue;
         if ((c->elasticity > 0.0f && !springs) ||
             (c->elasticity == 0.0f && springs))
             continue;
 
         prop_point_data* p_a = &points[c->point_a];
         prop_point_data* p_b = &points[c->point_b];
+        bool fixed_a = is_point_fixed(p_a);
+        bool fixed_b = is_point_fixed(p_b);
+        if (fixed_a && fixed_b) continue;
         double dx = p_a->point.x - p_b->point.x;
         double dy = p_a->point.y - p_b->point.y;
         double dist = SDL_sqrt(dx * dx + dy * dy);
         if (dist < EPSILON) {
-            if (!p_a->point.pinned) p_a->point.x -= EPSILON;
-            if (!p_b->point.pinned) p_b->point.x += EPSILON;
+            if (!fixed_a) p_a->point.x -= EPSILON;
+            if (!fixed_b) p_b->point.x += EPSILON;
             dx = p_a->point.x - p_b->point.x;
             dist = SDL_sqrt(dx * dx + dy * dy);
         }
@@ -387,22 +416,22 @@ static void apply_connections(bool springs) {
         double dir_x = dx / dist;
         double dir_y = dy / dist;
         if (c->elasticity > 0.0f) {
-            if (!p_a->point.pinned) {
+            if (!fixed_a) {
                 p_a->acc_x -= dir_x * diff / c->elasticity;
                 p_a->acc_y -= dir_y * diff / c->elasticity;
             }
-            if (!p_b->point.pinned) {
+            if (!fixed_b) {
                 p_b->acc_x += dir_x * diff / c->elasticity;
                 p_b->acc_y += dir_y * diff / c->elasticity;
             }
         } else {
-            if (!p_a->point.pinned) {
-                double fac = p_b->point.pinned ? 1.0f : 0.5f;
+            if (!fixed_a) {
+                double fac = fixed_b ? 1.0f : 0.5f;
                 p_a->point.x -= dir_x * fac * diff;
                 p_a->point.y -= dir_y * fac * diff;
             }
-            if (!p_b->point.pinned) {
-                double fac = p_a->point.pinned ? 1.0f : 0.5f;
+            if (!fixed_b) {
+                double fac = fixed_a ? 1.0f : 0.5f;
                 p_b->point.x += dir_x * fac * diff;
                 p_b->point.y += dir_y * fac * diff;
             }
@@ -423,8 +452,7 @@ static void move_points(void) {
     for (size_t idx = 0; idx < points_cap; idx++) {
         prop_point_data* p = &points[idx];
         if (!p->used) continue;
-        if (p->sleeping) continue;
-        if (p->point.pinned) continue;
+        if (is_point_fixed(p)) continue;
 
         // Verlet integration
         double dt = get_prop_dt();
@@ -576,8 +604,7 @@ static void collide_points(void) {
     for (size_t idx = 0; idx < points_cap; idx++) {
         prop_point_data* p = &points[idx];
         if (!p->used) continue;
-        if (p->sleeping) continue;
-        if (p->point.pinned) continue;
+        if (is_point_fixed(p)) continue;
 
         // Extrude from bodies
         if (!p->point.ignore_bodies) {
@@ -746,7 +773,7 @@ static void move_bodies(void) {
     for (size_t idx = 0; idx < bodies_cap; idx++) {
         body_data* b = &bodies[idx];
         if (b->body.w == 0 || b->body.h == 0) continue;
-        if (b->sleeping) continue;
+        if (!is_body_simulated(b->body)) continue;
         b->splash_cooldown -= dt;
         b->drop_timer -= dt;
         if (SDL_fabs(b->body.vel_x) <= EPSILON &&
@@ -1357,6 +1384,8 @@ void PHYSICS_start(void) {
     connections = SDL_calloc(PHYSICS_STARTING_PROP_CONNECTIONS_DYNARR_CAP,
                              sizeof(prop_connection_data));
     connections_cap = PHYSICS_STARTING_PROP_CONNECTIONS_DYNARR_CAP;
+
+    sim = CAMERA_get_simulation_rect();
 }
 
 void PHYSICS_stop(void) {
@@ -1383,6 +1412,7 @@ void PHYSICS_stop(void) {
 
 
 void PHYSICS_update(void) {
+    sim = CAMERA_get_simulation_rect();
     move_bodies();
     prepare_prop_points();
     apply_connections(true);
@@ -1421,7 +1451,6 @@ int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr) {
         for (Uint16 y = nbc.tl.y; y <= nbc.br.y; y++) {
             for (size_t i = 0; i < nbsearch[x][y].len; i++) {
                 size_t id = (size_t)nbsearch[x][y].at[i];
-                if (bodies[id].sleeping) continue;
                 body b = bodies[id].body;
 
                 // A body spanning many cells is only checked on the first
@@ -1561,5 +1590,41 @@ int PHYSICS_is_body_on_ceiling(size_t body_id, bool* check) {
         }
     }
     *check = false;
+    return 0;
+}
+
+int PHYSICS_is_body_within_the_simulation(size_t body_id, bool* check) {
+    if (body_id >= bodies_cap || body_id < 0) {
+        SDL_LogWarn(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "Tried to check body_id=%lu but this is outside the buffer range",
+            body_id);
+        return 3;
+    }
+    if (bodies[body_id].body.w == 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to check inexistent body at body_id=%lu",
+                    body_id);
+        return 1;
+    }
+    *check = is_body_simulated(bodies[body_id].body);
+    return 0;
+}
+
+int PHYSICS_is_prop_point_within_the_simulation(size_t point_id, bool* check) {
+    if (point_id >= points_cap || point_id < 0) {
+        SDL_LogWarn(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "Tried to check point_id=%lu but this is outside the buffer range",
+            point_id);
+        return 3;
+    }
+    if (!points[point_id].used) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to check inexistent prop point at point_id=%lu",
+                    point_id);
+        return 1;
+    }
+    *check = is_point_simulated(points[point_id].point);
     return 0;
 }

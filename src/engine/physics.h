@@ -138,6 +138,14 @@ int PHYSICS_is_body_on_platform(size_t body_id, bool* check);
 // right.
 int PHYSICS_is_body_on_ceiling(size_t body_id, bool* check);
 
+// Checks if the body at `body_id` is being simulated, setting `check` to true
+// if that's the case, which is when any part of it is within the simulation
+// space from `CAMERA_get_simulation_rect()` as of the last `PHYSICS_update()`.
+// Bodies outside it stay frozen. Returns `3` when `body_id` is outside the
+// array's range, `1` when there is no body at that index, `0` when everything
+// went right.
+int PHYSICS_is_body_within_the_simulation(size_t body_id, bool* check);
+
 
 
 // Creates a new point with `data` for its values, returning its index on
@@ -219,6 +227,14 @@ int PHYSICS_set_prop_point_on_delete(size_t point_id,
                                      void (*func)(size_t point_id, size_t arg),
                                      size_t arg);
 
+// Checks if the point at `point_id` is being simulated, setting `check` to true
+// if that's the case, which is when it's within the simulation space from
+// `CAMERA_get_simulation_rect()` as of the last `PHYSICS_update()`. Points
+// outside it stay frozen and act as pinned for the points they're connected
+// to. Returns `3` when `point_id` is outside the array's range, `1` when there
+// is no point at that index, `0` when everything went right.
+int PHYSICS_is_prop_point_within_the_simulation(size_t point_id, bool* check);
+
 
 
 // Initiates the body array. Call at the start of the game.
@@ -229,7 +245,8 @@ void PHYSICS_stop(void);
 
 // Moves each body by its velocity and each prop with its acceleration and
 // connections. Bodies collide with the tilemap and interact with fluids and
-// props as they move.
+// props as they move. Only bodies and points within the simulation space from
+// `CAMERA_get_simulation_rect()` are simulated, the rest stay frozen.
 void PHYSICS_update(void);
 
 

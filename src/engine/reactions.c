@@ -141,8 +141,8 @@ void REACTIONS_do_fluid_fluid_into_tile_reactions(void) {
     SDL_Rect sim = FLUIDS_get_simulated_rect();
     Uint16 from_x = sim.x / FLUIDS_SPLIT_X;
     Uint16 from_y = sim.y / FLUIDS_SPLIT_Y;
-    for (Uint16 x = from_x; x < from_x + FLUIDS_SIMULATE_X; x++) {
-        for (Uint16 y = from_y; y < from_y + FLUIDS_SIMULATE_Y; y++) {
+    for (Uint16 x = from_x; x < from_x + SIMULATION_SPACE_X; x++) {
+        for (Uint16 y = from_y; y < from_y + SIMULATION_SPACE_Y; y++) {
             tile t = (tile){0};
             TILEMAP_get_at(x, y, &t);
             if (t.type && !t.platform) continue;

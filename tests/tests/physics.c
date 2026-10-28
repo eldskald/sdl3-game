@@ -1,5 +1,6 @@
 #include "engine/physics.h"
 #include "defs.h"
+#include "engine/camera.h"
 #include "engine/game-manager.h"
 #include "engine/tilemap.h"
 #include "tests.h"
@@ -1082,6 +1083,132 @@ void test_physics(void) {
                     on_delete_arg == new_arg,
                     set_deleted_res == 1,
                     set_range_res == 3});
+
+
+
+    // Simulation space tests, with the camera on the tilemap's top left so the
+    // simulation space starts at tile (0,0)
+    CAMERA_center_at(0.0f, 0.0f);
+    double edge_x = SIMULATION_SPACE_X * SPRITESHEET_CELL_X;
+    double body_vel = 4.0f * SPRITESHEET_CELL_X;
+    size_t out_body_id = 0;
+    size_t edge_body_id = 0;
+    PHYSICS_new_body((body){.type = physics_actor,
+                            .x = edge_x + 4.0f * SPRITESHEET_CELL_X,
+                            .y = 2.0f * SPRITESHEET_CELL_Y,
+                            .w = SPRITESHEET_CELL_X,
+                            .h = SPRITESHEET_CELL_Y,
+                            .vel_x = body_vel},
+                     &out_body_id);
+    PHYSICS_new_body((body){.type = physics_actor,
+                            .x = edge_x - SPRITESHEET_CELL_X / 2.0f,
+                            .y = 2.0f * SPRITESHEET_CELL_Y,
+                            .w = SPRITESHEET_CELL_X,
+                            .h = SPRITESHEET_CELL_Y,
+                            .vel_x = -body_vel},
+                     &edge_body_id);
+    PHYSICS_update();
+    body out_body = (body){0};
+    body edge_body = (body){0};
+    PHYSICS_get_body(out_body_id, &out_body);
+    PHYSICS_get_body(edge_body_id, &edge_body);
+    bool out_within = true;
+    bool edge_within = false;
+    int out_within_res =
+        PHYSICS_is_body_within_the_simulation(out_body_id, &out_within);
+    int edge_within_res =
+        PHYSICS_is_body_within_the_simulation(edge_body_id, &edge_within);
+    expect("Created a moving body outside the simulation space and another "
+           "partially inside it and ticked once, checking if only the one "
+           "partially inside moved and is within the simulation...",
+           6,
+           (bool[]){
+               out_body.x == edge_x + 4.0f * SPRITESHEET_CELL_X,
+               edge_body.x < edge_x - SPRITESHEET_CELL_X / 2.0f,
+               out_within_res == 0,
+               edge_within_res == 0,
+               out_within == false,
+               edge_within == true,
+           });
+
+    // Centering the camera on the simulation space's right edge slides it
+    // half its width to the right, over the body outside it
+    CAMERA_center_at(edge_x, 0.0f);
+    PHYSICS_update();
+    PHYSICS_get_body(out_body_id, &out_body);
+    PHYSICS_is_body_within_the_simulation(out_body_id, &out_within);
+    expect("Moved the camera to the right and ticked once, checking if the "
+           "body that was outside the simulation space is now simulated...",
+           2,
+           (bool[]){
+               out_body.x > edge_x + 4.0f * SPRITESHEET_CELL_X,
+               out_within == true,
+           });
+
+    CAMERA_center_at(0.0f, 0.0f);
+    PHYSICS_del_body(out_body_id);
+    PHYSICS_del_body(edge_body_id);
+    expect("Deleted the bodies, checking if they're not within the simulation "
+           "anymore, as well as an index out of range, checking errors...",
+           3,
+           (bool[]){
+               PHYSICS_is_body_within_the_simulation(out_body_id,
+                                                     &out_within) == 1,
+               PHYSICS_is_body_within_the_simulation(edge_body_id,
+                                                     &edge_within) == 1,
+               PHYSICS_is_body_within_the_simulation(
+                   PHYSICS_STARTING_BODIES_DYNARR_CAP << 4, &out_within) == 3,
+           });
+
+    size_t out_point_id = 0;
+    size_t in_point_id = 0;
+    double out_x = edge_x + SPRITESHEET_CELL_X / 2.0f;
+    double in_x = edge_x - SPRITESHEET_CELL_X * 1.5f;
+    double hang_y = 2.5f * SPRITESHEET_CELL_Y;
+    double hang_length = 2.0f * SPRITESHEET_CELL_X;
+    PHYSICS_new_prop_point((prop_point){.x = out_x, .y = hang_y, .acc_y = acc},
+                           &out_point_id);
+    PHYSICS_new_prop_point((prop_point){.x = in_x, .y = hang_y, .acc_y = acc},
+                           &in_point_id);
+    PHYSICS_connect_prop_points(
+        out_point_id, in_point_id, 0.0f, hang_length, false);
+    for (int i = 0; i < 30; i++)
+        PHYSICS_update();
+    prop_point out_point = (prop_point){0};
+    prop_point in_point = (prop_point){0};
+    PHYSICS_get_prop_point(out_point_id, &out_point);
+    PHYSICS_get_prop_point(in_point_id, &in_point);
+    bool out_point_within = true;
+    PHYSICS_is_prop_point_within_the_simulation(out_point_id,
+                                                &out_point_within);
+    dist = SDL_sqrt((in_point.x - out_point.x) * (in_point.x - out_point.x) +
+                    (in_point.y - out_point.y) * (in_point.y - out_point.y));
+    expect("Connected a falling point inside the simulation space to another "
+           "outside it with a rope and ticked, checking if the one outside "
+           "stayed still and held the one inside like a pin...",
+           5,
+           (bool[]){
+               out_point.x == out_x,
+               out_point.y == hang_y,
+               in_point.y > hang_y,
+               dist <= hang_length + 0.01f,
+               out_point_within == false,
+           });
+
+    PHYSICS_del_prop_point(out_point_id);
+    PHYSICS_del_prop_point(in_point_id);
+    expect("Deleted the points, checking if they're not within the simulation "
+           "anymore, as well as an index out of range, checking errors...",
+           3,
+           (bool[]){
+               PHYSICS_is_prop_point_within_the_simulation(
+                   out_point_id, &out_point_within) == 1,
+               PHYSICS_is_prop_point_within_the_simulation(
+                   in_point_id, &out_point_within) == 1,
+               PHYSICS_is_prop_point_within_the_simulation(
+                   PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP << 4,
+                   &out_point_within) == 3,
+           });
 
     PHYSICS_stop();
 }

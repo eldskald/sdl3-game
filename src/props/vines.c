@@ -35,11 +35,13 @@ typedef struct {
 // next. Its ends are its pins, it's loose once neither of them is pinned and
 // then `fade` counts the time until it's deleted. `under_fluid` has a bool for
 // each point on `chain`, whether it was in a fluid cell on the last update.
+// `(x,y,w,h)` is the rect bounding its points on the last update, in pixels.
 // `used` is so we know an empty index, since its points keep the vine's index
 // as their `on_delete_arg`.
 typedef struct {
     dynarr chain;
     dynarr under_fluid;
+    double x, y, w, h;
     double fade;
     bool used;
 } vine;
@@ -395,9 +397,40 @@ static void add_to_frame(vine_frame* f, vine* v, bool loose, SDL_FRect cam) {
     }
 }
 
+// Walks the chain to fit the vine's rect around its points.
+static void update_rect(vine* v) {
+    prop_point p = (prop_point){0};
+    PHYSICS_get_prop_point(chain_at(v, 0), &p);
+    double min_x = p.x;
+    double max_x = p.x;
+    double min_y = p.y;
+    double max_y = p.y;
+    for (size_t i = 1; i < v->chain.len; i++) {
+        PHYSICS_get_prop_point(chain_at(v, i), &p);
+        min_x = SDL_min(min_x, p.x);
+        max_x = SDL_max(max_x, p.x);
+        min_y = SDL_min(min_y, p.y);
+        max_y = SDL_max(max_y, p.y);
+    }
+    v->x = min_x;
+    v->y = min_y;
+    v->w = max_x - min_x;
+    v->h = max_y - min_y;
+}
+
+// Whether the vine's rect is entirely outside `space`, in tiles.
+static bool is_outside_simulation(vine* v, SDL_Rect space) {
+    double l = space.x * SPRITESHEET_CELL_X;
+    double t = space.y * SPRITESHEET_CELL_Y;
+    double r = (space.x + space.w) * SPRITESHEET_CELL_X;
+    double b = (space.y + space.h) * SPRITESHEET_CELL_Y;
+    return v->x + v->w < l || v->x >= r || v->y + v->h < t || v->y >= b;
+}
+
 void VINES_update(void) {
     double dt = GAME_MANAGER_get_current_dt();
     SDL_FRect cam = CAMERA_get_rect();
+    SDL_Rect space = CAMERA_get_simulation_rect();
     vine_frame* f = &frames[back];
     f->points_len = 0;
     f->strips_len = 0;
@@ -410,6 +443,11 @@ void VINES_update(void) {
     for (size_t idx = 0; idx < vines_cap; idx++) {
         if (!vines[idx].used) continue;
         vine* v = &vines[idx];
+
+        // The simulation space is larger than the screen, so vines outside it
+        // aren't drawn either.
+        update_rect(v);
+        if (is_outside_simulation(v, space)) continue;
 
         size_t doomed_before = doomed.len;
         for (size_t i = 0; i < v->chain.len; i++)
