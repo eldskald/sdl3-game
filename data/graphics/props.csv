@@ -1,0 +1,9 @@
+prop_body_collision_pad,2
+prop_damping,0.99
+
+vine_color,100,176,130,255
+vine_gravity,600
+vine_fluid_gravity,200
+vine_cut_duration,5
+vine_fade_time,1
+vine_destroyer_fluids,lava

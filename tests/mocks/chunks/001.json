@@ -3,6 +3,25 @@
  "infinite":false,
  "layers":[
         {
+         "data":[0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1030, 1031, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1026, 0, 1026, 0, 1029, 0,
+            0, 0, 1034, 0, 1054, 1032, 1045, 1032,
+            0, 0, 0, 0, 0, 0, 1037, 0],
+         "height":8,
+         "id":3,
+         "name":"Vines",
+         "opacity":1,
+         "type":"tilelayer",
+         "visible":true,
+         "width":8,
+         "x":0,
+         "y":0
+        }, 
+        {
          "data":[33, 34, 35, 36, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
             197, 198, 199, 200, 0, 0, 0, 0,
@@ -45,7 +64,7 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":3,
+ "nextlayerid":4,
  "nextobjectid":2,
  "orientation":"orthogonal",
  "renderorder":"right-down",
@@ -55,6 +74,10 @@
         {
          "firstgid":1,
          "source":"..\/..\/..\/editor\/spritesheet.tsx"
+        }, 
+        {
+         "firstgid":1025,
+         "source":"..\/..\/..\/editor\/helper-tiles.tsx"
         }],
  "tilewidth":8,
  "type":"map",

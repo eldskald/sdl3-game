@@ -80,12 +80,11 @@ void FLUIDS_get_at(
 // is skipped.
 void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed);
 
-// Queues a ripple on the `new_ripple_pix_size` square of pixels, set on
-// `FLUIDS_RIPPLES_CSV_PATH`, centered on pixel `(x,y)`, applied on the next
-// ripples tick. It adds `strength` to their height, on top of any ripples
-// already there, then spreads around the body of fluid it's in and fades out
-// over time.
-void FLUIDS_ripple_at(Uint32 x, Uint32 y, double strength);
+// Queues a ripple on the `size` square of pixels centered on pixel `(x,y)`,
+// applied on the next ripples tick. It adds `strength` to their height, on top
+// of any ripples already there, then spreads around the body of fluid it's in
+// and fades out over time.
+void FLUIDS_ripple_at(Uint32 x, Uint32 y, Uint32 size, double strength);
 
 // Adds a particle of fluid of type `type` at `(x,y)` in world coords, moving
 // with velocity `(vel_x,vel_y)`. It becomes fluid once it lands on a fluid cell

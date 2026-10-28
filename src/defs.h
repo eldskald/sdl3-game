@@ -57,6 +57,8 @@
 #define CHUNKS_003_PATH "data/chunks/003.json"
 #define CHUNKS_004_PATH "data/chunks/004.json"
 #define CHUNKS_TOTAL 4
+#define CHUNKS_HELPER_TILESET_NAME "helper-tiles.tsx"
+#define CHUNKS_HELPER_TILES_TOTAL 64
 
 
 
@@ -91,6 +93,7 @@
 #define FLUIDS_STARTING_PARTICLES_DYNARR_CAP 1024
 #define FLUIDS_SPLASH_SURFACE_RANGE 2
 #define FLUIDS_STAGGER_SECONDS 10
+#define FLUIDS_INTERACTION_VOL_THRESHOLD 0.5f
 
 // Reactions
 #define REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH                               \
@@ -99,8 +102,13 @@
 
 // Physics
 #define PHYSICS_STARTING_BODIES_DYNARR_CAP 1024
+#define PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP 1024
+#define PHYSICS_STARTING_PROP_CONNECTIONS_DYNARR_CAP 1024
 #define PHYSICS_SPLASH_COOLDOWN 0.2
 #define PHYSICS_DROP_TIMER 0.1
+#define PHYSICS_PROP_ROPE_ITERATIONS 4
+#define PHYSICS_PROP_MAX_DT 0.05
+#define PHYSICS_PROPS_CSV_PATH "data/graphics/props.csv"
 
 
 
@@ -113,6 +121,13 @@
 
 
 
+// Props
+#define PROPS_VINE_STARTING_DYNARR_CAP 1024
+#define PROPS_VINE_FRAME_STARTING_POINTS_CAP 1024
+#define PROPS_VINE_FRAME_STARTING_STRIPS_CAP 256
+#define PROPS_VINE_FRAME_CULL_MARGIN 16
+
+
 // Tests
 #define TESTS_CHUNKS_001_PATH "tests/mocks/chunks/001.json"
 #define TESTS_TILEMAP_DIRT_AUTOTILE_PATH                                       \
@@ -122,6 +137,7 @@
 #define TESTS_CHUNKS_PLATFORMS_CSV_PATH "tests/mocks/tiles/platforms.csv"
 #define TESTS_CHUNKS_TYPES_MAP_CSV_PATH "tests/mocks/tiles/types-map.csv"
 #define TESTS_FLUIDS_RIPPLES_CSV_PATH "tests/mocks/graphics/ripples.csv"
+#define TESTS_PHYSICS_PROPS_CSV_PATH "tests/mocks/graphics/props.csv"
 #define TESTS_FLUIDS_CSV_PATH "tests/mocks/simulation/fluids.csv"
 #define TESTS_FLUIDS_PARTICLES_CSV_PATH                                        \
     "tests/mocks/simulation/fluid-particles.csv"

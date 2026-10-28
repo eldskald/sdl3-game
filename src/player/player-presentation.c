@@ -69,8 +69,8 @@ static void update_states_machine(player_state player, body player_body) {
     states_machine_state new_state = state.state;
     bool is_on_floor = false;
     bool is_on_ceiling = false;
-    PHYSICS_is_on_floor(player.body_id, &is_on_floor);
-    PHYSICS_is_on_ceiling(player.body_id, &is_on_ceiling);
+    PHYSICS_is_body_on_floor(player.body_id, &is_on_floor);
+    PHYSICS_is_body_on_ceiling(player.body_id, &is_on_ceiling);
 
     if (player.swimming)
         new_state = state_swimming;
@@ -300,7 +300,7 @@ void PLAYER_SPRITE_update(player_state player) {
     s.pos_y = (Uint32)SDL_roundf(b.y) + data.offset_y;
     s.flip_mode = player.facing == 1 ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
 
-    SPRITES_update_sprite(state.sprite_id, s);
+    SPRITES_edit_sprite(state.sprite_id, s);
 
     update_states_machine(player, b);
 }

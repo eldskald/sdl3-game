@@ -11,6 +11,9 @@ static size_t render_point_calls_size = 0;
 static SDL_RenderFillRect_call render_fill_rect_calls[SUB_CALLS_MAX] = {0};
 static size_t render_fill_rect_calls_size = 0;
 
+static SDL_RenderLine_call render_line_calls[SUB_CALLS_MAX] = {0};
+static size_t render_line_calls_size = 0;
+
 void stubbed_SDL_RenderTexture(SDL_FRect* srcrect,
                                SDL_FRect* dstrect,
                                SDL_FlipMode flip_mode) {
@@ -31,6 +34,12 @@ void stubbed_SDL_RenderFillRect(SDL_FRect* rect) {
     render_fill_rect_calls_size++;
 }
 
+void stubbed_SDL_RenderLine(float x1, float y1, float x2, float y2) {
+    render_line_calls[render_line_calls_size] =
+        (SDL_RenderLine_call){x1, y1, x2, y2};
+    render_line_calls_size++;
+}
+
 size_t get_SDL_RenderTexture_calls(SDL_RenderTexture_call** ptr) {
     *ptr = render_texture_calls;
     return render_texture_calls_size;
@@ -46,6 +55,11 @@ size_t get_SDL_RenderFillRect_calls(SDL_RenderFillRect_call** ptr) {
     return render_fill_rect_calls_size;
 }
 
+size_t get_SDL_RenderLine_calls(SDL_RenderLine_call** ptr) {
+    *ptr = render_line_calls;
+    return render_line_calls_size;
+}
+
 void clear_stubbed_calls(void) {
     for (size_t i = 0; i < render_texture_calls_size; i++)
         render_texture_calls[i] = (SDL_RenderTexture_call){0};
@@ -56,4 +70,7 @@ void clear_stubbed_calls(void) {
     for (size_t i = 0; i < render_fill_rect_calls_size; i++)
         render_fill_rect_calls[i] = (SDL_RenderFillRect_call){0};
     render_fill_rect_calls_size = 0;
+    for (size_t i = 0; i < render_line_calls_size; i++)
+        render_line_calls[i] = (SDL_RenderLine_call){0};
+    render_line_calls_size = 0;
 }

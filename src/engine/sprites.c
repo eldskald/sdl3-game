@@ -123,17 +123,17 @@ int SPRITES_get_sprite(size_t sprite_id, sprite* data) {
 }
 
 
-int SPRITES_update_sprite(size_t sprite_id, sprite data) {
+int SPRITES_edit_sprite(size_t sprite_id, sprite data) {
     if (sprite_id >= sprites_size || sprite_id < 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Tried to update sprite_id=%lu but this is outside the "
+                    "Tried to edit sprite_id=%lu but this is outside the "
                     "buffer range",
                     sprite_id);
         return 3;
     }
     if (data.coords_w == 0 || data.coords_h == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Tried to update with invalid sprite data: { coords_w = "
+                    "Tried to edit with invalid sprite data: { coords_w = "
                     "%d, coords_h = %d }",
                     data.coords_w,
                     data.coords_h);
@@ -141,7 +141,7 @@ int SPRITES_update_sprite(size_t sprite_id, sprite data) {
     }
     if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Tried to update inexistent sprite at sprite_id=%lu",
+                    "Tried to edit inexistent sprite at sprite_id=%lu",
                     sprite_id);
         return 1;
     }

@@ -9,6 +9,7 @@
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
 #include "player/player-core.h"
+#include "props/vines.h"
 #include <SDL3/SDL.h>
 
 #ifdef DEV
@@ -23,17 +24,20 @@
 static SDL_Thread* fixed_t = NULL;
 static SDL_Thread* fluids_t = NULL;
 
+// Each loop's start is set right before it begins and its diff starts at the
+// target rate, so the first ticks get a regular dt instead of zero or the whole
+// time spent loading.
 static const Uint64 fluids_t_target_rate = SEC2NANOSEC / FLUIDS_T_TARGET_FPS;
 static Uint64 fluids_t_start = 0;
-static Uint64 fluids_t_diff = 0;
+static Uint64 fluids_t_diff = SEC2NANOSEC / FLUIDS_T_TARGET_FPS;
 
 static const Uint64 fixed_t_target_rate = SEC2NANOSEC / FIXED_T_TARGET_FPS;
 static Uint64 fixed_t_start = 0;
-static Uint64 fixed_t_diff = 0;
+static Uint64 fixed_t_diff = SEC2NANOSEC / FIXED_T_TARGET_FPS;
 
 static const Uint64 main_t_target_rate = SEC2NANOSEC / MAIN_T_TARGET_FPS;
 static Uint64 main_t_start = 0;
-static Uint64 main_t_diff = 0;
+static Uint64 main_t_diff = SEC2NANOSEC / MAIN_T_TARGET_FPS;
 
 static bool running = true;
 
@@ -41,12 +45,14 @@ static bool running = true;
 
 static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Started fixed loop thread.");
+    fixed_t_start = SDL_GetTicksNS();
 
     while (running) {
         // Fixed thread loop
 
         INPUTS_update();
         PHYSICS_update();
+        VINES_update();
         PLAYER_update();
 
 #ifdef DEV
@@ -70,6 +76,7 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
 
 static int SDLCALL fluids_thread(void* _arg) { // NOLINT
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Started fluids loop thread.");
+    fluids_t_start = SDL_GetTicksNS();
 
     while (running) {
         // Fluids thread loop
@@ -109,6 +116,7 @@ int GAME_MANAGER_start(void) {
     TILEMAP_start();
     CHUNKS_start();
     PHYSICS_start();
+    VINES_start();
     FLUIDS_start();
     REACTIONS_start();
     PLAYER_start();
@@ -117,6 +125,7 @@ int GAME_MANAGER_start(void) {
     DEV_start();
 #endif
 
+    main_t_start = SDL_GetTicksNS();
     fixed_t = SDL_CreateThread(fixed_thread, "fixed", NULL);
     fluids_t = SDL_CreateThread(fluids_thread, "fluids", NULL);
 
@@ -135,6 +144,7 @@ void GAME_MANAGER_stop(void) {
     CHUNKS_stop();
     TILEMAP_stop();
     PHYSICS_stop();
+    VINES_stop();
     FLUIDS_stop();
     REACTIONS_stop();
 
