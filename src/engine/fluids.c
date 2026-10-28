@@ -83,16 +83,16 @@ typedef struct {
     long y;
     long dir;
     Uint32 len;
-    double fills[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X];
-    double deltas[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X];
+    double fills[SIMULATION_SPACE_X * FLUIDS_SPLIT_X];
+    double deltas[SIMULATION_SPACE_X * FLUIDS_SPLIT_X];
 } stretch;
 
 
 
 static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
                   [TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y] = {0};
-static fluids buffer[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X]
-                    [FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y] = {0};
+static fluids buffer[SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
+                    [SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y] = {0};
 // Top left of the simulated rect on `grid`, in fluid cells. Only cells inside
 // it are simulated, cells outside it are treated as walls by the simulation.
 static long sim_x = 0;
@@ -435,35 +435,28 @@ static bool is_solid(Uint32 x, Uint32 y) {
 #define BUFFER(x, y) buffer[(x) - sim_x][(y) - sim_y]
 
 static void initiate_buffer(void) {
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++)
+    for (Uint32 x = 0; x < SIMULATION_SPACE_X * FLUIDS_SPLIT_X; x++)
         SDL_memcpy(buffer[x], &grid[sim_x + x][sim_y], sizeof(buffer[x]));
 }
 
 static void transfer_buffer(void) {
-    for (Uint32 x = 0; x < FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X; x++)
+    for (Uint32 x = 0; x < SIMULATION_SPACE_X * FLUIDS_SPLIT_X; x++)
         SDL_memcpy(&grid[sim_x + x][sim_y], buffer[x], sizeof(buffer[x]));
 }
 
-// Centers the simulated rect on the camera, snapped to whole tiles so its cells
-// line up with the tilemap's, and clamped to the tilemap bounds.
+// Puts the simulated rect on the simulation space, in fluid cells.
 static void update_simulated_rect(void) {
-    SDL_FRect cam = CAMERA_get_rect();
-    double x = (cam.x + cam.w / 2) / SPRITESHEET_CELL_X - FLUIDS_SIMULATE_X / 2;
-    double y = (cam.y + cam.h / 2) / SPRITESHEET_CELL_Y - FLUIDS_SIMULATE_Y / 2;
-    sim_x =
-        SDL_clamp((long)SDL_round(x), 0, TILEMAP_SIZE_X - FLUIDS_SIMULATE_X) *
-        FLUIDS_SPLIT_X;
-    sim_y =
-        SDL_clamp((long)SDL_round(y), 0, TILEMAP_SIZE_Y - FLUIDS_SIMULATE_Y) *
-        FLUIDS_SPLIT_Y;
+    SDL_Rect space = CAMERA_get_simulation_rect();
+    sim_x = space.x * FLUIDS_SPLIT_X;
+    sim_y = space.y * FLUIDS_SPLIT_Y;
 }
 
 
 
 static bool is_outside(long x, long y) {
     return x < sim_x || y < sim_y ||
-           x >= sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X ||
-           y >= sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+           x >= sim_x + SIMULATION_SPACE_X * FLUIDS_SPLIT_X ||
+           y >= sim_y + SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y;
 }
 
 static bool is_wall(long x, long y) {
@@ -596,7 +589,7 @@ static double get_stretch_space(const stretch* s) {
 // Levels `vol` over the stretch into its `deltas`. Returns whether that would
 // leave any of its cells under `min_spread`.
 static bool level_stretch(stretch* s, double vol, fluid_type type) {
-    bool active[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X] = {0};
+    bool active[SIMULATION_SPACE_X * FLUIDS_SPLIT_X] = {0};
     double level = level_fills(s->fills, active, s->len, vol);
     bool under = false;
     for (Uint32 i = 0; i < s->len; i++) {
@@ -618,9 +611,9 @@ static void pour_into_stretch(const stretch* s, fluid_type type) {
 static void step_move_down(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+    for (Uint32 x = sim_x; x < sim_x + SIMULATION_SPACE_X * FLUIDS_SPLIT_X;
          x++) {
-        for (Uint32 y = sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+        for (Uint32 y = sim_y + SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y;
              y-- > sim_y;) {
             double vol = BUFFER(x, y).volume[type];
             if (vol < EPSILON || is_wall(x, y) || is_wall(x, y + 1)) continue;
@@ -639,9 +632,9 @@ static void step_move_down(Uint8 ordered_type) {
 static void step_move_diagonally(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+    for (Uint32 x = sim_x; x < sim_x + SIMULATION_SPACE_X * FLUIDS_SPLIT_X;
          x++) {
-        for (Uint32 y = sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+        for (Uint32 y = sim_y + SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y;
              y-- > sim_y;) {
             double vol = grid[x][y].volume[type];
             if (vol < EPSILON || is_wall(x, y)) continue;
@@ -678,9 +671,9 @@ static void step_move_diagonally(Uint8 ordered_type) {
 static void step_move_sideways(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+    for (Uint32 x = sim_x; x < sim_x + SIMULATION_SPACE_X * FLUIDS_SPLIT_X;
          x++) {
-        for (Uint32 y = sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+        for (Uint32 y = sim_y + SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y;
              y-- > sim_y;) {
             double vol = grid[x][y].volume[type];
             if (vol < EPSILON || is_wall(x, y)) continue;
@@ -733,10 +726,10 @@ static void step_move_sideways(Uint8 ordered_type) {
 static void step_stabilize_surfaces(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 y = sim_y; y < sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+    for (Uint32 y = sim_y; y < sim_y + SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y;
          y++) {
         Uint32 x = sim_x;
-        while (x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X) {
+        while (x < sim_x + SIMULATION_SPACE_X * FLUIDS_SPLIT_X) {
             if (grid[x][y].volume[type] <= EPSILON || !is_surface(x, y, type)) {
                 x++;
                 continue;
@@ -744,7 +737,7 @@ static void step_stabilize_surfaces(Uint8 ordered_type) {
 
             Uint32 start = x;
             double total = 0.0f;
-            double base[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X] = {0};
+            double base[SIMULATION_SPACE_X * FLUIDS_SPLIT_X] = {0};
             for (; is_surface(x, y, type); x++) {
                 double vol = grid[x][y].volume[type];
                 total += vol;
@@ -793,7 +786,7 @@ static void step_stabilize_surfaces(Uint8 ordered_type) {
             }
             total -= l_share + r_share;
 
-            bool active[FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X] = {0};
+            bool active[SIMULATION_SPACE_X * FLUIDS_SPLIT_X] = {0};
             double level = level_fills(base, active, len, total);
             for (Uint32 i = 0; i < len; i++)
                 BUFFER(start + i, y).volume[type] +=
@@ -807,9 +800,9 @@ static void step_stabilize_surfaces(Uint8 ordered_type) {
 static void step_depressurize(Uint8 ordered_type) {
     fluid_type type = ordered[ordered_type];
     initiate_buffer();
-    for (Uint32 x = sim_x; x < sim_x + FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X;
+    for (Uint32 x = sim_x; x < sim_x + SIMULATION_SPACE_X * FLUIDS_SPLIT_X;
          x++) {
-        for (Uint32 y = sim_y; y < sim_y + FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y;
+        for (Uint32 y = sim_y; y < sim_y + SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y;
              y++) {
             double vol = grid[x][y].volume[type];
             if (vol < EPSILON || is_wall(x, y)) continue;
@@ -1396,8 +1389,8 @@ SDL_Rect FLUIDS_get_simulated_rect(void) {
     return (SDL_Rect){
         .x = sim_x,
         .y = sim_y,
-        .w = FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X,
-        .h = FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y,
+        .w = SIMULATION_SPACE_X * FLUIDS_SPLIT_X,
+        .h = SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y,
     };
 }
 

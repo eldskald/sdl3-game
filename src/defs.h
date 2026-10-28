@@ -14,6 +14,9 @@
 #define MIN_WINDOW_SIZE_X 640
 #define MIN_WINDOW_SIZE_Y 360
 
+#define SIMULATION_SPACE_X 120
+#define SIMULATION_SPACE_Y 66
+
 // Helpers
 #define EPSILON 0.0001f
 #define COL_BLACK 0, 0, 0, 255
@@ -80,8 +83,6 @@
 #define FLUIDS_RIPPLES_CSV_PATH "data/graphics/ripples.csv"
 #define FLUIDS_SPLIT_X 2
 #define FLUIDS_SPLIT_Y 2
-#define FLUIDS_SIMULATE_X 120
-#define FLUIDS_SIMULATE_Y 66
 #define FLUIDS_TYPES fluid_water, fluid_lava
 #define FLUIDS_TOTAL 2
 #define FLUIDS_CELL_W (SPRITESHEET_CELL_X / FLUIDS_SPLIT_X)

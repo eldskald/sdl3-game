@@ -39,6 +39,22 @@ SDL_FRect CAMERA_get_rect() {
     };
 }
 
+SDL_Rect CAMERA_get_simulation_rect(void) {
+    SDL_FRect cam = CAMERA_get_rect();
+    double x =
+        (cam.x + cam.w / 2) / SPRITESHEET_CELL_X - SIMULATION_SPACE_X / 2;
+    double y =
+        (cam.y + cam.h / 2) / SPRITESHEET_CELL_Y - SIMULATION_SPACE_Y / 2;
+    return (SDL_Rect){
+        .x = SDL_clamp(
+            (long)SDL_round(x), 0, TILEMAP_SIZE_X - SIMULATION_SPACE_X),
+        .y = SDL_clamp(
+            (long)SDL_round(y), 0, TILEMAP_SIZE_Y - SIMULATION_SPACE_Y),
+        .w = SIMULATION_SPACE_X,
+        .h = SIMULATION_SPACE_Y,
+    };
+}
+
 void CAMERA_center_at(double x, double y) {
     set_center(x, y);
     target_x = x;

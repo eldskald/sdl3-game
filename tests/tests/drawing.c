@@ -391,8 +391,8 @@ void test_drawing(void) {
            (bool[]){
                sim.x == 60 * FLUIDS_SPLIT_X,
                sim.y == 28 * FLUIDS_SPLIT_Y,
-               sim.w == FLUIDS_SIMULATE_X * FLUIDS_SPLIT_X,
-               sim.h == FLUIDS_SIMULATE_Y * FLUIDS_SPLIT_Y,
+               sim.w == SIMULATION_SPACE_X * FLUIDS_SPLIT_X,
+               sim.h == SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y,
                rect_calls_n == 5,
                rect_calls[0].rect.x == 8.0f + RIPPLES_MARGIN_X,
                rect_calls[0].rect.y == 8.0f + RIPPLES_MARGIN_Y,

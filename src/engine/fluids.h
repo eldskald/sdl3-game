@@ -112,9 +112,9 @@ void FLUIDS_update(void);
 // update.
 void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas);
 
-// Gets the rect being simulated, in fluid cell coords. It's centered on the
-// camera on each `FLUIDS_update()`, snapped to whole tiles and clamped to the
-// tilemap bounds. Cells outside it are treated as walls by the simulation.
+// Gets the rect being simulated, in fluid cell coords. It's the simulation
+// space from `CAMERA_get_simulation_rect()`, updated on each `FLUIDS_update()`.
+// Cells outside it are treated as walls by the simulation.
 SDL_Rect FLUIDS_get_simulated_rect(void);
 
 
