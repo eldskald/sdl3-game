@@ -67,7 +67,7 @@ static bool is_swimming(body b) {
             for (int type = 0; type < FLUIDS_TOTAL; type++) {
                 total += cells[x][y].solid ? 1.0f : cells[x][y].volume[type];
             }
-            if (total < 0.5f) return false;
+            if (total < FLUIDS_INTERACTION_VOL_THRESHOLD) return false;
         }
     }
     return true;
@@ -84,7 +84,7 @@ static bool is_on_fluid_surface(body b) {
             for (int type = 0; type < FLUIDS_TOTAL; type++) {
                 total += cells[x][y].solid ? 1.0f : cells[x][y].volume[type];
             }
-            if (total < 0.5f) return true;
+            if (total < FLUIDS_INTERACTION_VOL_THRESHOLD) return true;
         }
     }
     return false;
@@ -144,12 +144,12 @@ static void update_body(Sint8 dir) {
     } else {
         action_state jump_state = INPUTS_get_action_state(action_jump);
         bool is_on_platform = false;
-        PHYSICS_is_on_platform(state.body_id, &is_on_platform);
+        PHYSICS_is_body_on_platform(state.body_id, &is_on_platform);
         action_state down_state = INPUTS_get_action_state(action_down);
         if (is_on_platform && jump_state.just_pressed && down_state.held) {
-            PHYSICS_drop_down(state.body_id);
+            PHYSICS_drop_down_body(state.body_id);
             // No coyote jump after dropping down
-            state.coyote_jump_timer = data.coyote_jump_time;
+            state.coyote_jump_timer += data.coyote_jump_time;
         } else {
             // Jumping
             bool can_jump = (state.coyote_jump_timer < data.coyote_jump_time) &&
@@ -168,7 +168,7 @@ static void update_body(Sint8 dir) {
 
             // Coyote time
             bool is_on_floor = false;
-            PHYSICS_is_on_floor(state.body_id, &is_on_floor);
+            PHYSICS_is_body_on_floor(state.body_id, &is_on_floor);
             if (is_on_floor)
                 state.coyote_jump_timer = 0.0f;
             else
@@ -180,7 +180,7 @@ static void update_body(Sint8 dir) {
     new_y += grv * dt;
     if (new_y >= mfll) new_y = mfll;
 
-    PHYSICS_set_velocity(state.body_id, new_x, new_y);
+    PHYSICS_set_body_velocity(state.body_id, new_x, new_y);
 }
 
 void PLAYER_update(void) {

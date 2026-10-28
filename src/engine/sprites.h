@@ -92,11 +92,11 @@ int SPRITES_del_sprite(size_t sprite_id);
 // `sprite_id` is outside the buffer's range.
 int SPRITES_get_sprite(size_t sprite_id, sprite* data);
 
-// Updates sprite data on `sprite_id`. Returns `0` if everything went fine, `1`
+// Edits sprite data on `sprite_id`. Returns `0` if everything went fine, `1`
 // if `sprite_id` pointed to an empty slot, or `2` if invalid sprite data
 // (coords w and h must be `0` or more), or `3` if `sprite_id` is outsede the
 // buffer's range.
-int SPRITES_update_sprite(size_t sprite_id, sprite data);
+int SPRITES_edit_sprite(size_t sprite_id, sprite data);
 
 
 

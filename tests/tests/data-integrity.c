@@ -248,8 +248,12 @@ static void check_ripples(void) {
     };
     const key_spec specs[] = {
         {"body_max_speed", val_double, 1, 1},
-        {"new_ripple_pix_size", val_int, 1, 1},
-        {"strength", val_double, 1, 1},
+        {"prop_max_speed", val_double, 1, 1},
+        {"prop_min_speed", val_double, 1, 1},
+        {"new_body_ripple_pix_size", val_int, 1, 1},
+        {"new_prop_ripple_pix_size", val_int, 1, 1},
+        {"body_ripple_strength", val_double, 1, 1},
+        {"prop_ripple_strength", val_double, 1, 1},
         {"damping", val_double, 1, 1},
     };
     report r = (report){0};
@@ -257,6 +261,27 @@ static void check_ripples(void) {
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), false);
     CSV_free(&parsed);
     finish(FLUIDS_RIPPLES_CSV_PATH, &r);
+}
+
+static void check_props(void) {
+    char csv[] = {
+#embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
+    };
+    const key_spec specs[] = {
+        {"prop_body_collision_pad", val_double, 1, 1},
+        {"prop_damping", val_double, 1, 1},
+        {"vine_color", val_uint8, 4, 4},
+        {"vine_gravity", val_double, 1, 1},
+        {"vine_fluid_gravity", val_double, 1, 1},
+        {"vine_destroyer_fluids", val_fluid, 0, FLUIDS_TOTAL},
+        {"vine_cut_duration", val_double, 1, 1},
+        {"vine_fade_time", val_double, 1, 1},
+    };
+    report r = (report){0};
+    dynarr parsed = CSV_parse(csv);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), false);
+    CSV_free(&parsed);
+    finish(PHYSICS_PROPS_CSV_PATH, &r);
 }
 
 static void check_camera(void) {
@@ -480,6 +505,7 @@ void test_data_integrity(void) {
 
     check_bloom();
     check_ripples();
+    check_props();
     check_camera();
     check_player_core();
     check_player_presentation();

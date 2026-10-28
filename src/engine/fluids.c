@@ -74,6 +74,7 @@ typedef struct {
 typedef struct {
     Uint32 x;
     Uint32 y;
+    Uint32 size;
     double strength;
 } ripple;
 
@@ -114,8 +115,6 @@ static float ripples_x = 0.0f;
 static float ripples_y = 0.0f;
 // Ripples ticks due, added by `FLUIDS_update()` and run by `FLUIDS_draw()`.
 static SDL_AtomicInt ripples_ticks = {0};
-// Size of the square of pixels each queued ripple is drawn on.
-static int ripples_size = 0;
 // How much of their height ripples keep per tick, set on the ripples shader.
 static float ripples_damping = 0.0f;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
@@ -337,9 +336,7 @@ static void load_ripples_data(const char* csv) {
     for (int i = 0; i < parsed.len; i++) {
         char* key = (char*)((dynarr*)parsed.at[i])->at[0];
         char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "new_ripple_pix_size") == 0)
-            ripples_size = SDL_strtol(val, NULL, 10);
-        else if (SDL_strcmp(key, "damping") == 0)
+        if (SDL_strcmp(key, "damping") == 0)
             ripples_damping = SDL_strtod(val, NULL);
     }
 
@@ -1274,8 +1271,8 @@ static void set_shader_uniforms(SDL_GPURenderState* render_state,
 // Ripples are simulated on two float textures the size of `fluids_texture`,
 // `fluids_canvas.ripples`, holding each pixel's current height on red and its
 // previous height on green. On the first tick of a draw, the queued ripples
-// are added to the current height of the latest one, a `ripples_size` square
-// of pixels each, so they build on the ripples already there instead of
+// are added to the current height of the latest one, a square of `size`
+// pixels each, so they build on the ripples already there instead of
 // flattening them. Then, each tick, the latest is drawn into the other
 // with the ripples shader, `src/gpu/ripples.frag.hlsl`, which ticks them and
 // makes that one the latest. The shader samples `fluids_texture`, drawn just
@@ -1307,10 +1304,10 @@ step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas, SDL_FRect area) {
     for (size_t i = 0; i < ripples.len; i++) {
         ripple* r = ripples.at[i];
         SDL_SetRenderDrawColorFloat(renderer, r->strength, 0.0f, 0.0f, 1.0f);
-        SDL_FRect rect = {r->x - area.x - ripples_size / 2.0f,
-                          r->y - area.y - ripples_size / 2.0f,
-                          ripples_size,
-                          ripples_size};
+        SDL_FRect rect = {r->x - area.x - r->size / 2.0f,
+                          r->y - area.y - r->size / 2.0f,
+                          r->size,
+                          r->size};
         SDL_RenderFillRect(renderer, &rect);
     }
     drain_queue(&ripples, ripples_mutex, NULL);
@@ -1423,8 +1420,8 @@ void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed) {
     queue_item(&splashes, splashes_mutex, &sp, sizeof(sp));
 }
 
-void FLUIDS_ripple_at(Uint32 x, Uint32 y, double strength) {
-    ripple r = {.x = x, .y = y, .strength = strength};
+void FLUIDS_ripple_at(Uint32 x, Uint32 y, Uint32 size, double strength) {
+    ripple r = {.x = x, .y = y, .size = size, .strength = strength};
     queue_item(&ripples, ripples_mutex, &r, sizeof(r));
 }
 

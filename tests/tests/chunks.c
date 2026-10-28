@@ -1,7 +1,10 @@
 #include "engine/chunks.h"
 #include "data-structs/dynarr.h"
+#include "defs.h"
 #include "engine/fluids.h"
+#include "engine/physics.h"
 #include "engine/tilemap.h"
+#include "props/vines.h"
 #include "tests.h"
 #include "tests/chunks.h"
 #include <SDL3/SDL.h>
@@ -12,6 +15,31 @@ static bool is_empty_at(Uint16 x, Uint16 y) {
     TILEMAP_get_at(x, y, &t);
     return t.type == 0;
 }
+
+#ifdef TEST
+// Whether the point at `chain[i]` is at `(x,y)` and pinned as `pinned`.
+static bool
+is_vine_point(dynarr* chain, size_t i, double x, double y, bool pinned) {
+    prop_point p = (prop_point){0};
+    PHYSICS_get_prop_point((size_t)chain->at[i], &p);
+    return p.x == x && p.y == y && p.pinned == pinned;
+}
+
+// Whether the connection at `conn_id` links `chain[i]` to `chain[i + 1]` as a
+// vine segment.
+static bool is_vine_link(dynarr* chain, size_t i, size_t conn_id) {
+    size_t a = 0;
+    size_t b = 0;
+    double elasticity = 0.0f;
+    double length = 0.0f;
+    bool two_ways = false;
+    PHYSICS_test_get_connection(
+        conn_id, &a, &b, &elasticity, &length, &two_ways);
+    return a == (size_t)chain->at[i] && b == (size_t)chain->at[i + 1] &&
+           elasticity == 0.0f && length == SPRITESHEET_CELL_Y / 2.0f &&
+           two_ways;
+}
+#endif
 
 void test_chunks(void) {
     printf(YELLOW "\nTesting chunks...\n" RESET);
@@ -155,6 +183,35 @@ void test_chunks(void) {
         ((fluid_pool*)data.fluids.at[0])->y == 2,
         ((fluid_pool*)data.fluids.at[0])->w == 4,
         ((fluid_pool*)data.fluids.at[0])->h == 4,
+        data.vines.len == 4,
+        ((vine_spawn*)data.vines.at[0])->double_pinned == true,
+        ((vine_spawn*)data.vines.at[0])->a_x == 21,
+        ((vine_spawn*)data.vines.at[0])->a_y == 24,
+        ((vine_spawn*)data.vines.at[0])->b_x == 29,
+        ((vine_spawn*)data.vines.at[0])->b_y == 24,
+        ((vine_spawn*)data.vines.at[0])->bend_y == 28,
+        ((vine_spawn*)data.vines.at[0])->segments == 4,
+        ((vine_spawn*)data.vines.at[1])->double_pinned == false,
+        ((vine_spawn*)data.vines.at[1])->a_x == 18,
+        ((vine_spawn*)data.vines.at[1])->a_y == 40,
+        ((vine_spawn*)data.vines.at[1])->b_x == 18,
+        ((vine_spawn*)data.vines.at[1])->b_y == 52,
+        ((vine_spawn*)data.vines.at[1])->bend_y == 52,
+        ((vine_spawn*)data.vines.at[1])->segments == 3,
+        ((vine_spawn*)data.vines.at[2])->double_pinned == false,
+        ((vine_spawn*)data.vines.at[2])->a_x == 34,
+        ((vine_spawn*)data.vines.at[2])->a_y == 40,
+        ((vine_spawn*)data.vines.at[2])->b_x == 64,
+        ((vine_spawn*)data.vines.at[2])->b_y == 52,
+        ((vine_spawn*)data.vines.at[2])->bend_y == 52,
+        ((vine_spawn*)data.vines.at[2])->segments == 10,
+        ((vine_spawn*)data.vines.at[3])->double_pinned == false,
+        ((vine_spawn*)data.vines.at[3])->a_x == 53,
+        ((vine_spawn*)data.vines.at[3])->a_y == 40,
+        ((vine_spawn*)data.vines.at[3])->b_x == 53,
+        ((vine_spawn*)data.vines.at[3])->b_y == 60,
+        ((vine_spawn*)data.vines.at[3])->bend_y == 60,
+        ((vine_spawn*)data.vines.at[3])->segments == 5,
     };
 
     expect("Initiated mocked chunk, checking contents...",
@@ -162,6 +219,8 @@ void test_chunks(void) {
            checks0);
 
     FLUIDS_start();
+    PHYSICS_start();
+    VINES_start();
     CHUNKS_load_at(0, 0, 0);
     FLUIDS_update();
 
@@ -351,6 +410,62 @@ void test_chunks(void) {
            sizeof(checks2),
            checks2);
 
+#ifdef TEST
+    // Vines are created in load order, so are their points and connections.
+    // Nothing updated them, so the first load's are still where they spawned.
+    dynarr vine0 = VINES_test_get_vine(0);
+    dynarr vine1 = VINES_test_get_vine(1);
+    dynarr vine2 = VINES_test_get_vine(2);
+    dynarr vine3 = VINES_test_get_vine(3);
+    dynarr vine4 = VINES_test_get_vine(4);
+    dynarr vine5 = VINES_test_get_vine(5);
+    bool checks3[] = {
+        vine0.len == 5,
+        is_vine_point(&vine0, 0, 21.0f, 24.0f, true),
+        is_vine_point(&vine0, 1, 21.0f, 28.0f, false),
+        is_vine_point(&vine0, 2, 25.0f, 28.0f, false),
+        is_vine_point(&vine0, 3, 29.0f, 28.0f, false),
+        is_vine_point(&vine0, 4, 29.0f, 24.0f, true),
+        is_vine_link(&vine0, 0, 0),
+        is_vine_link(&vine0, 1, 1),
+        is_vine_link(&vine0, 2, 2),
+        is_vine_link(&vine0, 3, 3),
+        vine1.len == 4,
+        is_vine_point(&vine1, 0, 18.0f, 40.0f, true),
+        is_vine_point(&vine1, 1, 18.0f, 44.0f, false),
+        is_vine_point(&vine1, 2, 18.0f, 48.0f, false),
+        is_vine_point(&vine1, 3, 18.0f, 52.0f, false),
+        is_vine_link(&vine1, 0, 4),
+        is_vine_link(&vine1, 1, 5),
+        is_vine_link(&vine1, 2, 6),
+        // Bends right and ends on the chunk's side, crossing vine3
+        vine2.len == 11,
+        is_vine_point(&vine2, 0, 34.0f, 40.0f, true),
+        is_vine_point(&vine2, 5, 43.0f, 52.0f, false),
+        is_vine_point(&vine2, 10, 64.0f, 52.0f, false),
+        vine3.len == 6,
+        is_vine_point(&vine3, 0, 53.0f, 40.0f, true),
+        is_vine_point(&vine3, 3, 53.0f, 52.0f, false),
+        is_vine_point(&vine3, 5, 53.0f, 60.0f, false),
+        // Offset copies of vine0 and vine1
+        is_vine_point(&vine4, 0, 181.0f, 264.0f, true),
+        is_vine_point(&vine4, 4, 189.0f, 264.0f, true),
+        is_vine_point(&vine5, 0, 178.0f, 280.0f, true),
+        is_vine_point(&vine5, 3, 178.0f, 292.0f, false),
+    };
+    clear_dynarr(&vine0);
+    clear_dynarr(&vine1);
+    clear_dynarr(&vine2);
+    clear_dynarr(&vine3);
+    clear_dynarr(&vine4);
+    clear_dynarr(&vine5);
+
+    expect("Checking mocked chunk's vines, loaded normally and at an "
+           "offset...",
+           sizeof(checks3),
+           checks3);
+#endif
+
     clear_tiles_and_fluids();
     int res0 = CHUNKS_load_at(0, TILEMAP_SIZE_X - 8, TILEMAP_SIZE_Y - 8);
     int res1 = CHUNKS_load_at(0, TILEMAP_SIZE_X - 7, 0);
@@ -361,6 +476,8 @@ void test_chunks(void) {
            (bool[]){res0 == 0, res1 == 2, res2 == 2});
 
     TILEMAP_clear();
+    VINES_stop();
+    PHYSICS_stop();
     FLUIDS_stop();
     CHUNKS_stop();
 }

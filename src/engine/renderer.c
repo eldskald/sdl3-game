@@ -3,6 +3,7 @@
 #include "engine/fluids.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
+#include "props/vines.h"
 #include "services/csv.h"
 #include <SDL3/SDL.h>
 
@@ -597,15 +598,17 @@ static int load_graphics_files(void) {
 
 
 
-// Sprites are drawn on pre_fluids_texture first, for the fluids to refract.
-// The fluids shader draws all of it on base_screen, refracted where there are
-// fluids and as is everywhere else, then the tilemap is drawn on top.
+// Vines and sprites are drawn on pre_fluids_texture first, for the fluids to
+// refract. The fluids shader draws all of it on base_screen, refracted where
+// there are fluids and as is everywhere else, then the tilemap is drawn on top.
 static void render_base_screen(void) {
 #ifndef TEST
     SDL_SetRenderTarget(renderer, pre_fluids_texture);
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
 #endif
+
+    VINES_draw(renderer);
 
 #ifndef TEST
     SPRITES_draw(renderer, spritesheet, tint_state);

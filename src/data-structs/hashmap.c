@@ -95,12 +95,11 @@ void* set_on_hashmap(void* value, char* key, hashmap* map) {
 void* get_from_hashmap(char* key, hashmap* map) {
     if (!map) return NULL;
     size_t index = (size_t)(hash_key(key) & (Uint64)(map->cap - 1));
-    while (SDL_strcmp(key, map->keys[index]) != 0) {
+    while (map->keys[index] && SDL_strcmp(key, map->keys[index]) != 0) {
         index++;
         if (index >= map->cap) index = 0;
-        if (!map->keys[index]) return NULL;
     }
-    return map->values[index];
+    return map->keys[index] ? map->values[index] : NULL;
 }
 
 void clear_hashmap(hashmap* map) {

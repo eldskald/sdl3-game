@@ -132,17 +132,17 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
 
-    SPRITES_update_sprite(id3,
-                          (sprite){
-                              .pos_x = CAM_X + 27,
-                              .pos_y = CAM_Y + 12,
-                              .coords_x = 2,
-                              .coords_y = 1,
-                              .coords_w = 1,
-                              .coords_h = 1,
-                              .z_index = 10,
-                              .flip_mode = SDL_FLIP_NONE,
-                          });
+    SPRITES_edit_sprite(id3,
+                        (sprite){
+                            .pos_x = CAM_X + 27,
+                            .pos_y = CAM_Y + 12,
+                            .coords_x = 2,
+                            .coords_y = 1,
+                            .coords_w = 1,
+                            .coords_h = 1,
+                            .z_index = 10,
+                            .flip_mode = SDL_FLIP_NONE,
+                        });
     RENDERER_update();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Updated a sprite, checking calls...",
