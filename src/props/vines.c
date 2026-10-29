@@ -6,13 +6,10 @@
 #include "engine/fluids.h"
 #include "engine/game-manager.h"
 #include "engine/physics.h"
+#include "engine/renderer.h"
 #include "engine/tilemap.h"
 #include "services/csv.h"
 #include <SDL3/SDL.h>
-
-#ifdef TEST
-#include "stubs.h"
-#endif
 
 #define VINE_SEGMENT_LENGTH (SPRITESHEET_CELL_Y / 2.0f)
 #define VINE_FRAMES_TOTAL 3
@@ -485,7 +482,7 @@ void VINES_update(void) {
 
 
 
-void VINES_draw(SDL_Renderer* renderer) {
+void VINES_draw(void) {
     SDL_LockMutex(frames_mutex);
     if (fresh) {
         Uint8 swap = front;
@@ -495,39 +492,23 @@ void VINES_draw(SDL_Renderer* renderer) {
     }
     SDL_UnlockMutex(frames_mutex);
 
-#ifndef TEST
-    SDL_BlendMode blend_mode = SDL_BLENDMODE_NONE;
-    SDL_GetRenderDrawBlendMode(renderer, &blend_mode);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-#endif
-
     SDL_FRect cam = CAMERA_get_rect();
     vine_frame* f = &frames[front];
     for (size_t s = 0; s < f->strips_len; s++) {
         vine_strip strip = f->strips[s];
-#ifndef TEST
-        SDL_SetRenderDrawColor(renderer,
-                               settings.col_r,
-                               settings.col_g,
-                               settings.col_b,
-                               strip.alpha);
-#endif
+        SDL_Color col = (SDL_Color){
+            settings.col_r, settings.col_g, settings.col_b, strip.alpha};
         for (size_t i = strip.start + 1; i < strip.start + strip.len; i++) {
             SDL_FPoint a = f->points[i - 1];
             SDL_FPoint b = f->points[i];
-#ifndef TEST
-            SDL_RenderLine(
-                renderer, a.x - cam.x, a.y - cam.y, b.x - cam.x, b.y - cam.y);
-#else
-            stubbed_SDL_RenderLine(
-                a.x - cam.x, a.y - cam.y, b.x - cam.x, b.y - cam.y);
-#endif
+            RENDERER_draw_line(a.x - cam.x,
+                               a.y - cam.y,
+                               b.x - cam.x,
+                               b.y - cam.y,
+                               col,
+                               PROPS_VINE_Z_INDEX);
         }
     }
-
-#ifndef TEST
-    SDL_SetRenderDrawBlendMode(renderer, blend_mode);
-#endif
 }
 
 

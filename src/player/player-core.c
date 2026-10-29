@@ -46,7 +46,7 @@ void PLAYER_create(double at_x, double at_y) {
         &state.body_id);
     state.created = true;
     state.facing = 1;
-    PLAYER_SPRITE_create();
+    PLAYER_SPRITE_create(state);
 }
 
 void PLAYER_destroy(void) {
@@ -203,7 +203,6 @@ static void load_base_data_from_csv(void) {
     dynarr parsed = CSV_parse(csv);
 
     for (int i = 0; i < parsed.len; i++) {
-        if (((dynarr*)parsed.at[i])->len < 2) continue;
         char* key = (char*)((dynarr*)parsed.at[i])->at[0];
         char* val = (char*)((dynarr*)parsed.at[i])->at[1];
         if (SDL_strcmp(key, "max_speed") == 0)

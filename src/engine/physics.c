@@ -84,7 +84,7 @@ static double ripples_max_speed = 0.0f;
 static double ripples_strength = 0.0f;
 static Uint32 ripples_size = 0;
 
-static double prop_damping = 0.0f;
+static double prop_global_damping = 0.0f;
 static double prop_body_collision_pad = 0.0f;
 
 static void double_bodies_dynarr(void) {
@@ -457,9 +457,10 @@ static void move_points(void) {
         // Verlet integration
         double dt = get_prop_dt();
         double prev_dt = p->prev_dt > 0.0f ? p->prev_dt : dt;
-        double dx = (p->point.x - p->prev_x) * prop_damping * dt / prev_dt +
+        double damping = prop_global_damping * (1.0f - p->point.damping);
+        double dx = (p->point.x - p->prev_x) * damping * dt / prev_dt +
                     dt * dt * p->acc_x;
-        double dy = (p->point.y - p->prev_y) * prop_damping * dt / prev_dt +
+        double dy = (p->point.y - p->prev_y) * damping * dt / prev_dt +
                     dt * dt * p->acc_y;
         p->prev_x = p->point.x;
         p->prev_y = p->point.y;
@@ -1126,6 +1127,25 @@ int PHYSICS_set_prop_point_acceleration(size_t point_id,
     return 0;
 }
 
+int PHYSICS_set_prop_point_damping(size_t point_id, double damping) {
+    if (point_id >= points_cap || point_id < 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to set damping of point_id=%lu but this is outside "
+                    "the buffer range",
+                    point_id);
+        return 3;
+    }
+    if (!points[point_id].used) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to set damping of inexistent prop point at "
+                    "point_id=%lu",
+                    point_id);
+        return 1;
+    }
+    points[point_id].point.damping = damping;
+    return 0;
+}
+
 // Verlet integration has no velocity, it's the distance from the previous
 // position over the previous tick's dt, so we move the previous position.
 int PHYSICS_set_prop_point_velocity(size_t point_id,
@@ -1342,8 +1362,8 @@ static void load_props_data(const char* csv) {
     for (int i = 0; i < parsed.len; i++) {
         char* key = (char*)((dynarr*)parsed.at[i])->at[0];
         char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "prop_damping") == 0)
-            prop_damping = SDL_strtod(val, NULL);
+        if (SDL_strcmp(key, "prop_global_damping") == 0)
+            prop_global_damping = SDL_strtod(val, NULL);
         else if (SDL_strcmp(key, "prop_body_collision_pad") == 0)
             prop_body_collision_pad = SDL_strtod(val, NULL);
     }

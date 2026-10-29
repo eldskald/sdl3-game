@@ -873,6 +873,167 @@ void test_drawing(void) {
     SPRITES_del_sprite(out_id);
     SPRITES_del_sprite(edge_id);
 
+    // The sprite at the camera's top left is still there on z_index 0
+    SDL_FColor white = (SDL_FColor){1.0f, 1.0f, 1.0f, 1.0f};
+    RENDERER_draw_from_spritesheet(10, 10, 0, 0, 1, 1, 0, white, 3);
+    RENDERER_draw_line(1, 2, 3, 4, (SDL_Color){COL_WHITE}, -5);
+    RENDERER_draw_from_spritesheet(20, 20, 0, 0, 1, 1, 0, white, 3);
+    RENDERER_draw_from_spritesheet(30, 30, 0, 0, 1, 1, 0, white, -5);
+    RENDERER_draw_from_spritesheet(
+        40, 40, 0, 0, 1, 1, 0, white, FLUIDS_Z_INDEX);
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    SDL_RenderLine_call* line_calls = NULL;
+    size_t line_calls_n = get_SDL_RenderLine_calls(&line_calls);
+    expect("Queued draw calls on several z_indexes, checking if they're drawn "
+           "in z_index order and in queue order within the same z_index...",
+           9,
+           (bool[]){
+               calls_n == 5,
+               calls[0].dst.x == 30,
+               calls[1].dst.x == 0,
+               calls[2].dst.x == 10,
+               calls[3].dst.x == 20,
+               calls[4].dst.x == 40,
+               line_calls_n == 1,
+               line_calls[0].x1 == 1,
+               line_calls[0].y2 == 4,
+           });
+    clear_stubbed_calls();
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    expect("Rendered again, checking if the queues were emptied...",
+           1,
+           (bool[]){calls_n == 1});
+    clear_stubbed_calls();
+
+    RENDERER_draw_line(7, 9, 7, 9, (SDL_Color){COL_WHITE}, 0);
+    tick();
+    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
+    point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
+    expect("Queued a line from a point to itself, checking if it's drawn as a "
+           "point...",
+           4,
+           (bool[]){
+               line_calls_n == 0,
+               point_calls_n == 1,
+               point_calls[0].x == 7,
+               point_calls[0].y == 9,
+           });
+    clear_stubbed_calls();
+
+    SDL_Color red = (SDL_Color){255, 0, 0, 255};
+    int attach_r0 = SPRITES_attach_line_to_sprite(
+        id0, CAM_X + 1, CAM_Y + 2, CAM_X + 3, CAM_Y + 4, red);
+    int attach_r1 = SPRITES_attach_line_to_sprite(
+        id0, CAM_X + 5, CAM_Y + 6, CAM_X + 7, CAM_Y + 8, red);
+    int attach_r2 = SPRITES_attach_line_to_sprite(id1, 0, 0, 1, 1, red);
+    int attach_r3 = SPRITES_attach_line_to_sprite(1 << 20, 0, 0, 1, 1, red);
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
+    expect("Attached 2 lines to a sprite, checking if they're drawn in order "
+           "with it and the error codes...",
+           14,
+           (bool[]){
+               attach_r0 == 0,
+               attach_r1 == 0,
+               attach_r2 == 1,
+               attach_r3 == 3,
+               calls_n == 1,
+               line_calls_n == 2,
+               line_calls[0].x1 == 1,
+               line_calls[0].y1 == 2,
+               line_calls[0].x2 == 3,
+               line_calls[0].y2 == 4,
+               line_calls[1].x1 == 5,
+               line_calls[1].y1 == 6,
+               line_calls[1].x2 == 7,
+               line_calls[1].y2 == 8,
+           });
+    clear_stubbed_calls();
+
+    int clear_r0 = SPRITES_clear_attached_lines(id0);
+    int clear_r1 = SPRITES_clear_attached_lines(id1);
+    int clear_r2 = SPRITES_clear_attached_lines(1 << 20);
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
+    expect("Cleared the sprite's attached lines, checking if only the sprite "
+           "is drawn and the error codes...",
+           5,
+           (bool[]){
+               clear_r0 == 0,
+               clear_r1 == 1,
+               clear_r2 == 3,
+               calls_n == 1,
+               line_calls_n == 0,
+           });
+    clear_stubbed_calls();
+
+    size_t off_id = 0;
+    SPRITES_new_sprite(
+        (sprite){
+            .pos_x = CAM_X - 4 * SPRITESHEET_CELL_X,
+            .pos_y = CAM_Y + 40,
+            .coords_x = 1,
+            .coords_y = 1,
+            .coords_w = 1,
+            .coords_h = 1,
+        },
+        &off_id);
+    SPRITES_attach_line_to_sprite(off_id,
+                                  CAM_X - 3 * SPRITESHEET_CELL_X,
+                                  CAM_Y + 44,
+                                  CAM_X + 10,
+                                  CAM_Y + 44,
+                                  red);
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
+    expect("Added a sprite off screen with an attached line reaching on "
+           "screen, checking if both are drawn...",
+           4,
+           (bool[]){
+               calls_n == 2,
+               line_calls_n == 1,
+               line_calls[0].x2 == 10,
+               line_calls[0].y2 == 44,
+           });
+    clear_stubbed_calls();
+
+    SPRITES_clear_attached_lines(off_id);
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
+    expect("Cleared its attached line, checking if neither is drawn anymore...",
+           2,
+           (bool[]){calls_n == 1, line_calls_n == 0});
+    clear_stubbed_calls();
+    SPRITES_del_sprite(off_id);
+
+    SPRITES_new_sprite(
+        (sprite){
+            .pos_x = space_r + SPRITESHEET_CELL_X,
+            .pos_y = CAM_Y,
+            .coords_x = 0,
+            .coords_y = 0,
+            .coords_w = 1,
+            .coords_h = 1,
+        },
+        &out_id);
+    SPRITES_attach_line_to_sprite(
+        out_id, space_r + SPRITESHEET_CELL_X, CAM_Y, space_r - 1, CAM_Y, red);
+    SPRITES_play_anim(out_id, short_anim);
+    tick();
+    SPRITES_get_sprite(out_id, &out_sprite);
+    expect("Added a sprite outside the simulation space with an attached line "
+           "reaching inside it, checking if it's animating...",
+           1,
+           (bool[]){out_sprite.coords_x == 1});
+    clear_stubbed_calls();
+    SPRITES_del_sprite(out_id);
+
     CAMERA_center_at(WINDOW_SIZE_X / 2, WINDOW_SIZE_Y / 2);
     SPRITES_stop();
     RENDERER_stop();

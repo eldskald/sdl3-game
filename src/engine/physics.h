@@ -42,7 +42,9 @@ typedef struct {
 // that behaves like a rope. Pinned points don't move, so if point A on the
 // previous example is pinned, the rope would hang from it. The `ignore_bodies`
 // prop means it won't collide with bodies, and `acc_x/y` is a constant
-// acceleration. Position must also be within the tilemap space.
+// acceleration. Its velocity is multiplied by `1.0 - damping` each step on top
+// of the global damping, so `0.0` means no extra damping and `1.0` stops it.
+// Position must also be within the tilemap space.
 //
 // When the point gets deleted for any reason, `on_delete_func` is called with
 // the deleted point's ID and `on_delete_arg`, so whichever prop created it can
@@ -55,6 +57,7 @@ typedef struct {
 // struct prop_point {
 //     double x, y;
 //     double acc_x, acc_y;
+//     double damping;
 //     bool pinned;
 //     bool ignore_bodies;
 //     void (*on_delete_func)(size_t point_id, size_t arg);
@@ -64,6 +67,7 @@ typedef struct {
 typedef struct {
     double x, y;
     double acc_x, acc_y;
+    double damping;
     bool pinned;
     bool ignore_bodies;
     void (*on_delete_func)(size_t point_id, size_t arg);
@@ -178,6 +182,11 @@ int PHYSICS_edit_prop_point(size_t point_id, prop_point data);
 int PHYSICS_set_prop_point_acceleration(size_t point_id,
                                         double acc_x,
                                         double acc_y);
+
+// Sets the damping of the point at `point_id` to `damping` while keeping its
+// velocity. Returns `3` when `point_id` is outside the array's range, `1` when
+// there is no point at that index, `0` when everything went right.
+int PHYSICS_set_prop_point_damping(size_t point_id, double damping);
 
 // Sets the velocity of the point at `point_id` to `(vel_x,vel_y)`, in pixels
 // per second, before damping. Returns `3` when `point_id` is outside the

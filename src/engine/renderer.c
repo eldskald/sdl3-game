@@ -7,8 +7,42 @@
 #include "services/csv.h"
 #include <SDL3/SDL.h>
 
+#ifdef TEST
+#include "stubs.h"
+#endif
+
+typedef enum {
+    draw_call_spritesheet,
+    draw_call_line,
+} draw_call_type;
+
+// A queued draw call of any type, with `type` saying which of the union's
+// structs has its data. Positions are in screen pixels.
+typedef struct {
+    draw_call_type type;
+    union {
+        struct {
+            SDL_FRect src;
+            SDL_FRect dst;
+            SDL_FlipMode flip_mode;
+            float tint[4];
+        } spritesheet;
+        struct {
+            float x1, y1, x2, y2;
+            SDL_Color col;
+        } line;
+    };
+} draw_call;
+
+// The draw calls queued on a z_index, in the order they were queued.
+typedef struct {
+    draw_call* calls;
+    size_t len, cap;
+} draw_queue;
+
 #ifndef TEST
 static SDL_Window* window = NULL;
+static SDL_Texture* spritesheet = NULL;
 static SDL_Texture* base_screen = NULL;
 static SDL_Texture* final_screen = NULL;
 static SDL_Texture* bloom_prefilter = NULL;
@@ -29,13 +63,16 @@ static SDL_GPURenderState* upsample_states[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
 static SDL_GPUSampler* nearest_sampler = NULL;
 #endif
 static SDL_Renderer* renderer = NULL;
-static SDL_Texture* spritesheet = NULL;
 static fluids_canvas fluids = (fluids_canvas){0};
 static float bloom_threshold = 1.0f;
 static float bloom_soft_threshold = 0.5f;
 static int bloom_iterations = 4;
 static float bloom_intensities[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
 static bool window_resized = false;
+
+// Each z_index is mapped to z_index + RENDERER_Z_INDEX_TOTAL / 2, so they all
+// fit in the array.
+static draw_queue queues[RENDERER_Z_INDEX_TOTAL] = {0};
 
 
 
@@ -598,21 +635,166 @@ static int load_graphics_files(void) {
 
 
 
+static int get_queue_index(Sint8 z_index) {
+    return z_index + (RENDERER_Z_INDEX_TOTAL >> 1);
+}
+
+static void queue_draw_call(draw_call call, Sint8 z_index) {
+    draw_queue* q = &queues[get_queue_index(z_index)];
+    if (q->len == q->cap) {
+        q->cap = q->cap ? q->cap << 1 : RENDERER_DRAW_CALLS_STARTING_CAP;
+        q->calls = SDL_realloc(q->calls, q->cap * sizeof(draw_call));
+    }
+    q->calls[q->len] = call;
+    q->len++;
+}
+
+void RENDERER_draw_from_spritesheet(float x,
+                                    float y,
+                                    Uint8 coords_x,
+                                    Uint8 coords_y,
+                                    Uint8 coords_w,
+                                    Uint8 coords_h,
+                                    SDL_FlipMode flip_mode,
+                                    SDL_FColor tint,
+                                    Sint8 z_index) {
+    draw_call call = (draw_call){.type = draw_call_spritesheet};
+    call.spritesheet.src = (SDL_FRect){
+        .x = SPRITESHEET_CELL_X * coords_x,
+        .y = SPRITESHEET_CELL_Y * coords_y,
+        .w = SPRITESHEET_CELL_X * coords_w,
+        .h = SPRITESHEET_CELL_Y * coords_h,
+    };
+    call.spritesheet.dst = (SDL_FRect){
+        .x = x,
+        .y = y,
+        .w = SPRITESHEET_CELL_X * coords_w,
+        .h = SPRITESHEET_CELL_Y * coords_h,
+    };
+    call.spritesheet.flip_mode = flip_mode;
+    call.spritesheet.tint[0] = tint.r;
+    call.spritesheet.tint[1] = tint.g;
+    call.spritesheet.tint[2] = tint.b;
+    call.spritesheet.tint[3] = tint.a;
+    queue_draw_call(call, z_index);
+}
+
+void RENDERER_draw_line(
+    float x1, float y1, float x2, float y2, SDL_Color col, Sint8 z_index) {
+    draw_call call = (draw_call){.type = draw_call_line};
+    call.line.x1 = x1;
+    call.line.y1 = y1;
+    call.line.x2 = x2;
+    call.line.y2 = y2;
+    call.line.col = col;
+    queue_draw_call(call, z_index);
+}
+
+// Draws and empties the queues from index `from` up to but not including `to`.
+// Spritesheet calls use the tint shader while lines can't, so its render state
+// is only set when switching between them and its uniforms only when the tint
+// changes from the last call's.
+static void flush_queues(int from, int to) {
+#ifndef TEST
+    SDL_BlendMode blend_mode = SDL_BLENDMODE_NONE;
+    SDL_GetRenderDrawBlendMode(renderer, &blend_mode);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    bool tinting = false;
+    float last_tint[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
+#endif
+
+    for (int i = from; i < to; i++) {
+        for (size_t j = 0; j < queues[i].len; j++) {
+            draw_call* c = &queues[i].calls[j];
+            switch (c->type) {
+            case draw_call_spritesheet:
+#ifndef TEST
+                if (!tinting) {
+                    SDL_SetGPURenderState(renderer, tint_state);
+                    tinting = true;
+                }
+                if (SDL_memcmp(c->spritesheet.tint,
+                               last_tint,
+                               sizeof(last_tint)) != 0) {
+                    SDL_SetGPURenderStateFragmentUniforms(
+                        tint_state,
+                        0,
+                        c->spritesheet.tint,
+                        sizeof(c->spritesheet.tint));
+                    SDL_memcpy(
+                        last_tint, c->spritesheet.tint, sizeof(last_tint));
+                }
+                SDL_RenderTextureRotated(renderer,
+                                         spritesheet,
+                                         &c->spritesheet.src,
+                                         &c->spritesheet.dst,
+                                         0.0f,
+                                         &(SDL_FPoint){0.0f, 0.0f},
+                                         c->spritesheet.flip_mode);
+#else
+                stubbed_SDL_RenderTexture(&c->spritesheet.src,
+                                          &c->spritesheet.dst,
+                                          c->spritesheet.flip_mode);
+#endif
+                break;
+            case draw_call_line:
+#ifndef TEST
+                if (tinting) {
+                    SDL_SetGPURenderState(renderer, NULL);
+                    tinting = false;
+                }
+                SDL_SetRenderDrawColor(renderer,
+                                       c->line.col.r,
+                                       c->line.col.g,
+                                       c->line.col.b,
+                                       c->line.col.a);
+#endif
+                // Lines from a point to itself might not be drawn at all
+                if (c->line.x1 == c->line.x2 && c->line.y1 == c->line.y2) {
+#ifndef TEST
+                    SDL_RenderPoint(renderer, c->line.x1, c->line.y1);
+#else
+                    stubbed_SDL_RenderPoint(c->line.x1, c->line.y1);
+#endif
+                } else {
+#ifndef TEST
+                    SDL_RenderLine(renderer,
+                                   c->line.x1,
+                                   c->line.y1,
+                                   c->line.x2,
+                                   c->line.y2);
+#else
+                    stubbed_SDL_RenderLine(
+                        c->line.x1, c->line.y1, c->line.x2, c->line.y2);
+#endif
+                }
+                break;
+            }
+        }
+        queues[i].len = 0;
+    }
+
+#ifndef TEST
+    SDL_SetGPURenderState(renderer, NULL);
+    SDL_SetRenderDrawBlendMode(renderer, blend_mode);
+#endif
+}
+
+// Everything queues its draw calls first, then the ones under the fluids are
+// drawn on pre_fluids_texture for the fluids to refract, and the rest are drawn
+// over the fluids on base_screen.
 static void render_base_screen(void) {
+    TILEMAP_draw();
+    VINES_draw();
+    SPRITES_draw();
+
 #ifndef TEST
     SDL_SetRenderTarget(renderer, pre_fluids_texture);
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
     SDL_RenderClear(renderer);
 #endif
 
-    TILEMAP_draw(renderer, spritesheet, true);
-    VINES_draw(renderer);
-
-#ifndef TEST
-    SPRITES_draw(renderer, spritesheet, tint_state);
-#else
-    SPRITES_draw(renderer, spritesheet, NULL);
-#endif
+    flush_queues(0, get_queue_index(FLUIDS_Z_INDEX));
 
 #ifndef TEST
     SDL_SetRenderTarget(renderer, base_screen);
@@ -621,7 +803,7 @@ static void render_base_screen(void) {
 #endif
 
     FLUIDS_draw(renderer, &fluids);
-    TILEMAP_draw(renderer, spritesheet, false);
+    flush_queues(get_queue_index(FLUIDS_Z_INDEX), RENDERER_Z_INDEX_TOTAL);
 
 #ifndef TEST
     SDL_RenderPresent(renderer);
@@ -729,6 +911,11 @@ int RENDERER_start(void) {
 
 
 void RENDERER_stop(void) {
+    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++) {
+        SDL_free(queues[i].calls);
+        queues[i] = (draw_queue){0};
+    }
+
 #ifndef TEST
     for (int i = 0; i < bloom_iterations; i++)
         SDL_DestroyGPURenderState(upsample_states[i]);

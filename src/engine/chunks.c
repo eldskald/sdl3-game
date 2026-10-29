@@ -125,17 +125,25 @@ static Uint8 read_prop(dynarr* row, char* prop, hashmap* props) {
 static void load_platforms_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
 
+    // Single cell rows are headers organizing the file, so the first row with
+    // more cells names the columns and the others are skipped.
+    size_t header = 0;
+    while (((dynarr*)parsed.at[header])->len < 2)
+        header++;
+
     // Get hashmap of property indexes
     hashmap props = (hashmap){0};
-    size_t props_count = ((dynarr*)parsed.at[0])->len;
+    size_t props_count = ((dynarr*)parsed.at[header])->len;
     init_hashmap(&props);
     for (size_t i = 0; i < props_count; i++)
-        set_on_hashmap((void*)i, (char*)((dynarr*)parsed.at[0])->at[i], &props);
+        set_on_hashmap(
+            (void*)i, (char*)((dynarr*)parsed.at[header])->at[i], &props);
 
     // Set platforms data
     init_dynarr(&platforms);
-    for (size_t i = 1; i < parsed.len; i++) {
+    for (size_t i = header + 1; i < parsed.len; i++) {
         dynarr* row = (dynarr*)parsed.at[i];
+        if (row->len < 2) continue;
         platforms_rect r = (platforms_rect){
             .x = read_prop(row, "x", &props),
             .y = read_prop(row, "y", &props),
@@ -157,17 +165,25 @@ static void load_types_map_data(const char* csv) {
 
     dynarr parsed = CSV_parse(csv);
 
+    // Single cell rows are headers organizing the file, so the first row with
+    // more cells names the columns and the others are skipped.
+    size_t header = 0;
+    while (((dynarr*)parsed.at[header])->len < 2)
+        header++;
+
     // Get hashmap of property indexes
     hashmap props = (hashmap){0};
-    size_t props_count = ((dynarr*)parsed.at[0])->len;
+    size_t props_count = ((dynarr*)parsed.at[header])->len;
     init_hashmap(&props);
     for (size_t i = 0; i < props_count; i++)
-        set_on_hashmap((void*)i, (char*)((dynarr*)parsed.at[0])->at[i], &props);
+        set_on_hashmap(
+            (void*)i, (char*)((dynarr*)parsed.at[header])->at[i], &props);
 
     // Set types map data
     init_dynarr(&types_map);
-    for (size_t i = 1; i < parsed.len; i++) {
+    for (size_t i = header + 1; i < parsed.len; i++) {
         dynarr* row = (dynarr*)parsed.at[i];
+        if (row->len < 2) continue;
         char* type = (char*)row->at[(size_t)get_from_hashmap("type", &props)];
         tile_type_rect r = (tile_type_rect){
             .type = (tile_type)(size_t)get_from_hashmap(type, &tiles_map),

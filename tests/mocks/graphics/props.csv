@@ -1,5 +1,5 @@
 prop_body_collision_pad,2
-prop_damping,1.0
+prop_global_damping,1.0
 vine_color,100,176,130,255
 vine_gravity,600
 vine_fluid_gravity,200

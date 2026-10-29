@@ -174,19 +174,27 @@ static double read_prop(dynarr* row, char* prop, hashmap* props) {
 static void load_fluid_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
 
+    // Single cell rows are headers organizing the file, so the first row with
+    // more cells names the columns and the others are skipped.
+    size_t header = 0;
+    while (((dynarr*)parsed.at[header])->len < 2)
+        header++;
+
     // Get hashmap of property indexes
     hashmap props = (hashmap){0};
-    int props_count = ((dynarr*)parsed.at[0])->len - 1;
+    int props_count = ((dynarr*)parsed.at[header])->len - 1;
     init_hashmap(&props);
     for (size_t i = 1; i <= props_count; i++)
-        set_on_hashmap((void*)i, (char*)((dynarr*)parsed.at[0])->at[i], &props);
+        set_on_hashmap(
+            (void*)i, (char*)((dynarr*)parsed.at[header])->at[i], &props);
 
     // Get hashmap of fluid names
     hashmap names = FLUIDS_get_string_fluid_types_map();
 
     // Sets fluids data
-    for (size_t i = 1; i <= FLUIDS_TOTAL; i++) {
+    for (size_t i = header + 1; i < parsed.len; i++) {
         dynarr* row = (dynarr*)parsed.at[i];
+        if (row->len < 2) continue;
         char* name = (char*)row->at[0];
         data[(size_t)get_from_hashmap(name, &names)] = (fluid_data){
             .density = read_prop(row, "density", &props),
@@ -291,7 +299,6 @@ static void load_fluid_particles_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
 
     for (int i = 0; i < parsed.len; i++) {
-        if (((dynarr*)parsed.at[i])->len < 2) continue;
         char* key = (char*)((dynarr*)parsed.at[i])->at[0];
         char* val = (char*)((dynarr*)parsed.at[i])->at[1];
         if (SDL_strcmp(key, "gravity") == 0)

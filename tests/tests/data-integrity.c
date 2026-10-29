@@ -18,6 +18,7 @@ typedef enum {
     val_int,
     val_uint8,
     val_sint8,
+    val_bool,
     val_fluid,
     val_tile,
 } val_type;
@@ -49,7 +50,12 @@ static hashmap fluid_names = (hashmap){0};
 static hashmap tile_names = (hashmap){0};
 
 static void check(report* r, bool ok, const char* fmt, ...) {
-    if (r->len < MAX_EXPECTATIONS) r->checks[r->len++] = ok;
+    // Past `MAX_EXPECTATIONS`, failures go on the last check so they still fail
+    // the file.
+    if (r->len < MAX_EXPECTATIONS)
+        r->checks[r->len++] = ok;
+    else if (!ok)
+        r->checks[MAX_EXPECTATIONS - 1] = false;
     if (ok || r->errors_len >= MAX_ERRORS) return;
     va_list args;
     va_start(args, fmt);
@@ -90,6 +96,7 @@ static bool is_val(const char* s, val_type type) {
     if (end != s + len) return false;
     if (type == val_uint8) return n >= 0 && n <= 255;
     if (type == val_sint8) return n >= -128 && n <= 127;
+    if (type == val_bool) return n == 0 || n == 1;
     return true;
 }
 
@@ -103,6 +110,8 @@ static const char* val_type_name(val_type type) {
         return "an integer from 0 to 255";
     case val_sint8:
         return "an integer from -128 to 127";
+    case val_bool:
+        return "0 or 1";
     case val_fluid:
         return "a fluid type";
     case val_tile:
@@ -120,23 +129,20 @@ static dynarr* get_row(dynarr* parsed, const char* key) {
 }
 
 // Checks a CSV of rows starting with a key followed by its values. Each key on
-// `specs` must be there exactly once, with no other keys. With
-// `allow_headers`, single cell rows are section headers and are skipped, like
-// their loaders do.
-static void check_keys_csv(report* r,
-                           dynarr* parsed,
-                           const key_spec* specs,
-                           size_t n,
-                           bool allow_headers) {
+// `specs` must be there exactly once, with no other keys. Single cell rows
+// that aren't keys are section headers and are skipped, while ones that are
+// keys have no values, which is fine for lists that can be empty.
+static void
+check_keys_csv(report* r, dynarr* parsed, const key_spec* specs, size_t n) {
     size_t counts[MAX_EXPECTATIONS] = {0};
     for (size_t i = 0; i < parsed->len; i++) {
         dynarr* row = parsed->at[i];
         char* key = row->at[0];
-        if (row->len == 1 && allow_headers) continue;
 
         size_t s = 0;
         while (s < n && SDL_strcmp(specs[s].key, key) != 0)
             s++;
+        if (row->len < 2 && s == n) continue;
         check(r, s < n, "Row %lu: unknown key \"%s\"", i + 1, key);
         if (s == n) continue;
         counts[s]++;
@@ -167,17 +173,27 @@ static void check_keys_csv(report* r,
               counts[s]);
 }
 
+// Index of the row naming the columns of a CSV, the first one that isn't a
+// single cell section header, or `-1` if missing.
+static int get_header(dynarr* parsed) {
+    for (size_t i = 0; i < parsed->len; i++)
+        if (((dynarr*)parsed->at[i])->len >= 2) return i;
+    return -1;
+}
+
 // Checks a CSV whose first row is a header naming its columns, and each row
 // after it has a value under every column. Every column on `specs` must be on
-// the header exactly once, with no other columns.
+// the header exactly once, with no other columns. Single cell rows are section
+// headers and are skipped, like their loaders do.
 static void check_columns_csv(report* r,
                               dynarr* parsed,
                               const column_spec* specs,
                               size_t n) {
-    check(r, parsed->len > 0, "Missing the header row");
-    if (parsed->len == 0) return;
+    int h = get_header(parsed);
+    check(r, h >= 0, "Missing the header row");
+    if (h < 0) return;
 
-    dynarr* header = parsed->at[0];
+    dynarr* header = parsed->at[h];
     size_t indexes[MAX_EXPECTATIONS] = {0};
     size_t counts[MAX_EXPECTATIONS] = {0};
     for (size_t c = 0; c < header->len; c++) {
@@ -195,8 +211,9 @@ static void check_columns_csv(report* r,
               specs[s].name,
               counts[s]);
 
-    for (size_t i = 1; i < parsed->len; i++) {
+    for (size_t i = h + 1; i < parsed->len; i++) {
         dynarr* row = parsed->at[i];
+        if (row->len < 2) continue;
         check(r,
               row->len == header->len,
               "Row %lu has %lu values, expected %lu",
@@ -218,7 +235,9 @@ static void check_columns_csv(report* r,
 
 // Index of column `name` on the header, or `-1` if missing.
 static int get_column(dynarr* parsed, const char* name) {
-    dynarr* header = parsed->at[0];
+    int h = get_header(parsed);
+    if (h < 0) return -1;
+    dynarr* header = parsed->at[h];
     for (size_t c = 0; c < header->len; c++)
         if (SDL_strcmp(header->at[c], name) == 0) return c;
     return -1;
@@ -237,7 +256,7 @@ static void check_bloom(void) {
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);
-    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), false);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(RENDERER_BLOOM_CSV_PATH, &r);
 }
@@ -259,7 +278,7 @@ static void check_ripples(void) {
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);
-    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), false);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(FLUIDS_RIPPLES_CSV_PATH, &r);
 }
@@ -270,7 +289,7 @@ static void check_props(void) {
     };
     const key_spec specs[] = {
         {"prop_body_collision_pad", val_double, 1, 1},
-        {"prop_damping", val_double, 1, 1},
+        {"prop_global_damping", val_double, 1, 1},
         {"vine_color", val_uint8, 4, 4},
         {"vine_gravity", val_double, 1, 1},
         {"vine_fluid_gravity", val_double, 1, 1},
@@ -280,7 +299,7 @@ static void check_props(void) {
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);
-    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), false);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(PHYSICS_PROPS_CSV_PATH, &r);
 }
@@ -295,7 +314,7 @@ static void check_camera(void) {
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);
-    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), false);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(CAMERA_CSV_PATH, &r);
 }
@@ -325,9 +344,81 @@ static void check_player_core(void) {
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);
-    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), true);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(PLAYER_BASE_CSV_PATH, &r);
+}
+
+// Checks the pins of the player's prop `prop`, mapped by frame on its
+// `<prop>_anim_x` and `<prop>_anim_y` rows with a value on each of `pin_keys`
+// for each frame. Frames are mapped by spritesheet cell, so they must be cells
+// of the spritesheet, and every keyframe of the animations must be mapped,
+// otherwise the prop falls back to the pins of whichever frame was mapped
+// before. Mapped frames no animation uses are fine, they're drawn on the
+// spritesheet and ready to be used.
+static void check_pins(report* r,
+                       dynarr* parsed,
+                       const char* prop,
+                       const char** pin_keys,
+                       size_t n,
+                       const char** anims,
+                       char (*keys)[3][KEY_MAX_SIZE],
+                       size_t anims_n) {
+    char x_key[KEY_MAX_SIZE] = "";
+    char y_key[KEY_MAX_SIZE] = "";
+    sprintf(x_key, "%s_anim_x", prop);
+    sprintf(y_key, "%s_anim_y", prop);
+    dynarr* anim_x = get_row(parsed, x_key);
+    dynarr* anim_y = get_row(parsed, y_key);
+    if (!anim_x || !anim_y) return;
+
+    for (size_t k = 0; k < n; k++) {
+        dynarr* row = get_row(parsed, pin_keys[k]);
+        if (!row) continue;
+        check(r,
+              row->len == anim_x->len,
+              "\"%s\" has %lu values, expected %lu like \"%s\"",
+              pin_keys[k],
+              row->len - 1,
+              anim_x->len - 1,
+              x_key);
+    }
+
+    bool is_mapped[SPRITESHEET_X / SPRITESHEET_CELL_X]
+                  [SPRITESHEET_Y / SPRITESHEET_CELL_Y] = {0};
+    for (size_t i = 1; i < anim_x->len && i < anim_y->len; i++) {
+        long x = SDL_strtol((char*)anim_x->at[i], NULL, 10);
+        long y = SDL_strtol((char*)anim_y->at[i], NULL, 10);
+        bool inside = x < SPRITESHEET_X / SPRITESHEET_CELL_X &&
+                      y < SPRITESHEET_Y / SPRITESHEET_CELL_Y;
+        check(r,
+              inside,
+              "%s frame %lu at %ld,%ld is outside the spritesheet",
+              prop,
+              i,
+              x,
+              y);
+        if (inside) is_mapped[x][y] = true;
+    }
+    for (size_t a = 0; a < anims_n; a++) {
+        dynarr* x = get_row(parsed, keys[a][0]);
+        dynarr* y = get_row(parsed, keys[a][1]);
+        for (size_t i = 1; x && y && i < x->len && i < y->len; i++) {
+            long cx = SDL_strtol((char*)x->at[i], NULL, 10);
+            long cy = SDL_strtol((char*)y->at[i], NULL, 10);
+            if (cx >= SPRITESHEET_X / SPRITESHEET_CELL_X ||
+                cy >= SPRITESHEET_Y / SPRITESHEET_CELL_Y)
+                continue;
+            check(r,
+                  is_mapped[cx][cy],
+                  "\"%s\" keyframe %lu at %ld,%ld has no %s pins",
+                  anims[a],
+                  i,
+                  cx,
+                  cy,
+                  prop);
+        }
+    }
 }
 
 static void check_player_presentation(void) {
@@ -341,24 +432,60 @@ static void check_player_presentation(void) {
                            "crouch_moving_anim",
                            "swimming_anim"};
     char keys[SDL_arraysize(anims)][3][KEY_MAX_SIZE] = {0};
-    key_spec specs[2 + 3 * SDL_arraysize(anims)] = {
+    // Every cell of the spritesheet can be mapped once
+    const size_t cells = (SPRITESHEET_X / SPRITESHEET_CELL_X) *
+                         (SPRITESHEET_Y / SPRITESHEET_CELL_Y);
+    const key_spec base_specs[] = {
         {"coords", val_uint8, 4, 4},
         {"offset", val_sint8, 2, 2},
+        {"hair_col", val_uint8, 4, 4},
+        {"hair_gravity", val_double, 1, 1},
+        {"hair_fluid_gravity", val_double, 1, 1},
+        {"hair_damping", val_double, 1, 1},
+        {"hair_fluid_damping", val_double, 1, 1},
+        {"hair_segments", val_uint8, 1, 1},
+        {"hair_segments_length", val_double, 1, 1},
+        {"hair_segments_two_ways", val_bool, 1, 1},
+        {"hair_anim_x", val_uint8, 1, cells},
+        {"hair_anim_y", val_uint8, 1, cells},
+        {"hair_pin_x", val_uint8, 1, cells},
+        {"hair_pin_y", val_uint8, 1, cells},
+        {"cloak_out_col", val_uint8, 4, 4},
+        {"cloak_in_col", val_uint8, 4, 4},
+        {"cloak_gravity", val_double, 1, 1},
+        {"cloak_fluid_gravity", val_double, 1, 1},
+        {"cloak_damping", val_double, 1, 1},
+        {"cloak_fluid_damping", val_double, 1, 1},
+        {"cloak_horiz_segments", val_uint8, 1, 1},
+        {"cloak_vert_segments", val_uint8, 1, 1},
+        {"cloak_horiz_segment_length", val_double, 1, 1},
+        {"cloak_vert_segment_length", val_double, 1, 1},
+        {"cloak_horiz_segment_two_ways", val_bool, 1, 1},
+        {"cloak_vert_segment_two_ways", val_bool, 1, 1},
+        {"cloak_anim_x", val_uint8, 1, cells},
+        {"cloak_anim_y", val_uint8, 1, cells},
+        {"cloak_pin_l_x", val_uint8, 1, cells},
+        {"cloak_pin_l_y", val_uint8, 1, cells},
+        {"cloak_pin_r_x", val_uint8, 1, cells},
+        {"cloak_pin_r_y", val_uint8, 1, cells},
     };
+    const size_t base_n = SDL_arraysize(base_specs);
+    key_spec specs[SDL_arraysize(base_specs) + 3 * SDL_arraysize(anims)];
+    SDL_memcpy(specs, base_specs, sizeof(base_specs));
     for (size_t a = 0; a < SDL_arraysize(anims); a++) {
         sprintf(keys[a][0], "%s_x", anims[a]);
         sprintf(keys[a][1], "%s_y", anims[a]);
         sprintf(keys[a][2], "%s_dur", anims[a]);
-        specs[2 + 3 * a] =
+        specs[base_n + 3 * a] =
             (key_spec){keys[a][0], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
-        specs[3 + 3 * a] =
+        specs[base_n + 1 + 3 * a] =
             (key_spec){keys[a][1], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
-        specs[4 + 3 * a] =
+        specs[base_n + 2 + 3 * a] =
             (key_spec){keys[a][2], val_double, 1, SPRITES_ANIM_MAX_KEYFRAMES};
     }
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);
-    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), false);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
 
     // Each keyframe of an animation needs its x, y and duration.
     for (size_t a = 0; a < SDL_arraysize(anims); a++) {
@@ -374,6 +501,47 @@ static void check_player_presentation(void) {
               y->len - 1,
               dur->len - 1);
     }
+
+    // The hair's and cloak's points are kept on arrays of fixed size.
+    const char* segment_keys[] = {
+        "hair_segments", "cloak_horiz_segments", "cloak_vert_segments"};
+    const long segment_maxes[] = {PLAYER_HAIR_MAX_SEGMENTS,
+                                  PLAYER_CLOAK_MAX_HORIZ_SEGMENTS,
+                                  PLAYER_CLOAK_MAX_VERT_SEGMENTS};
+    for (size_t k = 0; k < SDL_arraysize(segment_keys); k++) {
+        dynarr* row = get_row(&parsed, segment_keys[k]);
+        if (!row || row->len < 2) continue;
+        long n = SDL_strtol((char*)row->at[1], NULL, 10);
+        check(&r,
+              n >= 1 && n <= segment_maxes[k],
+              "\"%s\" is %ld, expected 1 to %ld",
+              segment_keys[k],
+              n,
+              segment_maxes[k]);
+    }
+
+    const char* hair_keys[] = {"hair_anim_y", "hair_pin_x", "hair_pin_y"};
+    const char* cloak_keys[] = {"cloak_anim_y",
+                                "cloak_pin_l_x",
+                                "cloak_pin_l_y",
+                                "cloak_pin_r_x",
+                                "cloak_pin_r_y"};
+    check_pins(&r,
+               &parsed,
+               "hair",
+               hair_keys,
+               SDL_arraysize(hair_keys),
+               anims,
+               keys,
+               SDL_arraysize(anims));
+    check_pins(&r,
+               &parsed,
+               "cloak",
+               cloak_keys,
+               SDL_arraysize(cloak_keys),
+               anims,
+               keys,
+               SDL_arraysize(anims));
     CSV_free(&parsed);
     finish(PLAYER_SPRITE_CSV_PATH, &r);
 }
@@ -393,7 +561,7 @@ static void check_fluid_particles(void) {
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);
-    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs), true);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(FLUIDS_PARTICLES_CSV_PATH, &r);
 }
@@ -420,12 +588,17 @@ static void check_fluids(void) {
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
 
     // The loader reads exactly one row for each fluid.
-    int col = parsed.len > 0 ? get_column(&parsed, "fluid") : -1;
+    int h = get_header(&parsed);
+    int col = get_column(&parsed, "fluid");
+    size_t fluids = 0;
+    for (size_t j = h + 1; h >= 0 && j < parsed.len; j++)
+        if (((dynarr*)parsed.at[j])->len >= 2) fluids++;
     for (node* i = fluid_names.indexes.head; i && col >= 0; i = i->next) {
         char* name = fluid_names.keys[(size_t)i->val];
         size_t count = 0;
-        for (size_t j = 1; j < parsed.len; j++) {
+        for (size_t j = h + 1; j < parsed.len; j++) {
             dynarr* row = parsed.at[j];
+            if (row->len < 2) continue;
             if (col < row->len && SDL_strcmp(row->at[col], name) == 0) count++;
         }
         check(&r,
@@ -435,9 +608,9 @@ static void check_fluids(void) {
               count);
     }
     check(&r,
-          parsed.len == FLUIDS_TOTAL + 1,
+          fluids == FLUIDS_TOTAL,
           "Has %lu fluids, expected %d",
-          parsed.len > 0 ? parsed.len - 1 : 0,
+          fluids,
           FLUIDS_TOTAL);
     CSV_free(&parsed);
     finish(FLUIDS_CSV_PATH, &r);

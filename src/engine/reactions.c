@@ -33,25 +33,35 @@ static void load_fluid_fluid_into_tile_reactions(const char* csv) {
 
     dynarr parsed = CSV_parse(csv);
 
+    // Single cell rows are headers organizing the file, so the first row with
+    // more cells names the columns and the others are skipped.
+    size_t header = 0;
+    while (((dynarr*)parsed.at[header])->len < 2)
+        header++;
+
     // Get hashmap of property indexes
     hashmap props = (hashmap){0};
-    size_t props_count = ((dynarr*)parsed.at[0])->len;
+    size_t props_count = ((dynarr*)parsed.at[header])->len;
     init_hashmap(&props);
     for (size_t i = 0; i < props_count; i++)
-        set_on_hashmap((void*)i, (char*)((dynarr*)parsed.at[0])->at[i], &props);
+        set_on_hashmap(
+            (void*)i, (char*)((dynarr*)parsed.at[header])->at[i], &props);
 
     // Set fluid fluid into tile reactions data
-    size_t total_reactions = parsed.len - 1;
+    size_t total_reactions = 0;
+    for (size_t i = header + 1; i < parsed.len; i++)
+        if (((dynarr*)parsed.at[i])->len >= 2) total_reactions++;
     ffit_data = SDL_calloc(total_reactions, sizeof(fluid_fluid_into_tile));
-    ffit_count = total_reactions;
-    for (size_t i = 1; i <= total_reactions; i++) {
+    ffit_count = 0;
+    for (size_t i = header + 1; i < parsed.len; i++) {
         dynarr* row = (dynarr*)parsed.at[i];
+        if (row->len < 2) continue;
         char* fluid_a = read_col(row, "fluid A", &props);
         char* fluid_b = read_col(row, "fluid B", &props);
         char* tile = read_col(row, "resulting tile", &props);
         char* coords_x = read_col(row, "tile spritesheet x", &props);
         char* coords_y = read_col(row, "tile spritesheet y", &props);
-        ffit_data[i - 1] = (fluid_fluid_into_tile){
+        ffit_data[ffit_count++] = (fluid_fluid_into_tile){
             .fluid_a =
                 (fluid_type)(size_t)get_from_hashmap(fluid_a, &fluids_map),
             .fluid_b =

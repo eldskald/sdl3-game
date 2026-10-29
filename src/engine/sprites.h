@@ -37,7 +37,8 @@ typedef struct {
 // spritesheet in tiles, or cells, so `0,0` means the first tile, `1,0` means
 // the one to its right, and so on. Its `coords_w,coords_h` means the size of
 // the sprite, also in tile/cell size, so `0,0,2,2` means tiles coords `0,0`,
-// `0,1`, `1,0` and `1,1`. Higher z_index are rendered on top of lower ones.
+// `0,1`, `1,0` and `1,1`. Its `z_index` is the renderer's, see
+// `RENDERER_draw_from_spritesheet()`.
 // Its color is multiplied by `tint_r,tint_g,tint_b,tint_a`, which should be
 // `1.0` to draw it as is and can go beyond `1.0` to make it bloom. Always set
 // them, since they'd be zero, making the sprite invisible.
@@ -95,6 +96,23 @@ int SPRITES_edit_sprite(size_t sprite_id, sprite data);
 
 
 
+// Attaches a line from `(x1,y1)` to `(x2,y2)` in world pixels with color `col`
+// to the sprite at `sprite_id`. Attached lines are drawn in the order they were
+// attached right before the sprite on its z_index, so nothing else is drawn
+// between them, but only while the sprite itself is on screen. Returns `0` if
+// everything went fine, `1` if `sprite_id` pointed to an empty slot or `3` if
+// `sprite_id` is outside the buffer's range.
+int SPRITES_attach_line_to_sprite(
+    size_t sprite_id, float x1, float y1, float x2, float y2, SDL_Color col);
+
+// Removes all lines attached to the sprite at `sprite_id`, keeping their memory
+// allocated so attaching them again is quick. Returns `0` if everything went
+// fine, `1` if `sprite_id` pointed to an empty slot or `3` if `sprite_id` is
+// outside the buffer's range.
+int SPRITES_clear_attached_lines(size_t sprite_id);
+
+
+
 // Start playing animation on the sprite on the given id. Returns `0` when
 // successful, `3` if `sprite_id` is outside the sprite buffer's range.
 int SPRITES_play_anim(size_t sprite_id, animation anim);
@@ -118,9 +136,6 @@ void SPRITES_stop(void);
 // `SPRITES_draw()`. Call on update in the fixed thread.
 void SPRITES_update(void);
 
-// Draws the sprites readied by the last `SPRITES_update()` with `tint_state`,
-// the tint shader's render state, to apply their tints. Call on renderer
-// update.
-void SPRITES_draw(SDL_Renderer* renderer,
-                  SDL_Texture* spritesheet,
-                  SDL_GPURenderState* tint_state);
+// Queues the sprites readied by the last `SPRITES_update()` on the renderer at
+// their z_index. Call on renderer update.
+void SPRITES_draw(void);
