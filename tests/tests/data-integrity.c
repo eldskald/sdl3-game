@@ -255,6 +255,7 @@ static void check_ripples(void) {
         {"body_ripple_strength", val_double, 1, 1},
         {"prop_ripple_strength", val_double, 1, 1},
         {"damping", val_double, 1, 1},
+        {"refraction", val_double, 1, 1},
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(csv);

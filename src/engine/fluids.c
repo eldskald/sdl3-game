@@ -21,10 +21,7 @@ typedef struct {
     double move_side_time;
     double min_spread;
     double particle_vol;
-    Uint8 col_r;
-    Uint8 col_g;
-    Uint8 col_b;
-    Uint8 col_a;
+    Uint8 col_r, col_g, col_b, col_a;
 } fluid_data;
 
 typedef struct {
@@ -32,10 +29,8 @@ typedef struct {
 } fluids;
 
 typedef struct {
-    double x;
-    double y;
-    double vel_x;
-    double vel_y;
+    double x, y;
+    double vel_x, vel_y;
     fluid_type type;
 } fluid_particle;
 
@@ -45,10 +40,7 @@ typedef struct {
 } neighbor;
 
 typedef struct {
-    Uint32 x;
-    Uint32 y;
-    Uint32 w;
-    Uint32 h;
+    Uint32 x, y, w, h;
     fluid_type type;
     double volume;
     bool clear;
@@ -65,22 +57,19 @@ typedef struct {
 } fluid_particles_data;
 
 typedef struct {
-    Uint32 x;
-    Uint32 y;
+    Uint32 x, y;
     Uint32 w;
     double speed;
 } splash;
 
 typedef struct {
-    Uint32 x;
-    Uint32 y;
+    Uint32 x, y;
     Uint32 size;
     double strength;
 } ripple;
 
 typedef struct {
-    long x;
-    long y;
+    long x, y;
     long dir;
     Uint32 len;
     double fills[SIMULATION_SPACE_X * FLUIDS_SPLIT_X];
@@ -93,30 +82,27 @@ static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
                   [TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y] = {0};
 static fluids buffer[SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
                     [SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y] = {0};
-// Top left of the simulated rect on `grid`, in fluid cells. Only cells inside
-// it are simulated, cells outside it are treated as walls by the simulation.
+
 static long sim_x = 0;
 static long sim_y = 0;
 static fluid_data data[FLUIDS_TOTAL] = {0};
 static fluid_particles_data particles_data = {0};
+
 static dynarr mods = (dynarr){0};
 static SDL_Mutex* mods_mutex = NULL;
 static dynarr queued_particles = (dynarr){0};
 static SDL_Mutex* queued_particles_mutex = NULL;
 static dynarr splashes = (dynarr){0};
 static SDL_Mutex* splashes_mutex = NULL;
+
 static dynarr ripples = (dynarr){0};
 static SDL_Mutex* ripples_mutex = NULL;
-// Which of `fluids_canvas.ripples` has the latest ripples.
 static Uint8 ripples_idx = 0;
-// Top left of the area the ripples were last drawn at, in world pixels. See
-// `get_ripples_area()`.
 static float ripples_x = 0.0f;
 static float ripples_y = 0.0f;
-// Ripples ticks due, added by `FLUIDS_update()` and run by `FLUIDS_draw()`.
 static SDL_AtomicInt ripples_ticks = {0};
-// How much of their height ripples keep per tick, set on the ripples shader.
 static float ripples_damping = 0.0f;
+static float ripples_refraction = 0.0f;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
 static fluid_particle* particles = NULL;
@@ -338,6 +324,8 @@ static void load_ripples_data(const char* csv) {
         char* val = (char*)((dynarr*)parsed.at[i])->at[1];
         if (SDL_strcmp(key, "damping") == 0)
             ripples_damping = SDL_strtod(val, NULL);
+        else if (SDL_strcmp(key, "refraction") == 0)
+            ripples_refraction = SDL_strtod(val, NULL);
     }
 
     CSV_free(&parsed);
@@ -1243,13 +1231,16 @@ typedef struct {
     float cam_pos[2];
     // Seconds since the game started.
     float time;
-    float padding;
+    // How far, in pixels, a fully tilted normal offsets what's seen through
+    // the fluid.
+    float refraction;
 } shader_uniforms;
 
 static void set_shader_uniforms(SDL_GPURenderState* render_state,
                                 SDL_FRect cam) {
     shader_uniforms uniforms = {.cam_pos = {cam.x / cam.w, cam.y / cam.h},
-                                .time = SDL_GetTicks() / 1000.0f};
+                                .time = SDL_GetTicks() / 1000.0f,
+                                .refraction = ripples_refraction};
     for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
         uniforms.colors[t][0] = data[t].col_r / 255.0f;
         uniforms.colors[t][1] = data[t].col_g / 255.0f;

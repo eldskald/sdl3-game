@@ -246,7 +246,9 @@ void TILEMAP_clear(void) {
     map = NULL;
 }
 
-void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
+void TILEMAP_draw(SDL_Renderer* renderer,
+                  SDL_Texture* spritesheet,
+                  bool platforms) {
     if (!map) return;
 
     SDL_FRect cam = CAMERA_get_rect();
@@ -260,6 +262,7 @@ void TILEMAP_draw(SDL_Renderer* renderer, SDL_Texture* spritesheet) {
     for (int i = from_x; i < to_x; i++) {
         for (int j = from_y; j < to_y; j++) {
             if (!(*map)[i][j].type) continue;
+            if ((*map)[i][j].platform != platforms) continue;
             SDL_FRect srcrect = (SDL_FRect){
                 .x = SPRITESHEET_CELL_X * (*map)[i][j].coords_x,
                 .y = SPRITESHEET_CELL_Y * (*map)[i][j].coords_y,

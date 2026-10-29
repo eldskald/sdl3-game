@@ -6,3 +6,4 @@ new_prop_ripple_pix_size,1
 body_ripple_strength,1
 prop_ripple_strength,1
 damping,0.95
+refraction,4

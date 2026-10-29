@@ -8,14 +8,12 @@
 //
 // ```
 // struct keyframe {
-//     Uint8 coords_x;
-//     Uint8 coords_y;
+//     Uint8 coords_x, coords_y;
 //     double duration;
 // };
 // ```
 typedef struct {
-    Uint8 coords_x;
-    Uint8 coords_y;
+    Uint8 coords_x, coords_y;
     double duration;
 } keyframe;
 
@@ -40,39 +38,36 @@ typedef struct {
 // the one to its right, and so on. Its `coords_w,coords_h` means the size of
 // the sprite, also in tile/cell size, so `0,0,2,2` means tiles coords `0,0`,
 // `0,1`, `1,0` and `1,1`. Higher z_index are rendered on top of lower ones.
-// Finally, its color is multiplied by `tint_r,tint_g,tint_b,tint_a`, which
-// should be `1.0` to draw it as is and can go beyond `1.0` to make it bloom.
-// Always set them, since they'd be zero, making the sprite invisible.
+// Its color is multiplied by `tint_r,tint_g,tint_b,tint_a`, which should be
+// `1.0` to draw it as is and can go beyond `1.0` to make it bloom. Always set
+// them, since they'd be zero, making the sprite invisible.
+//
+// When a non-looping animation ends on its own, `on_anim_finished_func` is
+// called with the sprite's ID and `on_anim_finished_arg`, so whoever owns the
+// sprite can deal with it. It's not called when the animation gets interrupted
+// by `SPRITES_stop_anim()` or `SPRITES_play_anim()` and can be `NULL`. It runs
+// on `SPRITES_update()` after every sprite was updated, so it's free to create,
+// edit or delete sprites.
 //
 // ```
 // struct sprite {
-//     Sint32 pos_x;
-//     Sint32 pos_y;
-//     Uint8 coords_x;
-//     Uint8 coords_y;
-//     Uint8 coords_w;
-//     Uint8 coords_h;
+//     Sint32 pos_x, pos_y;
+//     Uint8 coords_x, coords_y, coords_w, coords_h;
 //     Sint8 z_index;
 //     SDL_FlipMode flip_mode;
-//     double tint_r;
-//     double tint_g;
-//     double tint_b;
-//     double tint_a;
+//     double tint_r, double tint_g, double tint_b, double tint_a;
+//     void (*on_anim_finished_func)(size_t sprite_id, size_t arg);
+//     size_t on_anim_finished_arg;
 // };
 // ```
 typedef struct {
-    Uint32 pos_x;
-    Uint32 pos_y;
-    Uint8 coords_x;
-    Uint8 coords_y;
-    Uint8 coords_w;
-    Uint8 coords_h;
+    Uint32 pos_x, pos_y;
+    Uint8 coords_x, coords_y, coords_w, coords_h;
     Sint8 z_index;
     SDL_FlipMode flip_mode;
-    double tint_r;
-    double tint_g;
-    double tint_b;
-    double tint_a;
+    double tint_r, tint_g, tint_b, tint_a;
+    void (*on_anim_finished_func)(size_t sprite_id, size_t arg);
+    size_t on_anim_finished_arg;
 } sprite;
 
 
@@ -109,11 +104,6 @@ int SPRITES_play_anim(size_t sprite_id, animation anim);
 // nothing is on `sprite_id`.
 int SPRITES_stop_anim(size_t sprite_id);
 
-// Makes finished true the exact frame the animation (non-looping) ended.
-// Returns `0` shen successful, `3` if sprite_id is outside the sprite buffer's
-// range, `1` if nothing is on `sprite_id`.
-int SPRITES_anim_finished(size_t sprite_id, bool* finished);
-
 
 
 // Allocates memory and other stuff. Call on start of the game.
@@ -122,8 +112,15 @@ void SPRITES_start(void);
 // Frees allocated memory. Call when quitting the game.
 void SPRITES_stop(void);
 
-// Updates the sprites state and renders them with `tint_state`, the tint
-// shader's render state, to apply their tints. Call on renderer update.
+// Advances the animations of sprites within the simulation space from
+// `CAMERA_get_simulation_rect()`, calling `on_anim_finished_func` of the ones
+// that ended, and readies the sprites near the camera to be drawn by
+// `SPRITES_draw()`. Call on update in the fixed thread.
+void SPRITES_update(void);
+
+// Draws the sprites readied by the last `SPRITES_update()` with `tint_state`,
+// the tint shader's render state, to apply their tints. Call on renderer
+// update.
 void SPRITES_draw(SDL_Renderer* renderer,
                   SDL_Texture* spritesheet,
                   SDL_GPURenderState* tint_state);

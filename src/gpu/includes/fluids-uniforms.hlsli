@@ -13,6 +13,10 @@ cbuffer Uniforms : register(b0, space3) {
 
     // Seconds since the game started.
     float _Time;
+
+    // How far, in pixels, a fully tilted normal offsets what's seen through
+    // the fluid.
+    float _Refraction;
 };
 
 #endif

@@ -7,30 +7,7 @@
 
 void DEV_start(void) {
     CHUNKS_load_at(3, 0, 0);
-    PLAYER_create(72.0f, 72.0f);
-
-    // // Checkerboard background, to see the fluids refracting it.
-    // for (Uint32 x = 0; x < WINDOW_SIZE_X / SPRITESHEET_CELL_X; x++) {
-    //     for (Uint32 y = 0; y <= WINDOW_SIZE_Y / SPRITESHEET_CELL_Y; y++) {
-    //         if ((x + y) % 2) continue;
-    //         size_t id = 0;
-    //         SPRITES_new_sprite(
-    //             (sprite){
-    //                 .pos_x = x * SPRITESHEET_CELL_X,
-    //                 .pos_y = y * SPRITESHEET_CELL_Y,
-    //                 .coords_x = 11,
-    //                 .coords_y = 1,
-    //                 .coords_w = 1,
-    //                 .coords_h = 1,
-    //                 .z_index = -100,
-    //                 .tint_r = 1.0,
-    //                 .tint_g = 1.0,
-    //                 .tint_b = 1.0,
-    //                 .tint_a = 1.0,
-    //             },
-    //             &id);
-    //     }
-    // }
+    PLAYER_create(80.0f, 72.0f);
 }
 
 void DEV_update(void) {
