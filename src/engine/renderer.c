@@ -598,9 +598,6 @@ static int load_graphics_files(void) {
 
 
 
-// Vines and sprites are drawn on pre_fluids_texture first, for the fluids to
-// refract. The fluids shader draws all of it on base_screen, refracted where
-// there are fluids and as is everywhere else, then the tilemap is drawn on top.
 static void render_base_screen(void) {
 #ifndef TEST
     SDL_SetRenderTarget(renderer, pre_fluids_texture);
@@ -608,6 +605,7 @@ static void render_base_screen(void) {
     SDL_RenderClear(renderer);
 #endif
 
+    TILEMAP_draw(renderer, spritesheet, true);
     VINES_draw(renderer);
 
 #ifndef TEST
@@ -623,7 +621,7 @@ static void render_base_screen(void) {
 #endif
 
     FLUIDS_draw(renderer, &fluids);
-    TILEMAP_draw(renderer, spritesheet);
+    TILEMAP_draw(renderer, spritesheet, false);
 
 #ifndef TEST
     SDL_RenderPresent(renderer);

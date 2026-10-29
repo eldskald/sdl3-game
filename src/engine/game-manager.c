@@ -59,6 +59,8 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
         DEV_update();
 #endif
 
+        SPRITES_update();
+
         // Calculate and cap tick rate
         if (fixed_t_target_rate > SDL_GetTicksNS() - fixed_t_start) {
             fixed_t_diff = fixed_t_target_rate;

@@ -23,6 +23,22 @@
 #define RIPPLES_MARGIN_Y                                                       \
     ((FLUIDS_RIPPLES_TEXTURE_RES_FACTOR - 1) * WINDOW_SIZE_Y / 2)
 
+static size_t anim_finished_calls = 0;
+static size_t anim_finished_sprite_id = 0;
+static size_t anim_finished_arg = 0;
+
+static void record_anim_finished(size_t sprite_id, size_t arg) {
+    anim_finished_calls++;
+    anim_finished_sprite_id = sprite_id;
+    anim_finished_arg = arg;
+}
+
+// Updates the sprites like the fixed thread would, then renders.
+static void tick(void) {
+    SPRITES_update();
+    RENDERER_update();
+}
+
 void test_drawing(void) {
     printf(YELLOW "\nTesting render texture calls...\n" RESET);
 
@@ -85,7 +101,7 @@ void test_drawing(void) {
         &id3);
 
 
-    RENDERER_update();
+    tick();
     SDL_RenderTexture_call* calls = NULL;
     size_t calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Added 4 sprites, should draw them correctly...",
@@ -143,7 +159,7 @@ void test_drawing(void) {
                             .z_index = 10,
                             .flip_mode = SDL_FLIP_NONE,
                         });
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Updated a sprite, checking calls...",
            37,
@@ -190,7 +206,7 @@ void test_drawing(void) {
 
 
     SPRITES_del_sprite(id0);
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Deleted a sprite, checking calls...",
            28,
@@ -263,7 +279,7 @@ void test_drawing(void) {
             .z_index = 20,
         },
         &partial);
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Added 2 sprites just off screen and 1 partially on screen, should "
            "only draw the partial one...",
@@ -293,7 +309,7 @@ void test_drawing(void) {
                    1,
                    1,
                    &data);
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Added a tile on the tilemap, checking calls...",
            37,
@@ -338,6 +354,37 @@ void test_drawing(void) {
            });
     clear_stubbed_calls();
 
+    tile platform[1][1] = {{(tile){
+        .type = tile_wood, .platform = true, .coords_x = 7, .coords_y = 13}}};
+    TILEMAP_set_at(CAM_X / SPRITESHEET_CELL_X + 4,
+                   CAM_Y / SPRITESHEET_CELL_Y + 2,
+                   1,
+                   1,
+                   &platform);
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    expect("Added a platform tile next to the tile, checking if it's drawn "
+           "before the sprites and the tile after them...",
+           9,
+           (bool[]){
+               calls_n == 5,
+               calls[0].src.x == 7 * SPRITESHEET_CELL_X,
+               calls[0].src.y == 13 * SPRITESHEET_CELL_Y,
+               calls[0].dst.x == 4 * SPRITESHEET_CELL_X,
+               calls[0].dst.y == 2 * SPRITESHEET_CELL_Y,
+               calls[1].src.x == 8 * SPRITESHEET_CELL_X,
+               calls[3].src.x == 5 * SPRITESHEET_CELL_X,
+               calls[4].src.x == 6 * SPRITESHEET_CELL_X,
+               calls[4].dst.x == 3 * SPRITESHEET_CELL_X,
+           });
+    clear_stubbed_calls();
+    tile no_platform[1][1] = {{(tile){0}}};
+    TILEMAP_set_at(CAM_X / SPRITESHEET_CELL_X + 4,
+                   CAM_Y / SPRITESHEET_CELL_Y + 2,
+                   1,
+                   1,
+                   &no_platform);
+
     // The screen is 22.5 tiles tall, so the tiles on row 22 are partially on
     // screen and the ones on row 23 are off it.
     Uint16 cam_tx = CAM_X / SPRITESHEET_CELL_X;
@@ -350,7 +397,7 @@ void test_drawing(void) {
     TILEMAP_set_at(cam_tx + 5, cam_ty - 1, 1, 1, &data);
     TILEMAP_set_at(cam_tx + 5, cam_ty + screen_th + 1, 1, 1, &data);
     TILEMAP_set_at(cam_tx + 6, cam_ty + screen_th, 1, 1, &data);
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Added 4 tiles just off screen and 1 partially on screen, should "
            "only draw the partial one...",
@@ -379,7 +426,7 @@ void test_drawing(void) {
     Uint32 cam_cy = CAM_Y / FLUIDS_CELL_H;
     FLUIDS_set_at(cam_cx + 2, cam_cy + 2, 1, 1, fluid_water, 1.0f);
     FLUIDS_update();
-    RENDERER_update();
+    tick();
     SDL_RenderFillRect_call* rect_calls = NULL;
     size_t rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
     SDL_Rect sim = FLUIDS_get_simulated_rect();
@@ -427,7 +474,7 @@ void test_drawing(void) {
     FLUIDS_set_at(cam_cx + 10, 168, 1, 1, fluid_water, 1.0f);
     FLUIDS_set_at(cam_cx - 2, cam_cy + 2, 1, 1, fluid_water, 1.0f);
     FLUIDS_update();
-    RENDERER_update();
+    tick();
     rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
     expect("Added 4 cells of water just outside the ripples area and 1 off "
            "screen inside it, should only draw the one inside it...",
@@ -456,7 +503,7 @@ void test_drawing(void) {
             fluid_lava, CAM_X + 100.5f, CAM_Y + 40.1f, 0.0f, 0.0f) != 0)
         added = false;
     FLUIDS_update();
-    RENDERER_update();
+    tick();
     SDL_RenderPoint_call* point_calls = NULL;
     size_t point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
     expect("Added a particle of water and one of lava, checking calls...",
@@ -491,7 +538,7 @@ void test_drawing(void) {
             fluid_lava, CAM_X - 0.5f, CAM_Y + 80.1f, 0.0f, 0.0f) != 0)
         added = false;
     FLUIDS_update();
-    RENDERER_update();
+    tick();
     point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
     expect("Added 4 particles of lava just off screen and 1 partially on "
            "screen, should only draw the partial one...",
@@ -516,6 +563,7 @@ void test_drawing(void) {
     FLUIDS_stop();
     SPRITES_stop();
     SPRITES_start();
+    const size_t anim_arg = 42;
     SPRITES_new_sprite(
         (sprite){
             .pos_x = CAM_X,
@@ -525,6 +573,8 @@ void test_drawing(void) {
             .coords_w = 1,
             .coords_h = 1,
             .z_index = 0,
+            .on_anim_finished_func = record_anim_finished,
+            .on_anim_finished_arg = anim_arg,
         },
         &id0);
     SPRITES_play_anim(
@@ -537,7 +587,7 @@ void test_drawing(void) {
                 (keyframe){.coords_x = 3, .coords_y = 0, .duration = 0.25f},
             }});
 
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Reset the renderer, added a new sprite with a non-looping "
            "animation, checking calls...",
@@ -554,9 +604,9 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
-        RENDERER_update();
+        tick();
     clear_stubbed_calls();
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
         "Ticked enough to get to the next animation frame, checking calls...",
@@ -573,9 +623,9 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
-        RENDERER_update();
+        tick();
     clear_stubbed_calls();
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
         "Ticked enough to get to the last animation frame, checking calls...",
@@ -592,32 +642,12 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     for (int i = 0; i < 12; i++)
-        RENDERER_update();
+        tick();
     clear_stubbed_calls();
-    RENDERER_update();
-    bool trigger = false;
-    SPRITES_anim_finished(id0, &trigger);
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Advanced to the second to last tick to check that no animation "
-           "finished trigger was sent and the calls...",
-           9,
-           (bool[]){calls_n == 1,
-                    calls[0].src.x == 3 * SPRITESHEET_CELL_X,
-                    calls[0].src.y == 0,
-                    calls[0].src.w == SPRITESHEET_CELL_X,
-                    calls[0].src.h == SPRITESHEET_CELL_Y,
-                    calls[0].dst.x == 0,
-                    calls[0].dst.y == 0,
-                    calls[0].dst.w == SPRITESHEET_CELL_X,
-                    calls[0].dst.h == SPRITESHEET_CELL_Y,
-                    !trigger});
-    clear_stubbed_calls();
-
-    RENDERER_update();
-    SPRITES_anim_finished(id0, &trigger);
-    calls_n = get_SDL_RenderTexture_calls(&calls);
-    expect("Ticked enough to get to the end of the animation, checking calls "
-           "and the animation finished trigger...",
+           "finished function was called and the calls...",
            10,
            (bool[]){calls_n == 1,
                     calls[0].src.x == 3 * SPRITESHEET_CELL_X,
@@ -628,15 +658,15 @@ void test_drawing(void) {
                     calls[0].dst.y == 0,
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y,
-                    trigger});
+                    anim_finished_calls == 0});
     clear_stubbed_calls();
 
-    RENDERER_update();
-    SPRITES_anim_finished(id0, &trigger);
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
-    expect("One more tick to see if it remains on the same frame and no end of "
-           "animation triggers, checking calls...",
-           9,
+    expect("Ticked enough to get to the end of the animation, checking calls "
+           "and if the animation finished function was called once with the "
+           "sprite's ID and arg...",
+           12,
            (bool[]){calls_n == 1,
                     calls[0].src.x == 3 * SPRITESHEET_CELL_X,
                     calls[0].src.y == 0,
@@ -646,7 +676,26 @@ void test_drawing(void) {
                     calls[0].dst.y == 0,
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y,
-                    !trigger});
+                    anim_finished_calls == 1,
+                    anim_finished_sprite_id == id0,
+                    anim_finished_arg == anim_arg});
+    clear_stubbed_calls();
+
+    tick();
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    expect("One more tick to see if it remains on the same frame and no end of "
+           "animation finished function call, checking calls...",
+           10,
+           (bool[]){calls_n == 1,
+                    calls[0].src.x == 3 * SPRITESHEET_CELL_X,
+                    calls[0].src.y == 0,
+                    calls[0].src.w == SPRITESHEET_CELL_X,
+                    calls[0].src.h == SPRITESHEET_CELL_Y,
+                    calls[0].dst.x == 0,
+                    calls[0].dst.y == 0,
+                    calls[0].dst.w == SPRITESHEET_CELL_X,
+                    calls[0].dst.h == SPRITESHEET_CELL_Y,
+                    anim_finished_calls == 1});
     clear_stubbed_calls();
 
     SPRITES_play_anim(
@@ -658,7 +707,7 @@ void test_drawing(void) {
                 (keyframe){.coords_x = 2, .coords_y = 0, .duration = 0.25f},
                 (keyframe){.coords_x = 3, .coords_y = 0, .duration = 0.25f},
             }});
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Play looping animation, checking initial calls...",
            9,
@@ -674,9 +723,9 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
-        RENDERER_update();
+        tick();
     clear_stubbed_calls();
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
         "Ticked enough to get to the next animation frame, checking calls...",
@@ -693,9 +742,9 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
-        RENDERER_update();
+        tick();
     clear_stubbed_calls();
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect(
         "Ticked enough to get to the last animation frame, checking calls...",
@@ -712,13 +761,12 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     for (int i = 0; i < 14; i++)
-        RENDERER_update();
+        tick();
     clear_stubbed_calls();
-    RENDERER_update();
-    SPRITES_anim_finished(id0, &trigger);
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Ticked enough to loop back to the first, checking calls and if no "
-           "animation trigger was sent...",
+           "animation finished function was called...",
            10,
            (bool[]){calls_n == 1,
                     calls[0].src.x == 1 * SPRITESHEET_CELL_X,
@@ -729,14 +777,14 @@ void test_drawing(void) {
                     calls[0].dst.y == 0,
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y,
-                    !trigger});
+                    anim_finished_calls == 1});
     clear_stubbed_calls();
 
     SPRITES_stop_anim(id0);
     for (int i = 0; i < 14; i++)
-        RENDERER_update();
+        tick();
     clear_stubbed_calls();
-    RENDERER_update();
+    tick();
     calls_n = get_SDL_RenderTexture_calls(&calls);
     expect("Stopped animation and ticked enough to get to what would be the "
            "next frame, checking calls...",
@@ -751,6 +799,79 @@ void test_drawing(void) {
                     calls[0].dst.w == SPRITESHEET_CELL_X,
                     calls[0].dst.h == SPRITESHEET_CELL_Y});
     clear_stubbed_calls();
+
+    animation short_anim = (animation){
+        .looped = false,
+        .frames = {
+            (keyframe){.coords_x = 1, .coords_y = 0, .duration = 0.25f},
+            (keyframe){.coords_x = 2, .coords_y = 0, .duration = 0.25f},
+        }};
+    SPRITES_play_anim(id0, short_anim);
+    for (int i = 0; i < 20; i++)
+        tick();
+    SPRITES_stop_anim(id0);
+    for (int i = 0; i < 30; i++)
+        tick();
+    SPRITES_play_anim(id0, short_anim);
+    for (int i = 0; i < 20; i++)
+        tick();
+    SPRITES_play_anim(id0, short_anim);
+    for (int i = 0; i < 20; i++)
+        tick();
+    expect("Stopped a non-looping animation and interrupted another with a new "
+           "one before they ended, checking if the animation finished function "
+           "wasn't called...",
+           1,
+           (bool[]){anim_finished_calls == 1});
+    clear_stubbed_calls();
+
+    // The simulation space is centered on the camera, ending
+    // `SIMULATION_SPACE_X / 2` tiles to the right of its center
+    SDL_Rect space = CAMERA_get_simulation_rect();
+    Uint32 space_r = (space.x + space.w) * SPRITESHEET_CELL_X;
+    size_t out_id = 0;
+    size_t edge_id = 0;
+    SPRITES_new_sprite(
+        (sprite){
+            .pos_x = space_r + SPRITESHEET_CELL_X,
+            .pos_y = CAM_Y,
+            .coords_x = 0,
+            .coords_y = 0,
+            .coords_w = 1,
+            .coords_h = 1,
+        },
+        &out_id);
+    SPRITES_new_sprite(
+        (sprite){
+            .pos_x = space_r - SPRITESHEET_CELL_X / 2,
+            .pos_y = CAM_Y,
+            .coords_x = 0,
+            .coords_y = 0,
+            .coords_w = 1,
+            .coords_h = 1,
+        },
+        &edge_id);
+    SPRITES_play_anim(out_id, short_anim);
+    SPRITES_play_anim(edge_id, short_anim);
+    tick();
+    sprite out_sprite = (sprite){0};
+    sprite edge_sprite = (sprite){0};
+    SPRITES_get_sprite(out_id, &out_sprite);
+    SPRITES_get_sprite(edge_id, &edge_sprite);
+    calls_n = get_SDL_RenderTexture_calls(&calls);
+    expect("Animated a sprite outside the simulation space and another "
+           "partially inside it, both off screen, and ticked once, checking if "
+           "only the one partially inside is animating and neither was "
+           "drawn...",
+           3,
+           (bool[]){
+               out_sprite.coords_x == 0,
+               edge_sprite.coords_x == 1,
+               calls_n == 1,
+           });
+    clear_stubbed_calls();
+    SPRITES_del_sprite(out_id);
+    SPRITES_del_sprite(edge_id);
 
     CAMERA_center_at(WINDOW_SIZE_X / 2, WINDOW_SIZE_Y / 2);
     SPRITES_stop();

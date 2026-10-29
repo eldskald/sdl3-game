@@ -5,8 +5,8 @@
 #define WATER_BACKGROUND_BLEND 0.7
 
 #define WATER_LIGHT_DIR float2(1.0, 1.0)
-#define WATER_HIGHLIGHT 0.3
-#define WATER_SHADOW 0.2
+#define WATER_HIGHLIGHT 0.15
+#define WATER_SHADOW 0.1
 
 float4 water(float2 uv,
              float4 bg,

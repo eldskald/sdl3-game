@@ -29,10 +29,6 @@ float2 to_screen_uv(float2 uv) {
 // How much the ripples' slopes tilt their normals.
 #define RIPPLES_NORMAL_STRENGTH 16.0
 
-// How far, in pixels, a fully tilted normal offsets what's seen through the
-// fluid.
-#define RIPPLES_REFRACTION 4.0
-
 // How far, in pixels, surfaces can be waved up or down by the ripples, and how
 // many pixels each unit of the ripples' height waves them.
 #define WAVES_HEIGHT 2
@@ -195,7 +191,7 @@ float4 main(input i) : SV_Target0 {
     // offset.
     float3 n = height_to_normal(
         _Ripples, _RipplesSampler, i.uv, RIPPLES_NORMAL_STRENGTH);
-    float2 offset = n.xy * RIPPLES_REFRACTION * float2(dx.x, dy.y);
+    float2 offset = n.xy * _Refraction * float2(dx.x, dy.y);
     float4 bg =
         _PreFluids.Sample(_PreFluidsSampler, to_screen_uv(i.uv + offset));
 
