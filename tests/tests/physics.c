@@ -743,18 +743,43 @@ void test_physics(void) {
                     SDL_fabs(point.x - prev_x + vel * prop_dt) <= 0.001f,
                     SDL_fabs(point.y - prev_y - vel * prop_dt) <= 0.001f});
 
+    double vel_x_before = 0.0f;
+    double vel_y_before = 0.0f;
+    double vel_x_after = 0.0f;
+    double vel_y_after = 0.0f;
+    PHYSICS_get_prop_point_velocity(point_id, &vel_x_before, &vel_y_before);
+    int damping_res = PHYSICS_set_prop_point_damping(point_id, 1.0f);
+    PHYSICS_get_prop_point(point_id, &point);
+    bool damping_set = point.damping == 1.0f;
+    PHYSICS_get_prop_point_velocity(point_id, &vel_x_after, &vel_y_after);
+    prev_x = point.x;
+    prev_y = point.y;
+    PHYSICS_update();
+    PHYSICS_get_prop_point(point_id, &point);
+    expect("Set its damping to 1.0, checking if it kept its velocity until the "
+           "next step, which stopped it...",
+           6,
+           (bool[]){damping_res == 0,
+                    damping_set,
+                    vel_x_after == vel_x_before,
+                    vel_y_after == vel_y_before,
+                    SDL_fabs(point.x - prev_x) <= 0.001f,
+                    SDL_fabs(point.y - prev_y) <= 0.001f});
+
     PHYSICS_del_prop_point(point_id);
-    expect(
-        "Deleted the point, checking errors setting acceleration and "
-        "velocity of a deleted point and of an index out of range...",
-        4,
-        (bool[]){
-            PHYSICS_set_prop_point_acceleration(point_id, acc, acc) == 1,
-            PHYSICS_set_prop_point_velocity(point_id, vel, vel) == 1,
-            PHYSICS_set_prop_point_acceleration(
-                PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP << 4, acc, acc) == 3,
-            PHYSICS_set_prop_point_velocity(
-                PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP << 4, vel, vel) == 3});
+    expect("Deleted the point, checking errors setting acceleration, velocity "
+           "and damping of a deleted point and of an index out of range...",
+           6,
+           (bool[]){
+               PHYSICS_set_prop_point_acceleration(point_id, acc, acc) == 1,
+               PHYSICS_set_prop_point_velocity(point_id, vel, vel) == 1,
+               PHYSICS_set_prop_point_damping(point_id, 0.5f) == 1,
+               PHYSICS_set_prop_point_acceleration(
+                   PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP << 4, acc, acc) == 3,
+               PHYSICS_set_prop_point_velocity(
+                   PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP << 4, vel, vel) == 3,
+               PHYSICS_set_prop_point_damping(
+                   PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP << 4, 0.5f) == 3});
 
     size_t pin_id = 0;
     size_t weight_id = 0;

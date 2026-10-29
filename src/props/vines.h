@@ -21,8 +21,9 @@ int VINES_add(const SDL_FPoint* path,
 // Allocates initial memory and loads settings. Call at the start of the game.
 void VINES_start(void);
 
-// Draws vines. Call on the renderer.
-void VINES_draw(SDL_Renderer* renderer);
+// Queues the vines on the renderer at `PROPS_VINE_Z_INDEX`. Call on the
+// renderer.
+void VINES_draw(void);
 
 // Updates vines state. Call on any thread's update function.
 void VINES_update(void);

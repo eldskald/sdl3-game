@@ -3,12 +3,9 @@
 #include "data-structs/hashmap.h"
 #include "defs.h"
 #include "engine/camera.h"
+#include "engine/renderer.h"
 #include "services/json.h"
 #include <SDL3/SDL.h>
-
-#ifdef TEST
-#include "stubs.h"
-#endif
 
 
 
@@ -246,9 +243,7 @@ void TILEMAP_clear(void) {
     map = NULL;
 }
 
-void TILEMAP_draw(SDL_Renderer* renderer,
-                  SDL_Texture* spritesheet,
-                  bool platforms) {
+void TILEMAP_draw(void) {
     if (!map) return;
 
     SDL_FRect cam = CAMERA_get_rect();
@@ -261,25 +256,18 @@ void TILEMAP_draw(SDL_Renderer* renderer,
 
     for (int i = from_x; i < to_x; i++) {
         for (int j = from_y; j < to_y; j++) {
-            if (!(*map)[i][j].type) continue;
-            if ((*map)[i][j].platform != platforms) continue;
-            SDL_FRect srcrect = (SDL_FRect){
-                .x = SPRITESHEET_CELL_X * (*map)[i][j].coords_x,
-                .y = SPRITESHEET_CELL_Y * (*map)[i][j].coords_y,
-                .w = SPRITESHEET_CELL_X,
-                .h = SPRITESHEET_CELL_Y,
-            };
-            SDL_FRect dstrect = (SDL_FRect){
-                .x = SPRITESHEET_CELL_X * i - cam.x,
-                .y = SPRITESHEET_CELL_Y * j - cam.y,
-                .w = SPRITESHEET_CELL_X,
-                .h = SPRITESHEET_CELL_Y,
-            };
-#ifndef TEST
-            SDL_RenderTexture(renderer, spritesheet, &srcrect, &dstrect);
-#else
-            stubbed_SDL_RenderTexture(&srcrect, &dstrect, SDL_FLIP_NONE);
-#endif
+            tile t = (*map)[i][j];
+            if (!t.type) continue;
+            RENDERER_draw_from_spritesheet(
+                SPRITESHEET_CELL_X * i - cam.x,
+                SPRITESHEET_CELL_Y * j - cam.y,
+                t.coords_x,
+                t.coords_y,
+                1,
+                1,
+                SDL_FLIP_NONE,
+                (SDL_FColor){1.0f, 1.0f, 1.0f, 1.0f},
+                t.platform ? TILEMAP_PLATFORMS_Z_INDEX : TILEMAP_Z_INDEX);
         }
     }
 }

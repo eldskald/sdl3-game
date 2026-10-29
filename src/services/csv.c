@@ -4,7 +4,7 @@
 #include <SDL3/SDL.h>
 
 // This file is a port of https://github.com/eldskald/csvparse, my other project
-// for parsing csv files. I did this to keep not importing any other library
+// for parsing CSV files. I did this to keep not importing any other library
 // other than SDL3 to be sure the game is easily portable.
 
 static void store_cell(char** curr_cell, dynarr* curr_row) {
@@ -13,6 +13,13 @@ static void store_cell(char** curr_cell, dynarr* curr_row) {
 }
 
 static void store_row(dynarr** curr_row, dynarr* res) {
+    dynarr* row = *curr_row;
+    while (row->len > 0 && SDL_strlen(row->at[row->len - 1]) == 0) {
+        SDL_free(row->at[row->len - 1]);
+        remove_at_from_dynarr(row->len - 1, row);
+    }
+    if (row->len == 0) return;
+
     push_to_dynarr(*curr_row, res);
     *curr_row = SDL_malloc(sizeof(dynarr));
     init_dynarr(*curr_row);

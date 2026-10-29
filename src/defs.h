@@ -37,6 +37,8 @@
 #define RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH "res/shaders/box-sample.frag.dxil"
 #define RENDERER_BLOOM_CSV_PATH "data/graphics/bloom.csv"
 #define RENDERER_BLOOM_MAX_ITERATIONS 8
+#define RENDERER_Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -128 to 127
+#define RENDERER_DRAW_CALLS_STARTING_CAP 64
 
 // Spritesheet
 #define SPRITESHEET_PATH "res/textures/spritesheet.png"
@@ -47,9 +49,9 @@
 
 // Sprites
 #define SPRITES_STARTING_DYNARR_CAP 1024
-#define SPRITES_Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -127 to 127
 #define SPRITES_ANIM_MAX_KEYFRAMES 8
 #define SPRITES_FRAME_STARTING_CAP 1024
+#define SPRITES_FRAME_STARTING_LINES_CAP 1024
 #define SPRITES_FRAME_CULL_MARGIN 16
 
 
@@ -74,6 +76,8 @@
 #define TILEMAP_SIZE_Y 1024
 #define TILEMAP_TILE_TYPES tile_dirt = 1, tile_stone, tile_wood, tile_metal,
 #define TILEMAP_AUTOMAP_NON_EMPTY_ID 2 // On Tiled's automap-tiles.tsx
+#define TILEMAP_Z_INDEX 20
+#define TILEMAP_PLATFORMS_Z_INDEX (-20)
 
 // Fluids
 #define FLUIDS_CSV_PATH "data/simulation/fluids.csv"
@@ -97,6 +101,7 @@
 #define FLUIDS_SPLASH_SURFACE_RANGE 2
 #define FLUIDS_STAGGER_SECONDS 10
 #define FLUIDS_INTERACTION_VOL_THRESHOLD 0.5f
+#define FLUIDS_Z_INDEX 10 // Lower z_indexes are drawn under the fluids
 
 // Reactions
 #define REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH                               \
@@ -118,6 +123,9 @@
 // Player
 #define PLAYER_BASE_CSV_PATH "data/player/core.csv"
 #define PLAYER_SPRITE_CSV_PATH "data/player/presentation.csv"
+#define PLAYER_HAIR_MAX_SEGMENTS 8
+#define PLAYER_CLOAK_MAX_HORIZ_SEGMENTS 8
+#define PLAYER_CLOAK_MAX_VERT_SEGMENTS 8
 
 // Camera
 #define CAMERA_CSV_PATH "data/player/camera.csv"
@@ -129,6 +137,8 @@
 #define PROPS_VINE_FRAME_STARTING_POINTS_CAP 1024
 #define PROPS_VINE_FRAME_STARTING_STRIPS_CAP 256
 #define PROPS_VINE_FRAME_CULL_MARGIN 16
+#define PROPS_VINE_Z_INDEX (-10)
+
 
 
 // Tests

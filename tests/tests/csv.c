@@ -53,15 +53,13 @@ void test_csv(void) {
 
     data = CSV_parse("empty\n,\nrow");
     expect("Parsing empty\\n,\\nrow, checking values...",
-           7,
+           5,
            (bool[]){
-               data.len == 3,
+               data.len == 2,
                ((dynarr*)data.at[0])->len == 1,
                ((dynarr*)data.at[1])->len == 1,
-               ((dynarr*)data.at[2])->len == 1,
                SDL_strcmp((char*)((dynarr*)data.at[0])->at[0], "empty") == 0,
-               SDL_strcmp((char*)((dynarr*)data.at[1])->at[0], "") == 0,
-               SDL_strcmp((char*)((dynarr*)data.at[2])->at[0], "row") == 0,
+               SDL_strcmp((char*)((dynarr*)data.at[1])->at[0], "row") == 0,
            });
     CSV_free(&data);
 
@@ -69,20 +67,15 @@ void test_csv(void) {
     expect(
         "Parsing a,,\"bit,of\"\\n,\\neverything,,\\n\\n,\\n, checking "
         "values...",
-        12,
+        7,
         (bool[]){
-            data.len == 4,
+            data.len == 2,
             ((dynarr*)data.at[0])->len == 3,
             ((dynarr*)data.at[1])->len == 1,
-            ((dynarr*)data.at[2])->len == 2,
-            ((dynarr*)data.at[3])->len == 1,
             SDL_strcmp((char*)((dynarr*)data.at[0])->at[0], "a") == 0,
             SDL_strcmp((char*)((dynarr*)data.at[0])->at[1], "") == 0,
             SDL_strcmp((char*)((dynarr*)data.at[0])->at[2], "bit,of") == 0,
-            SDL_strcmp((char*)((dynarr*)data.at[1])->at[0], "") == 0,
-            SDL_strcmp((char*)((dynarr*)data.at[2])->at[0], "everything") == 0,
-            SDL_strcmp((char*)((dynarr*)data.at[2])->at[1], "") == 0,
-            SDL_strcmp((char*)((dynarr*)data.at[3])->at[0], "") == 0,
+            SDL_strcmp((char*)((dynarr*)data.at[1])->at[0], "everything") == 0,
         });
     CSV_free(&data);
 }

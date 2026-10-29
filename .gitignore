@@ -7,6 +7,9 @@ test
 # Tiled
 editor.tiled-session
 
+# spreadsheet editors
+**/.~lock.*
+
 # builds
 windows.zip
 linux.zip

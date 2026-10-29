@@ -48,12 +48,10 @@ int TILEMAP_set_at(Uint16 x, Uint16 y, Uint16 w, Uint16 h, tile (*data)[w][h]);
 // array of tiles.
 int TILEMAP_get_at(Uint16 x, Uint16 y, tile* data);
 
-// Draws the tilemap's platform tiles when `platforms` is true, or every other
-// tile when it's false, so things can be drawn between them. Call on renderer
-// update.
-void TILEMAP_draw(SDL_Renderer* renderer,
-                  SDL_Texture* spritesheet,
-                  bool platforms);
+// Queues the tiles on screen on the renderer, platform tiles at
+// `TILEMAP_PLATFORMS_Z_INDEX` and every other tile at `TILEMAP_Z_INDEX`. Call
+// on renderer update.
+void TILEMAP_draw(void);
 
 // Clears the tilemap. Need to call this when quitting the game.
 void TILEMAP_clear(void);

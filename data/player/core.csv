@@ -1,4 +1,4 @@
-base movement
+base movement,
 max_speed,60
 acceleration,200
 friction,400
@@ -8,15 +8,15 @@ jump_speed,160
 jump_cut,0.3
 coyote_jump_time,0.1
 jump_buffer_time,0.1
-
-swimming movement
+,
+swimming movement,
 swimming_max_speed,60
 swimming_max_fall_speed,30
 swimming_acceleration,80
 swimming_friction,80
 swimming_gravity,300
 swimming_swim_speed,80
-
-collision
+,
+collision,
 width,4
 height,8
