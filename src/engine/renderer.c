@@ -7,6 +7,10 @@
 #include "services/csv.h"
 #include <SDL3/SDL.h>
 
+#ifdef DEV
+#include "dev/profiler.h"
+#endif
+
 #ifdef TEST
 #include "stubs.h"
 #endif
@@ -895,6 +899,10 @@ static void render_final_screen(void) {
         .h = h,
     };
     SDL_RenderTexture(renderer, final_screen, NULL, &dstrect);
+
+#ifdef DEV
+    PROFILER_draw(renderer);
+#endif
 
     SDL_RenderPresent(renderer);
 #endif

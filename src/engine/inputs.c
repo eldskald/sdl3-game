@@ -2,6 +2,10 @@
 #include "engine/game-manager.h"
 #include <SDL3/SDL.h>
 
+#ifdef DEV
+#include "dev/profiler.h"
+#endif
+
 #define ACTION_NODE_MAX_INPUTS 16
 #define AXIS_MAX_VALUE 32678
 #define ANALOG_STICK_DEADZONE 1024
@@ -159,6 +163,18 @@ void INPUTS_process(SDL_Event* event) {
             break;
         }
     }
+
+#ifdef DEV
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F1) {
+        PROFILER_toggle_stats(thread_main);
+    }
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F2) {
+        PROFILER_toggle_stats(thread_fixed);
+    }
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F3) {
+        PROFILER_toggle_stats(thread_fluids);
+    }
+#endif
 }
 
 action_state INPUTS_get_action_state(action action) {

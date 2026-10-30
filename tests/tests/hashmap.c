@@ -16,7 +16,7 @@ void test_hashmap(void) {
                     map.cap == HASHMAP_INITIAL_CAP,
                     map.keys != NULL,
                     map.values != NULL,
-                    map.indexes.head == NULL});
+                    map.indexes != NULL});
 
     int val1 = 0;
     int val2 = 0;
@@ -27,8 +27,8 @@ void test_hashmap(void) {
            (bool[]){get_from_hashmap("test1", &map) == &val1,
                     get_from_hashmap("test2", &map) == &val2});
 
-    size_t i1 = (size_t)map.indexes.head->next->val;
-    size_t i2 = (size_t)map.indexes.head->val;
+    size_t i1 = map.indexes[0];
+    size_t i2 = map.indexes[1];
     expect("Checking indexes and len...",
            4,
            (bool[]){map.values[i1] == &val1,
@@ -71,5 +71,5 @@ void test_hashmap(void) {
                     map.cap == 0,
                     map.keys == NULL,
                     map.values == NULL,
-                    map.indexes.head == NULL});
+                    map.indexes == NULL});
 }

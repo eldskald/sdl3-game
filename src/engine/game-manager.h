@@ -1,6 +1,13 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+// Thread type type, returned by `GAME_MANAGER_get_current_thread()`.
+//
+// ```
+// enum thread { thread_main, thread_fixed, thread_fluid };
+// ```
+typedef enum { thread_main = 1, thread_fixed, thread_fluids } thread;
+
 // Initializes game. Call on `SDL_AppInit()`. Returns `0` when successful, `1`
 // otherwise.
 int GAME_MANAGER_start(void);
@@ -20,6 +27,9 @@ void GAME_MANAGER_quit(void);
 
 // Current thread's delta time.
 double GAME_MANAGER_get_current_dt(void);
+
+// Returns current thread.
+thread GAME_MANAGER_get_current_thread(void);
 
 // Whether the current thread is the fluids thread. Always `false` before the
 // fluids thread starts, so calls from the main thread on tests aren't mistaken

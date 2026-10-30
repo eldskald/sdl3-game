@@ -32,9 +32,6 @@ typedef struct {
     SDL_FRect lines_rect;
 } sprite_data;
 
-static_assert(sizeof(void*) >= 2 * sizeof(float));
-static_assert(sizeof(void*) >= sizeof(SDL_Color));
-
 // A line attached to a sprite, in world pixels.
 typedef struct {
     float x1, y1, x2, y2;

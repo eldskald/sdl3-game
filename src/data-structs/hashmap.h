@@ -1,5 +1,4 @@
 #pragma once
-#include "data-structs/list.h"
 #include <SDL3/SDL.h>
 
 #define KEY_MAX_SIZE 256
@@ -7,23 +6,26 @@
 
 // Hashmap. Use `init_hashmap()` to allocate its initial memory. Use
 // `set_on_hashmap()` and `get_from_hashmap()` to set and get values, and `len`
-// and `cap` for length and capacity, but don't change these. The indexes
-// property is a list of the occupied indexes on the values/keys array, use it
-// if you need to iterate through the hashmap. After you're done, use
-// `clear_hashmap()` to free the allocated memory.
+// and `cap` for length and capacity, but don't change these. The `values` and
+// `keys` are the arrays containing values and keys indexed at the hashes, and
+// these hashes are stored at `indexes`, ordered normally in case you need to
+// iterate through key/value pairs, do something like from `i = 0` to `len` in
+// `indexes`, you have `values[indexes[i]]` and `keys[indexes[i]]` as the pairs.
+// After you're done, use `clear_hashmap()` to free the allocated memory.
 //
 // ```
 // struct hashmap {
 //     void** values;
 //     char** keys;
-//     list indexes;
+//     size_t* indexes;
+//     size_t len;
 //     size_t cap;
 // };
 // ```
 typedef struct {
     void** values;
     char** keys;
-    list indexes;
+    size_t* indexes;
     size_t len;
     size_t cap;
 } hashmap;

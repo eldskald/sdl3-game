@@ -1,5 +1,6 @@
 #include "engine/game-manager.h"
 #include "defs.h"
+#include "dev/profiler.h"
 #include "engine/chunks.h"
 #include "engine/fluids.h"
 #include "engine/inputs.h"
@@ -11,6 +12,7 @@
 #include "player/player-core.h"
 #include "props/vines.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_thread.h>
 
 #ifdef DEV
 #include "dev/dev.h"
@@ -50,16 +52,43 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     while (running) {
         // Fixed thread loop
 
+#if DEV && !TEST
+        PROFILER_setup_timer("inputs");
+#endif
         INPUTS_update();
-        PHYSICS_update();
-        VINES_update();
-        PLAYER_update();
-
-#ifdef DEV
-        DEV_update();
+#if DEV && !TEST
+        PROFILER_finish_timer("inputs");
 #endif
 
+        PHYSICS_update();
+
+#if DEV && !TEST
+        PROFILER_setup_timer("vines");
+#endif
+        VINES_update();
+#if DEV && !TEST
+        PROFILER_finish_timer("vines");
+#endif
+
+#if DEV && !TEST
+        PROFILER_setup_timer("player");
+#endif
+        PLAYER_update();
+#if DEV && !TEST
+        PROFILER_finish_timer("player");
+#endif
+
+#if DEV && !TEST
+        PROFILER_setup_timer("sprites");
+#endif
         SPRITES_update();
+#if DEV && !TEST
+        PROFILER_finish_timer("sprites");
+#endif
+
+#if DEV && !TEST
+        DEV_update();
+#endif
 
         // Calculate and cap tick rate
         if (fixed_t_target_rate > SDL_GetTicksNS() - fixed_t_start) {
@@ -83,8 +112,21 @@ static int SDLCALL fluids_thread(void* _arg) { // NOLINT
     while (running) {
         // Fluids thread loop
 
+#if DEV && !TEST
+        PROFILER_setup_timer("fluids");
+#endif
         FLUIDS_update();
+#if DEV && !TEST
+        PROFILER_finish_timer("fluids");
+#endif
+
+#if DEV && !TEST
+        PROFILER_setup_timer("fluid_fluid_into_tile_reactions");
+#endif
         REACTIONS_do_fluid_fluid_into_tile_reactions();
+#if DEV && !TEST
+        PROFILER_finish_timer("fluid_fluid_into_tile_reactions");
+#endif
 
         // Calculate and cap tick rate
         if (fluids_t_target_rate > SDL_GetTicksNS() - fluids_t_start) {
@@ -123,7 +165,8 @@ int GAME_MANAGER_start(void) {
     REACTIONS_start();
     PLAYER_start();
 
-#ifdef DEV
+#if DEV && !TEST
+    PROFILER_start();
     DEV_start();
 #endif
 
@@ -150,7 +193,8 @@ void GAME_MANAGER_stop(void) {
     FLUIDS_stop();
     REACTIONS_stop();
 
-#ifdef DEV
+#if DEV && !TEST
+    PROFILER_stop();
     DEV_stop();
 #endif
 
@@ -175,9 +219,15 @@ int GAME_MANAGER_events(SDL_Event* event) {
 
 
 void GAME_MANAGER_update(void) {
-
     // Main thread loop
+
+#if DEV && !TEST
+    PROFILER_setup_timer("renderer");
+#endif
     RENDERER_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("renderer");
+#endif
 
     // Calculate and cap tick rate
     if (main_t_target_rate > SDL_GetTicksNS() - main_t_start) {
@@ -199,11 +249,19 @@ void GAME_MANAGER_quit(void) {
 
 
 double GAME_MANAGER_get_current_dt(void) {
-    SDL_ThreadID fixed = SDL_GetThreadID(fixed_t);
-    SDL_ThreadID fluids = SDL_GetThreadID(fluids_t);
-    if (fixed == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fixed_dt();
-    if (fluids == SDL_GetCurrentThreadID()) return GAME_MANAGER_get_fluids_dt();
+    if (SDL_GetThreadID(fixed_t) == SDL_GetCurrentThreadID())
+        return GAME_MANAGER_get_fixed_dt();
+    if (SDL_GetThreadID(fluids_t) == SDL_GetCurrentThreadID())
+        return GAME_MANAGER_get_fluids_dt();
     return GAME_MANAGER_get_main_dt();
+}
+
+thread GAME_MANAGER_get_current_thread(void) {
+    if (SDL_GetThreadID(fixed_t) == SDL_GetCurrentThreadID())
+        return thread_fixed;
+    if (SDL_GetThreadID(fluids_t) == SDL_GetCurrentThreadID())
+        return thread_fluids;
+    return thread_main;
 }
 
 bool GAME_MANAGER_is_fluids_thread(void) {

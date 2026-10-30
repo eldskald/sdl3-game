@@ -9,6 +9,10 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_log.h>
 
+#ifdef DEV
+#include "dev/profiler.h"
+#endif
+
 
 
 // A helper struct to facilitate neighbor search, `tl` stands for top-left and
@@ -70,8 +74,6 @@ typedef struct {
 static body_data* bodies = NULL;
 static size_t bodies_cap = 0;
 static dynarr nbsearch[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = {0};
-
-// Simulation space in tiles, updated at the start of each `PHYSICS_update()`.
 static SDL_Rect sim = (SDL_Rect){0};
 
 static prop_point_data* points = NULL;
@@ -1433,13 +1435,27 @@ void PHYSICS_stop(void) {
 
 void PHYSICS_update(void) {
     sim = CAMERA_get_simulation_rect();
+
+#if DEV && !TEST
+    PROFILER_setup_timer("physics_bodies");
+#endif
     move_bodies();
+#if DEV && !TEST
+    PROFILER_finish_timer("physics_bodies");
+#endif
+
+#if DEV && !TEST
+    PROFILER_setup_timer("physics_props");
+#endif
     prepare_prop_points();
     apply_connections(true);
     move_points();
     for (int i = 0; i < PHYSICS_PROP_ROPE_ITERATIONS; i++)
         apply_connections(false);
     collide_points();
+#if DEV && !TEST
+    PROFILER_finish_timer("physics_props");
+#endif
 }
 
 
