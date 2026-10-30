@@ -74,8 +74,9 @@ static void finish(const char* path, report* r) {
 // Hashmap values can't tell missing keys apart from types of value 0, like
 // `fluid_water`, so this looks for the key itself.
 static bool has_key(hashmap* map, const char* key) {
-    for (node* i = map->indexes.head; i; i = i->next)
-        if (SDL_strcmp(map->keys[(size_t)i->val], key) == 0) return true;
+    for (size_t i = 0; i < map->len; i++) {
+        if (SDL_strcmp(map->keys[map->indexes[i]], key) == 0) return true;
+    }
     return false;
 }
 
@@ -593,8 +594,8 @@ static void check_fluids(void) {
     size_t fluids = 0;
     for (size_t j = h + 1; h >= 0 && j < parsed.len; j++)
         if (((dynarr*)parsed.at[j])->len >= 2) fluids++;
-    for (node* i = fluid_names.indexes.head; i && col >= 0; i = i->next) {
-        char* name = fluid_names.keys[(size_t)i->val];
+    for (size_t i = 0; i < fluid_names.len; i++) {
+        char* name = fluid_names.keys[fluid_names.indexes[i]];
         size_t count = 0;
         for (size_t j = h + 1; j < parsed.len; j++) {
             dynarr* row = parsed.at[j];

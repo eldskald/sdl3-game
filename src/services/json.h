@@ -1,7 +1,7 @@
 #pragma once
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
-#include "services/servicedefs.h"
+#include "services/defs.h"
 #include <SDL3/SDL.h>
 
 // Type of data in a jsondata struct.

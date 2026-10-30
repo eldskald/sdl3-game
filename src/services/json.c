@@ -2,7 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "data-structs/list.h"
-#include "services/servicedefs.h"
+#include "services/defs.h"
 #include <SDL3/SDL.h>
 
 typedef enum {
@@ -28,8 +28,8 @@ static void reset_val(char** val, size_t* i, size_t* cap) {
 }
 
 static void free_obj(hashmap* obj) {
-    for (node* i = obj->indexes.head; i; i = i->next) {
-        JSON_free(obj->values[(size_t)i->val]);
+    for (size_t i = 0; i < obj->len; i++) {
+        JSON_free(obj->values[obj->indexes[i]]);
     }
     clear_hashmap(obj);
 }

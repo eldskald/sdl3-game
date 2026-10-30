@@ -1,6 +1,6 @@
 #include "services/csv.h"
 #include "data-structs/dynarr.h"
-#include "services/servicedefs.h"
+#include "services/defs.h"
 #include <SDL3/SDL.h>
 
 // This file is a port of https://github.com/eldskald/csvparse, my other project
