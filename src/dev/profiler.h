@@ -16,8 +16,8 @@ Uint64 PROFILER_get_timer(char* tag);
 // Toggles the display of the given thread's stats
 void PROFILER_toggle_stats(thread t);
 
-// Writes the stats of the toggled thread. Call on renderer after everything, at
-// the final draw step that goes straight to the screen instead of any buffer.
+// Writes the stats of the toggled thread with `renderer`, in window pixels from
+// the top left. The renderer draws it on an overlay over the window.
 void PROFILER_draw(SDL_Renderer* renderer);
 
 

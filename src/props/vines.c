@@ -14,9 +14,11 @@
 #define VINE_SEGMENT_LENGTH (SPRITESHEET_CELL_Y / 2.0f)
 #define VINE_FRAMES_TOTAL 3
 
-// Settings for all vines, loaded from the props and ripples CSVs.
+// Settings for all vines, loaded from the props and ripples CSVs. `col` is
+// loaded in the usual `0` to `255` range and converted to sRGB's `0.0` to
+// `1.0`.
 typedef struct {
-    Uint8 col_r, col_g, col_b, col_a;
+    SDL_FColor col;
     double gravity;
     double fluid_gravity;
     bool destroyer_fluids[FLUIDS_TOTAL];
@@ -47,7 +49,7 @@ typedef struct {
 // frame's `points`, all drawn with `alpha`.
 typedef struct {
     size_t start, len;
-    Uint8 alpha;
+    float alpha;
 } vine_strip;
 
 // What the update function saw of the vines, for the draw function to draw.
@@ -367,7 +369,7 @@ static SDL_FPoint get_frame_point(size_t point_id) {
 // Adds each run of visible segments of the vine as a strip on `f`. Fades
 // linearly to transparent on its last `fade_time` seconds.
 static void add_to_frame(vine_frame* f, vine* v, bool loose, SDL_FRect cam) {
-    double alpha = settings.col_a;
+    float alpha = settings.col.a;
     double left = settings.cut_duration - v->fade;
     if (loose && left < settings.fade_time)
         alpha *= SDL_max(left, 0.0f) / settings.fade_time;
@@ -383,7 +385,7 @@ static void add_to_frame(vine_frame* f, vine* v, bool loose, SDL_FRect cam) {
                 push_frame_strip(f,
                                  (vine_strip){.start = f->points_len,
                                               .len = 1,
-                                              .alpha = (Uint8)alpha});
+                                              .alpha = alpha});
                 push_frame_point(f, a);
                 open = true;
             }
@@ -496,8 +498,8 @@ void VINES_draw(void) {
     vine_frame* f = &frames[front];
     for (size_t s = 0; s < f->strips_len; s++) {
         vine_strip strip = f->strips[s];
-        SDL_Color col = (SDL_Color){
-            settings.col_r, settings.col_g, settings.col_b, strip.alpha};
+        SDL_FColor col = settings.col;
+        col.a = strip.alpha;
         for (size_t i = strip.start + 1; i < strip.start + strip.len; i++) {
             SDL_FPoint a = f->points[i - 1];
             SDL_FPoint b = f->points[i];
@@ -521,10 +523,10 @@ static void load_vine_data(const char* csv) {
         dynarr* row = (dynarr*)parsed.at[i];
         char* key = (char*)row->at[0];
         if (SDL_strcmp(key, "vine_color") == 0) {
-            settings.col_r = SDL_strtod((char*)row->at[1], NULL);
-            settings.col_g = SDL_strtod((char*)row->at[2], NULL);
-            settings.col_b = SDL_strtod((char*)row->at[3], NULL);
-            settings.col_a = SDL_strtod((char*)row->at[4], NULL);
+            settings.col.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
+            settings.col.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
+            settings.col.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
+            settings.col.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
         } else if (SDL_strcmp(key, "vine_gravity") == 0)
             settings.gravity = SDL_strtod((char*)row->at[1], NULL);
         else if (SDL_strcmp(key, "vine_fluid_gravity") == 0)

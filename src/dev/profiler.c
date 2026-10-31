@@ -1,11 +1,8 @@
 #include "dev/profiler.h"
 #include "data-structs/hashmap.h"
-#include "data-structs/list.h"
 #include "defs.h"
 #include "engine/game-manager.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_mutex.h>
-#include <SDL3/SDL_render.h>
 
 #define PAD 8.0f
 #define SEPARATOR 6.0f

@@ -1,6 +1,7 @@
 #include "engine/renderer.h"
 #include "defs.h"
 #include "engine/fluids.h"
+#include "engine/graphics.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
 #include "props/vines.h"
@@ -11,184 +12,85 @@
 #include "dev/profiler.h"
 #endif
 
-#ifdef TEST
-#include "stubs.h"
-#endif
-
-typedef enum {
-    draw_call_spritesheet,
-    draw_call_line,
-} draw_call_type;
-
-// A queued draw call of any type, with `type` saying which of the union's
-// structs has its data. Positions are in screen pixels.
+// The vertices queued on a z_index, in the order they were queued, all drawn
+// with the spritesheet.
 typedef struct {
-    draw_call_type type;
-    union {
-        struct {
-            SDL_FRect src;
-            SDL_FRect dst;
-            SDL_FlipMode flip_mode;
-            float tint[4];
-        } spritesheet;
-        struct {
-            float x1, y1, x2, y2;
-            SDL_Color col;
-        } line;
-    };
-} draw_call;
-
-// The draw calls queued on a z_index, in the order they were queued.
-typedef struct {
-    draw_call* calls;
+    graphics_vertex* vertices;
     size_t len, cap;
 } draw_queue;
 
-#ifndef TEST
-static SDL_Window* window = NULL;
-static SDL_Texture* spritesheet = NULL;
-static SDL_Texture* base_screen = NULL;
-static SDL_Texture* final_screen = NULL;
-static SDL_Texture* bloom_prefilter = NULL;
-static SDL_Texture* bloom_chain[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
-static SDL_Texture* pre_fluids_texture = NULL;
-static SDL_GPUDevice* device = NULL;
-static SDL_GPUShader* fluids_shader = NULL;
-static SDL_GPUShader* ripples_shader = NULL;
+// Matches the uniforms on `src/gpu/bloom-prefilter.frag.hlsl`.
+typedef struct {
+    float threshold;
+    float soft_threshold;
+} bloom_prefilter_uniforms;
+
+// Matches the uniforms on `src/gpu/box-sample.frag.hlsl`.
+typedef struct {
+    float delta;
+    float intensity;
+} box_sample_uniforms;
+
+// The spritesheet has an extra row of pixels at its bottom, with a white pixel
+// on its first one, at `white_u,white_v`. Lines and triangles are drawn with
+// it, so everything queued is drawn with the spritesheet.
+static graphics_texture* spritesheet = NULL;
+static float white_u = 0.0f;
+static float white_v = 0.0f;
+static graphics_texture* base_screen = NULL;
+static graphics_texture* bloom_prefilter = NULL;
+static graphics_texture* bloom_chain[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
+static graphics_texture* pre_fluids_texture = NULL;
 static SDL_GPUShader* tonemap_shader = NULL;
-static SDL_GPURenderState* tonemap_state = NULL;
-static SDL_GPUShader* tint_shader = NULL;
-static SDL_GPURenderState* tint_state = NULL;
 static SDL_GPUShader* bloom_prefilter_shader = NULL;
-static SDL_GPURenderState* bloom_prefilter_state = NULL;
 static SDL_GPUShader* box_sample_shader = NULL;
-static SDL_GPURenderState* downsample_state = NULL;
-static SDL_GPURenderState* upsample_states[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
-static SDL_GPUSampler* nearest_sampler = NULL;
+#ifdef DEV
+// The profiler draws with SDL's debug text, so it's drawn by a software
+// renderer onto profiler_surface, which is uploaded to profiler_texture and
+// drawn over the window.
+static SDL_Surface* profiler_surface = NULL;
+static SDL_Renderer* profiler_renderer = NULL;
+static graphics_texture* profiler_texture = NULL;
 #endif
-static SDL_Renderer* renderer = NULL;
 static fluids_canvas fluids = (fluids_canvas){0};
 static float bloom_threshold = 1.0f;
 static float bloom_soft_threshold = 0.5f;
 static int bloom_iterations = 4;
 static float bloom_intensities[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
-static bool window_resized = false;
 
 // Each z_index is mapped to z_index + RENDERER_Z_INDEX_TOTAL / 2, so they all
 // fit in the array.
 static draw_queue queues[RENDERER_Z_INDEX_TOTAL] = {0};
 
+static const SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
+static const SDL_FColor black = {0.0f, 0.0f, 0.0f, 1.0f};
 
 
-#ifndef TEST
-// Float render target, so colors can go beyond 1.0. It's half float since
-// SDL's GPU renderer doesn't support RGBA128_FLOAT, it would silently make a
-// native RGBA64_FLOAT texture behind it, linear and without a GPU texture
-// pointer to bind to shaders. Its colorspace is sRGB, otherwise float textures
-// default to linear and SDL would convert everything drawn on it.
-static SDL_Texture* create_hdr_target(int w, int h) {
-    SDL_PropertiesID props = SDL_CreateProperties();
-    SDL_SetNumberProperty(props,
-                          SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER,
-                          SDL_PIXELFORMAT_RGBA64_FLOAT);
-    SDL_SetNumberProperty(
-        props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_TARGET);
-    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, w);
-    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, h);
-    SDL_SetNumberProperty(
-        props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, SDL_COLORSPACE_SRGB);
-    SDL_Texture* texture = SDL_CreateTextureWithProperties(renderer, props);
-    SDL_DestroyProperties(props);
-    if (texture) {
-        SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
-        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE);
-    }
-    return texture;
+
+// Float render target, so colors can go beyond 1.0. Nothing is converted
+// between colorspaces, colors are sRGB everywhere.
+static graphics_texture*
+create_hdr_target(const char* name, int w, int h, SDL_GPUFilter filter) {
+    return GRAPHICS_create_texture(
+        name, SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT, w, h, filter);
 }
-#endif
 
+static int create_textures(void) {
+    // Texture for the base game. It's HDR for post processing, and tone mapped
+    // onto the window.
+    base_screen = create_hdr_target(
+        "base_screen", WINDOW_SIZE_X, WINDOW_SIZE_Y, SDL_GPU_FILTER_NEAREST);
+    if (!base_screen) return 1;
 
+    // Texture for the parts of base_screen bright enough to bloom. It's
+    // filtered linearly for the downsampling to blur it.
+    bloom_prefilter = create_hdr_target(
+        "bloom_prefilter", WINDOW_SIZE_X, WINDOW_SIZE_Y, SDL_GPU_FILTER_LINEAR);
+    if (!bloom_prefilter) return 1;
 
-static int start_graphics_pipeline() {
-#ifndef TEST
-    // Initialize video
-    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
-                     "Failed to initialize video! %s",
-                     SDL_GetError());
-        return 1;
-    }
-
-    // Create window
-    window = SDL_CreateWindow(WINDOW_TITLE,
-                              STARTING_WINDOW_SIZE_X,
-                              STARTING_WINDOW_SIZE_Y,
-                              SDL_WINDOW_RESIZABLE);
-    if (!window) {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
-                     "Failed to create window: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_SetWindowMinimumSize(window, MIN_WINDOW_SIZE_X, MIN_WINDOW_SIZE_Y);
-    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Window initialized successfully.");
-
-#ifdef DEV
-    bool gpu_debug_mode = true;
-#else
-    bool gpu_debug_mode = false;
-#endif
-    device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV |
-                                     SDL_GPU_SHADERFORMAT_DXIL,
-                                 gpu_debug_mode,
-                                 NULL);
-    if (!device) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create SDL_GPUDevice: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "SDL_GPUDevice created successfully.");
-
-    // Creating SDL_Renderer on top of the GPU device. It claims the window
-    // for the device, so we must not call SDL_ClaimWindowForGPUDevice().
-    renderer = SDL_CreateGPURenderer(device, window);
-    if (!renderer) {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
-                     "Couldn't create SDL_Renderer: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "SDL_Renderer created successfully.");
-
-    // Creating SDL_Texture for the base game. It's HDR for post processing,
-    // and tone mapped onto final_screen.
-    base_screen = create_hdr_target(WINDOW_SIZE_X, WINDOW_SIZE_Y);
-    if (!base_screen) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create SDL_Texture base_screen: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "SDL_Texture base_screen created successfully.");
-
-    // Creating SDL_Texture for the parts of base_screen bright enough to bloom.
-    // It's filtered linearly for the downsampling to blur it.
-    bloom_prefilter = create_hdr_target(WINDOW_SIZE_X, WINDOW_SIZE_Y);
-    if (!bloom_prefilter) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create SDL_Texture bloom_prefilter: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_SetTextureScaleMode(bloom_prefilter, SDL_SCALEMODE_LINEAR);
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "SDL_Texture bloom_prefilter created successfully.");
-
-    // Creating SDL_Textures for the bloom's downsampling chain, each half the
-    // size of the previous one, starting at half of bloom_prefilter. Also
-    // filtered linearly. The chain is cut short when it would get too small.
+    // Textures for the bloom's downsampling chain, each half the size of the
+    // previous one, starting at half of bloom_prefilter. Also filtered
+    // linearly. The chain is cut short when it would get too small.
     for (int i = 0; i < bloom_iterations; i++) {
         int w = WINDOW_SIZE_X >> (i + 1);
         int h = WINDOW_SIZE_Y >> (i + 1);
@@ -201,145 +103,64 @@ static int start_graphics_pipeline() {
             bloom_iterations = i;
             break;
         }
-        bloom_chain[i] = create_hdr_target(w, h);
-        if (!bloom_chain[i]) {
-            SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                         "Couldn't create SDL_Texture bloom_chain: %s",
-                         SDL_GetError());
-            return 1;
-        }
-        SDL_SetTextureScaleMode(bloom_chain[i], SDL_SCALEMODE_LINEAR);
+        bloom_chain[i] =
+            create_hdr_target("bloom_chain", w, h, SDL_GPU_FILTER_LINEAR);
+        if (!bloom_chain[i]) return 1;
     }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "SDL_Texture bloom_chain created successfully.");
 
-    // Creating SDL_Texture for base_screen tone mapped, which is what's drawn
-    // on the window
-    final_screen = SDL_CreateTexture(renderer,
-                                     SDL_PIXELFORMAT_ABGR8888,
-                                     SDL_TEXTUREACCESS_TARGET,
-                                     WINDOW_SIZE_X,
-                                     WINDOW_SIZE_Y);
-    if (!final_screen) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create SDL_Texture final_screen: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_SetTextureScaleMode(final_screen, SDL_SCALEMODE_NEAREST);
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "SDL_Texture final_screen created successfully.");
+    // Texture for everything drawn before the fluids, for them to refract.
+    // It's HDR, since it's drawn as is on base_screen where there are no
+    // fluids.
+    pre_fluids_texture = create_hdr_target("pre_fluids_texture",
+                                           WINDOW_SIZE_X,
+                                           WINDOW_SIZE_Y,
+                                           SDL_GPU_FILTER_NEAREST);
+    if (!pre_fluids_texture) return 1;
+    fluids.pre_fluids = pre_fluids_texture;
 
-    // Creating SDL_Texture for everything drawn before the fluids, for them to
-    // refract. It's HDR, since it's drawn as is on base_screen where there are
-    // no fluids.
-    pre_fluids_texture = create_hdr_target(WINDOW_SIZE_X, WINDOW_SIZE_Y);
-    if (!pre_fluids_texture) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create SDL_Texture pre_fluids_texture: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "SDL_Texture pre_fluids_texture created successfully.");
+    // Texture for the fluids. It's bigger than the screen so the ripples can
+    // be simulated off screen too.
+    fluids.texture = GRAPHICS_create_texture(
+        "fluids_texture",
+        SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_X,
+        FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_Y,
+        SDL_GPU_FILTER_NEAREST);
+    if (!fluids.texture) return 1;
 
-    // Creating SDL_Texture for the fluids. It's bigger than the screen so the
-    // ripples can be simulated off screen too.
-    fluids.texture =
-        SDL_CreateTexture(renderer,
-                          SDL_PIXELFORMAT_ABGR8888,
-                          SDL_TEXTUREACCESS_TARGET,
-                          FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_X,
-                          FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_Y);
-    if (!fluids.texture) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create SDL_Texture fluids_texture: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_SetTextureScaleMode(fluids.texture, SDL_SCALEMODE_NEAREST);
-    SDL_SetTextureBlendMode(fluids.texture, SDL_BLENDMODE_BLEND);
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "SDL_Texture fluids_texture created successfully.");
-
-    // Creating SDL_Textures for the ripples, the same size as the fluids'. They
-    // are float so heights can be negative, and start cleared since GPU
-    // textures start undefined.
+    // Textures for the ripples, the same size as the fluids'. They are float
+    // so heights can be negative.
     for (Uint8 i = 0; i < 2; i++) {
-        fluids.ripples[i] = SDL_CreateTexture(
-            renderer,
-            SDL_PIXELFORMAT_RGBA64_FLOAT,
-            SDL_TEXTUREACCESS_TARGET,
-            FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_X,
-            FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_Y);
-        if (!fluids.ripples[i]) {
-            SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                         "Couldn't create SDL_Texture ripples: %s",
-                         SDL_GetError());
-            return 1;
-        }
-        SDL_SetTextureScaleMode(fluids.ripples[i], SDL_SCALEMODE_NEAREST);
-        SDL_SetTextureBlendMode(fluids.ripples[i], SDL_BLENDMODE_NONE);
-        SDL_SetRenderTarget(renderer, fluids.ripples[i]);
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-        SDL_RenderClear(renderer);
+        fluids.ripples[i] =
+            create_hdr_target("ripples",
+                              FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_X,
+                              FLUIDS_RIPPLES_TEXTURE_RES_FACTOR * WINDOW_SIZE_Y,
+                              SDL_GPU_FILTER_NEAREST);
+        if (!fluids.ripples[i]) return 1;
     }
-    SDL_SetRenderTarget(renderer, NULL);
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "SDL_Texture ripples created successfully.");
 
-    // Sampler for the fluids and ripples shaders to sample the extra textures
-    // they're given
-    nearest_sampler = SDL_CreateGPUSampler(
-        device,
-        &(SDL_GPUSamplerCreateInfo){
-            .min_filter = SDL_GPU_FILTER_NEAREST,
-            .mag_filter = SDL_GPU_FILTER_NEAREST,
-            .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-            .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        });
-    if (!nearest_sampler) {
+#ifdef DEV
+    profiler_surface = SDL_CreateSurface(RENDERER_PROFILER_OVERLAY_X,
+                                         RENDERER_PROFILER_OVERLAY_Y,
+                                         SDL_PIXELFORMAT_RGBA32);
+    profiler_renderer = SDL_CreateSoftwareRenderer(profiler_surface);
+    if (!profiler_renderer) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create nearest_sampler: %s",
+                     "Couldn't create profiler renderer: %s",
                      SDL_GetError());
         return 1;
     }
+    profiler_texture =
+        GRAPHICS_create_texture("profiler_texture",
+                                SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                                RENDERER_PROFILER_OVERLAY_X,
+                                RENDERER_PROFILER_OVERLAY_Y,
+                                SDL_GPU_FILTER_NEAREST);
+    if (!profiler_texture) return 1;
 #endif
 
     return 0;
 }
-
-#ifndef TEST
-static SDL_GPUShader* load_fragment_shader(const Uint8* spirv,
-                                           size_t spirv_size,
-                                           const Uint8* dxil,
-                                           size_t dxil_size,
-                                           Uint32 num_samplers,
-                                           Uint32 num_uniform_buffers) {
-    SDL_GPUShaderCreateInfo info = (SDL_GPUShaderCreateInfo){
-        .entrypoint = "main",
-        .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
-        .num_samplers = num_samplers,
-        .num_uniform_buffers = num_uniform_buffers,
-    };
-    SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device);
-    if (formats & SDL_GPU_SHADERFORMAT_SPIRV) {
-        info.format = SDL_GPU_SHADERFORMAT_SPIRV;
-        info.code = spirv;
-        info.code_size = spirv_size;
-    } else if (formats & SDL_GPU_SHADERFORMAT_DXIL) {
-        info.format = SDL_GPU_SHADERFORMAT_DXIL;
-        info.code = dxil;
-        info.code_size = dxil_size;
-    } else {
-        SDL_SetError("No supported shader format");
-        return NULL;
-    }
-    return SDL_CreateGPUShader(device, &info);
-}
-#endif
 
 static void load_bloom_data_from_csv(void) {
     char csv[] = {
@@ -376,263 +197,92 @@ static void load_bloom_data_from_csv(void) {
                 "Bloom data loaded successfully.");
 }
 
-static int load_graphics_files(void) {
-#ifndef TEST
+static int load_spritesheet(void) {
     Uint8 mem[] = {
 #embed SPRITESHEET_PATH
     };
     SDL_IOStream* stream = SDL_IOFromConstMem(mem, sizeof(mem));
-    SDL_Surface* surface = SDL_LoadPNG_IO(stream, true);
-    spritesheet = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_DestroySurface(surface);
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Spritesheet loaded successfully.");
+    SDL_Surface* png = SDL_LoadPNG_IO(stream, true);
+    SDL_Surface* surface =
+        SDL_CreateSurface(png->w, png->h + 1, SDL_PIXELFORMAT_RGBA32);
+    SDL_SetSurfaceBlendMode(png, SDL_BLENDMODE_NONE);
+    SDL_BlitSurface(png, NULL, surface, NULL);
+    SDL_FillSurfaceRect(surface, &(SDL_Rect){0, png->h, 1, 1}, 0xFFFFFFFF);
+    white_u = 0.5f / surface->w;
+    white_v = (png->h + 0.5f) / surface->h;
+    SDL_DestroySurface(png);
 
-    // Fluids shader and render states, one sampling each ripples texture since
-    // they are swapped every tick. Both sample pre_fluids_texture as well.
+    spritesheet = GRAPHICS_create_texture_from_surface(
+        "spritesheet", surface, SDL_GPU_FILTER_NEAREST);
+    SDL_DestroySurface(surface);
+    return spritesheet ? 0 : 1;
+}
+
+static int load_shaders(void) {
+    // Fluids shader, sampling one of the ripples textures and
+    // pre_fluids_texture as well, see FLUIDS_draw()
     static const Uint8 fluids_spirv[] = {
 #embed FLUIDS_FRAG_SPIRV_PATH
     };
     static const Uint8 fluids_dxil[] = {
 #embed FLUIDS_FRAG_DXIL_PATH
     };
-    fluids_shader = load_fragment_shader(fluids_spirv,
-                                         sizeof(fluids_spirv),
-                                         fluids_dxil,
-                                         sizeof(fluids_dxil),
-                                         3,
-                                         1);
-    if (!fluids_shader) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create fluids_shader: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    for (Uint8 i = 0; i < 2; i++) {
-        SDL_GPUTextureSamplerBinding bindings[2] = {
-            (SDL_GPUTextureSamplerBinding){
-                .texture = SDL_GetPointerProperty(
-                    SDL_GetTextureProperties(fluids.ripples[i]),
-                    SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER,
-                    NULL),
-                .sampler = nearest_sampler,
-            },
-            (SDL_GPUTextureSamplerBinding){
-                .texture = SDL_GetPointerProperty(
-                    SDL_GetTextureProperties(pre_fluids_texture),
-                    SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER,
-                    NULL),
-                .sampler = nearest_sampler,
-            },
-        };
-        SDL_GPURenderStateCreateInfo info = (SDL_GPURenderStateCreateInfo){
-            .fragment_shader = fluids_shader,
-            .num_sampler_bindings = 2,
-            .sampler_bindings = bindings,
-        };
-        fluids.render_states[i] = SDL_CreateGPURenderState(renderer, &info);
-        if (!fluids.render_states[i]) {
-            SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                         "Couldn't create fluids_render_state: %s",
-                         SDL_GetError());
-            return 1;
-        }
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Fluids shader loaded successfully.");
+    fluids.shader = GRAPHICS_load_fragment_shader(
+        "fluids_shader", GRAPHICS_SHADER_CODE(fluids_spirv, fluids_dxil), 3, 1);
+    if (!fluids.shader) return 1;
 
-    // Ripples shader and render state
+    // Ripples shader, sampling the fluids texture as well
     static const Uint8 ripples_spirv[] = {
 #embed FLUIDS_RIPPLES_FRAG_SPIRV_PATH
     };
     static const Uint8 ripples_dxil[] = {
 #embed FLUIDS_RIPPLES_FRAG_DXIL_PATH
     };
-    ripples_shader = load_fragment_shader(ripples_spirv,
-                                          sizeof(ripples_spirv),
-                                          ripples_dxil,
-                                          sizeof(ripples_dxil),
-                                          2,
-                                          1);
-    if (!ripples_shader) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create ripples_shader: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_GPUTextureSamplerBinding fluids_binding =
-        (SDL_GPUTextureSamplerBinding){
-            .texture =
-                SDL_GetPointerProperty(SDL_GetTextureProperties(fluids.texture),
-                                       SDL_PROP_TEXTURE_GPU_TEXTURE_POINTER,
-                                       NULL),
-            .sampler = nearest_sampler,
-    };
-    fluids.ripples_state =
-        SDL_CreateGPURenderState(renderer,
-                                 &(SDL_GPURenderStateCreateInfo){
-                                     .fragment_shader = ripples_shader,
-                                     .num_sampler_bindings = 1,
-                                     .sampler_bindings = &fluids_binding,
-                                 });
-    if (!fluids.ripples_state) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create ripples_render_state: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Ripples shader loaded successfully.");
+    fluids.ripples_shader = GRAPHICS_load_fragment_shader(
+        "ripples_shader",
+        GRAPHICS_SHADER_CODE(ripples_spirv, ripples_dxil),
+        2,
+        1);
+    if (!fluids.ripples_shader) return 1;
 
-    // Tone mapping shader and render state
     static const Uint8 tonemap_spirv[] = {
 #embed RENDERER_TONEMAP_FRAG_SPIRV_PATH
     };
     static const Uint8 tonemap_dxil[] = {
 #embed RENDERER_TONEMAP_FRAG_DXIL_PATH
     };
-    tonemap_shader = load_fragment_shader(tonemap_spirv,
-                                          sizeof(tonemap_spirv),
-                                          tonemap_dxil,
-                                          sizeof(tonemap_dxil),
-                                          1,
-                                          0);
-    if (!tonemap_shader) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create tonemap_shader: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    tonemap_state =
-        SDL_CreateGPURenderState(renderer,
-                                 &(SDL_GPURenderStateCreateInfo){
-                                     .fragment_shader = tonemap_shader,
-                                 });
-    if (!tonemap_state) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create tonemap_render_state: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Tonemap shader loaded successfully.");
+    tonemap_shader = GRAPHICS_load_fragment_shader(
+        "tonemap_shader",
+        GRAPHICS_SHADER_CODE(tonemap_spirv, tonemap_dxil),
+        1,
+        0);
+    if (!tonemap_shader) return 1;
 
-    // Tint shader and render state, for sprites. Its uniforms are set per
-    // sprite.
-    static const Uint8 tint_spirv[] = {
-#embed RENDERER_TINT_FRAG_SPIRV_PATH
-    };
-    static const Uint8 tint_dxil[] = {
-#embed RENDERER_TINT_FRAG_DXIL_PATH
-    };
-    tint_shader = load_fragment_shader(
-        tint_spirv, sizeof(tint_spirv), tint_dxil, sizeof(tint_dxil), 1, 1);
-    if (!tint_shader) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create tint_shader: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    tint_state = SDL_CreateGPURenderState(renderer,
-                                          &(SDL_GPURenderStateCreateInfo){
-                                              .fragment_shader = tint_shader,
-                                          });
-    if (!tint_state) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create tint_render_state: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Tint shader loaded successfully.");
-
-    // Bloom prefilter shader and render state. Its thresholds never change, so
-    // its uniforms are set once here.
     static const Uint8 bloom_prefilter_spirv[] = {
 #embed RENDERER_BLOOM_PREFILTER_FRAG_SPIRV_PATH
     };
     static const Uint8 bloom_prefilter_dxil[] = {
 #embed RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH
     };
-    bloom_prefilter_shader = load_fragment_shader(bloom_prefilter_spirv,
-                                                  sizeof(bloom_prefilter_spirv),
-                                                  bloom_prefilter_dxil,
-                                                  sizeof(bloom_prefilter_dxil),
-                                                  1,
-                                                  1);
-    if (!bloom_prefilter_shader) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create bloom_prefilter_shader: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    bloom_prefilter_state =
-        SDL_CreateGPURenderState(renderer,
-                                 &(SDL_GPURenderStateCreateInfo){
-                                     .fragment_shader = bloom_prefilter_shader,
-                                 });
-    if (!bloom_prefilter_state) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create bloom_prefilter_render_state: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    float bloom_prefilter_uniforms[2] = {bloom_threshold, bloom_soft_threshold};
-    SDL_SetGPURenderStateFragmentUniforms(bloom_prefilter_state,
-                                          0,
-                                          bloom_prefilter_uniforms,
-                                          sizeof(bloom_prefilter_uniforms));
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU,
-                "Bloom prefilter shader loaded successfully.");
+    bloom_prefilter_shader = GRAPHICS_load_fragment_shader(
+        "bloom_prefilter_shader",
+        GRAPHICS_SHADER_CODE(bloom_prefilter_spirv, bloom_prefilter_dxil),
+        1,
+        1);
+    if (!bloom_prefilter_shader) return 1;
 
-    // Box sample shader and its render states, one for downsampling and one
-    // for each upsampling level. Uniforms belong to the render state, so each
-    // _Delta and _Intensity gets its own state instead of changing it between
-    // draws in a frame.
     static const Uint8 box_sample_spirv[] = {
 #embed RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH
     };
     static const Uint8 box_sample_dxil[] = {
 #embed RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH
     };
-    box_sample_shader = load_fragment_shader(box_sample_spirv,
-                                             sizeof(box_sample_spirv),
-                                             box_sample_dxil,
-                                             sizeof(box_sample_dxil),
-                                             1,
-                                             1);
-    if (!box_sample_shader) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create box_sample_shader: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    SDL_GPURenderStateCreateInfo box_sample_info =
-        (SDL_GPURenderStateCreateInfo){
-            .fragment_shader = box_sample_shader,
-    };
-    downsample_state = SDL_CreateGPURenderState(renderer, &box_sample_info);
-    if (!downsample_state) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create box_sample_render_state: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    float downsample_uniforms[2] = {1.0f, 1.0f};
-    SDL_SetGPURenderStateFragmentUniforms(
-        downsample_state, 0, downsample_uniforms, sizeof(downsample_uniforms));
-    for (int i = 0; i < bloom_iterations; i++) {
-        upsample_states[i] =
-            SDL_CreateGPURenderState(renderer, &box_sample_info);
-        if (!upsample_states[i]) {
-            SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                         "Couldn't create box_sample_render_state: %s",
-                         SDL_GetError());
-            return 1;
-        }
-        float upsample_uniforms[2] = {0.5f, bloom_intensities[i]};
-        SDL_SetGPURenderStateFragmentUniforms(upsample_states[i],
-                                              0,
-                                              upsample_uniforms,
-                                              sizeof(upsample_uniforms));
-    }
-    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Box sample shader loaded successfully.");
-#endif
+    box_sample_shader = GRAPHICS_load_fragment_shader(
+        "box_sample_shader",
+        GRAPHICS_SHADER_CODE(box_sample_spirv, box_sample_dxil),
+        1,
+        1);
+    if (!box_sample_shader) return 1;
 
     return 0;
 }
@@ -643,14 +293,26 @@ static int get_queue_index(Sint8 z_index) {
     return z_index + (RENDERER_Z_INDEX_TOTAL >> 1);
 }
 
-static void queue_draw_call(draw_call call, Sint8 z_index) {
+// Makes room for `n` vertices at the end of the `z_index` queue and returns
+// them, for the caller to write.
+static graphics_vertex* queue_vertices(Sint8 z_index, size_t n) {
     draw_queue* q = &queues[get_queue_index(z_index)];
-    if (q->len == q->cap) {
-        q->cap = q->cap ? q->cap << 1 : RENDERER_DRAW_CALLS_STARTING_CAP;
-        q->calls = SDL_realloc(q->calls, q->cap * sizeof(draw_call));
+    if (q->len + n > q->cap) {
+        while (q->len + n > q->cap)
+            q->cap = q->cap ? q->cap << 1 : RENDERER_VERTICES_STARTING_CAP;
+        q->vertices =
+            SDL_realloc(q->vertices, q->cap * sizeof(graphics_vertex));
     }
-    q->calls[q->len] = call;
-    q->len++;
+    graphics_vertex* v = &q->vertices[q->len];
+    q->len += n;
+    return v;
+}
+
+static void queue_pixel(int x, int y, SDL_FColor col, Sint8 z_index) {
+    GRAPHICS_quad(queue_vertices(z_index, 6),
+                  (SDL_FRect){x, y, 1.0f, 1.0f},
+                  (SDL_FRect){white_u, white_v, 0.0f, 0.0f},
+                  col);
 }
 
 void RENDERER_draw_from_spritesheet(float x,
@@ -662,156 +324,119 @@ void RENDERER_draw_from_spritesheet(float x,
                                     SDL_FlipMode flip_mode,
                                     SDL_FColor tint,
                                     Sint8 z_index) {
-    draw_call call = (draw_call){.type = draw_call_spritesheet};
-    call.spritesheet.src = (SDL_FRect){
+    SDL_FRect src = (SDL_FRect){
         .x = SPRITESHEET_CELL_X * coords_x,
         .y = SPRITESHEET_CELL_Y * coords_y,
         .w = SPRITESHEET_CELL_X * coords_w,
         .h = SPRITESHEET_CELL_Y * coords_h,
     };
-    call.spritesheet.dst = (SDL_FRect){
-        .x = x,
-        .y = y,
-        .w = SPRITESHEET_CELL_X * coords_w,
-        .h = SPRITESHEET_CELL_Y * coords_h,
-    };
-    call.spritesheet.flip_mode = flip_mode;
-    call.spritesheet.tint[0] = tint.r;
-    call.spritesheet.tint[1] = tint.g;
-    call.spritesheet.tint[2] = tint.b;
-    call.spritesheet.tint[3] = tint.a;
-    queue_draw_call(call, z_index);
+    GRAPHICS_quad(queue_vertices(z_index, 6),
+                  (SDL_FRect){x, y, src.w, src.h},
+                  GRAPHICS_uv(spritesheet, src, flip_mode),
+                  tint);
 }
 
+void RENDERER_draw_triangle(float x1,
+                            float y1,
+                            float x2,
+                            float y2,
+                            float x3,
+                            float y3,
+                            SDL_FColor col,
+                            Sint8 z_index) {
+    graphics_vertex* v = queue_vertices(z_index, 3);
+    v[0] = (graphics_vertex){x1, y1, white_u, white_v, col};
+    v[1] = (graphics_vertex){x2, y2, white_u, white_v, col};
+    v[2] = (graphics_vertex){x3, y3, white_u, white_v, col};
+}
+
+// Same as SDL's `RenderLineBresenham()`, which `SDL_RenderLine()` uses by
+// default, with the ends rounded to whole pixels, so both ends are drawn and a
+// line from a pixel to itself is that pixel.
 void RENDERER_draw_line(
-    float x1, float y1, float x2, float y2, SDL_Color col, Sint8 z_index) {
-    draw_call call = (draw_call){.type = draw_call_line};
-    call.line.x1 = x1;
-    call.line.y1 = y1;
-    call.line.x2 = x2;
-    call.line.y2 = y2;
-    call.line.col = col;
-    queue_draw_call(call, z_index);
-}
+    float x1, float y1, float x2, float y2, SDL_FColor col, Sint8 z_index) {
+    int ax = SDL_roundf(x1);
+    int ay = SDL_roundf(y1);
+    int bx = SDL_roundf(x2);
+    int by = SDL_roundf(y2);
+    int dx = SDL_abs(bx - ax);
+    int dy = SDL_abs(by - ay);
 
-// Draws and empties the queues from index `from` up to but not including `to`.
-// Spritesheet calls use the tint shader while lines can't, so its render state
-// is only set when switching between them and its uniforms only when the tint
-// changes from the last call's.
-static void flush_queues(int from, int to) {
-#ifndef TEST
-    SDL_BlendMode blend_mode = SDL_BLENDMODE_NONE;
-    SDL_GetRenderDrawBlendMode(renderer, &blend_mode);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    bool tinting = false;
-    float last_tint[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
-#endif
-
-    for (int i = from; i < to; i++) {
-        for (size_t j = 0; j < queues[i].len; j++) {
-            draw_call* c = &queues[i].calls[j];
-            switch (c->type) {
-            case draw_call_spritesheet:
-#ifndef TEST
-                if (!tinting) {
-                    SDL_SetGPURenderState(renderer, tint_state);
-                    tinting = true;
-                }
-                if (SDL_memcmp(c->spritesheet.tint,
-                               last_tint,
-                               sizeof(last_tint)) != 0) {
-                    SDL_SetGPURenderStateFragmentUniforms(
-                        tint_state,
-                        0,
-                        c->spritesheet.tint,
-                        sizeof(c->spritesheet.tint));
-                    SDL_memcpy(
-                        last_tint, c->spritesheet.tint, sizeof(last_tint));
-                }
-                SDL_RenderTextureRotated(renderer,
-                                         spritesheet,
-                                         &c->spritesheet.src,
-                                         &c->spritesheet.dst,
-                                         0.0f,
-                                         &(SDL_FPoint){0.0f, 0.0f},
-                                         c->spritesheet.flip_mode);
-#else
-                stubbed_SDL_RenderTexture(&c->spritesheet.src,
-                                          &c->spritesheet.dst,
-                                          c->spritesheet.flip_mode);
-#endif
-                break;
-            case draw_call_line:
-#ifndef TEST
-                if (tinting) {
-                    SDL_SetGPURenderState(renderer, NULL);
-                    tinting = false;
-                }
-                SDL_SetRenderDrawColor(renderer,
-                                       c->line.col.r,
-                                       c->line.col.g,
-                                       c->line.col.b,
-                                       c->line.col.a);
-#endif
-                // Lines from a point to itself might not be drawn at all
-                if (c->line.x1 == c->line.x2 && c->line.y1 == c->line.y2) {
-#ifndef TEST
-                    SDL_RenderPoint(renderer, c->line.x1, c->line.y1);
-#else
-                    stubbed_SDL_RenderPoint(c->line.x1, c->line.y1);
-#endif
-                } else {
-#ifndef TEST
-                    SDL_RenderLine(renderer,
-                                   c->line.x1,
-                                   c->line.y1,
-                                   c->line.x2,
-                                   c->line.y2);
-#else
-                    stubbed_SDL_RenderLine(
-                        c->line.x1, c->line.y1, c->line.x2, c->line.y2);
-#endif
-                }
-                break;
-            }
-        }
-        queues[i].len = 0;
+    int n, d, d_inc1, d_inc2, x_inc1, x_inc2, y_inc1, y_inc2;
+    if (dx >= dy) {
+        n = dx + 1;
+        d = 2 * dy - dx;
+        d_inc1 = 2 * dy;
+        d_inc2 = 2 * (dy - dx);
+        x_inc1 = 1;
+        x_inc2 = 1;
+        y_inc1 = 0;
+        y_inc2 = 1;
+    } else {
+        n = dy + 1;
+        d = 2 * dx - dy;
+        d_inc1 = 2 * dx;
+        d_inc2 = 2 * (dx - dy);
+        x_inc1 = 0;
+        x_inc2 = 1;
+        y_inc1 = 1;
+        y_inc2 = 1;
+    }
+    if (ax > bx) {
+        x_inc1 = -x_inc1;
+        x_inc2 = -x_inc2;
+    }
+    if (ay > by) {
+        y_inc1 = -y_inc1;
+        y_inc2 = -y_inc2;
     }
 
-#ifndef TEST
-    SDL_SetGPURenderState(renderer, NULL);
-    SDL_SetRenderDrawBlendMode(renderer, blend_mode);
-#endif
+    int x = ax;
+    int y = ay;
+    for (int i = 0; i < n; i++) {
+        queue_pixel(x, y, col, z_index);
+        if (d < 0) {
+            d += d_inc1;
+            x += x_inc1;
+            y += y_inc1;
+        } else {
+            d += d_inc2;
+            x += x_inc2;
+            y += y_inc2;
+        }
+    }
 }
 
-// Everything queues its draw calls first, then the ones under the fluids are
-// drawn on pre_fluids_texture for the fluids to refract, and the rest are drawn
-// over the fluids on base_screen.
+// Draws and empties the queues from index `from` up to but not including `to`,
+// blended by alpha. Everything is drawn with the spritesheet and the same
+// state, so it's all a single draw.
+static void flush_queues(int from, int to) {
+    GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_blend});
+    for (int i = from; i < to; i++) {
+        GRAPHICS_draw_vertices(spritesheet, queues[i].vertices, queues[i].len);
+        queues[i].len = 0;
+    }
+    GRAPHICS_set_state(NULL);
+}
+
+// Everything queues its draw calls and the fluids are prepared on their own
+// textures first. Then the draw calls under the fluids are drawn on
+// pre_fluids_texture for the fluids to refract, and the rest are drawn over the
+// fluids on base_screen. The fluids cover all of base_screen, so it isn't
+// cleared.
 static void render_base_screen(void) {
     TILEMAP_draw();
     VINES_draw();
     SPRITES_draw();
+    FLUIDS_prepare(&fluids);
 
-#ifndef TEST
-    SDL_SetRenderTarget(renderer, pre_fluids_texture);
-    SDL_SetRenderDrawColor(renderer, COL_BLACK);
-    SDL_RenderClear(renderer);
-#endif
-
+    GRAPHICS_set_target(pre_fluids_texture);
+    GRAPHICS_clear(black);
     flush_queues(0, get_queue_index(FLUIDS_Z_INDEX));
 
-#ifndef TEST
-    SDL_SetRenderTarget(renderer, base_screen);
-    SDL_SetRenderDrawColor(renderer, COL_BLACK);
-    SDL_RenderClear(renderer);
-#endif
-
-    FLUIDS_draw(renderer, &fluids);
+    GRAPHICS_set_target(base_screen);
+    FLUIDS_draw(&fluids);
     flush_queues(get_queue_index(FLUIDS_Z_INDEX), RENDERER_Z_INDEX_TOTAL);
-
-#ifndef TEST
-    SDL_RenderPresent(renderer);
-#endif
 }
 
 
@@ -819,65 +444,56 @@ static void render_base_screen(void) {
 // Bloom: the parts of base_screen bright enough to bloom are filtered onto
 // bloom_prefilter, which is downsampled down bloom_chain, blurring it more each
 // time. Then it's upsampled back up, each level multiplied by its intensity and
-// added onto the one above it, and the first one is added onto base_screen.
-// Then base_screen is tone mapped onto final_screen.
+// added onto the one above it, the first one onto base_screen.
 static void render_post_processing(void) {
-#ifndef TEST
-    SDL_SetRenderTarget(renderer, bloom_prefilter);
-    SDL_SetGPURenderState(renderer, bloom_prefilter_state);
-    SDL_RenderTexture(renderer, base_screen, NULL, NULL);
+    GRAPHICS_set_target(bloom_prefilter);
+    GRAPHICS_set_state(&(graphics_state){
+        .shader = bloom_prefilter_shader,
+        .uniforms =
+            &(bloom_prefilter_uniforms){bloom_threshold, bloom_soft_threshold},
+        .uniforms_size = sizeof(bloom_prefilter_uniforms),
+    });
+    GRAPHICS_draw_texture(base_screen, NULL, NULL, SDL_FLIP_NONE, white);
 
-    SDL_SetGPURenderState(renderer, downsample_state);
-    SDL_Texture* source = bloom_prefilter;
+    GRAPHICS_set_state(&(graphics_state){
+        .shader = box_sample_shader,
+        .uniforms = &(box_sample_uniforms){1.0f, 1.0f},
+        .uniforms_size = sizeof(box_sample_uniforms),
+    });
+    graphics_texture* source = bloom_prefilter;
     for (int i = 0; i < bloom_iterations; i++) {
-        SDL_SetTextureBlendMode(source, SDL_BLENDMODE_NONE);
-        SDL_SetRenderTarget(renderer, bloom_chain[i]);
-        SDL_RenderTexture(renderer, source, NULL, NULL);
+        GRAPHICS_set_target(bloom_chain[i]);
+        GRAPHICS_draw_texture(source, NULL, NULL, SDL_FLIP_NONE, white);
         source = bloom_chain[i];
     }
 
-    for (int i = bloom_iterations - 1; i > 0; i--) {
-        SDL_SetGPURenderState(renderer, upsample_states[i]);
-        SDL_SetTextureBlendMode(bloom_chain[i], SDL_BLENDMODE_ADD);
-        SDL_SetRenderTarget(renderer, bloom_chain[i - 1]);
-        SDL_RenderTexture(renderer, bloom_chain[i], NULL, NULL);
+    for (int i = bloom_iterations - 1; i >= 0; i--) {
+        GRAPHICS_set_target(i > 0 ? bloom_chain[i - 1] : base_screen);
+        GRAPHICS_set_state(&(graphics_state){
+            .shader = box_sample_shader,
+            .blend = graphics_blend_add,
+            .uniforms = &(box_sample_uniforms){0.5f, bloom_intensities[i]},
+            .uniforms_size = sizeof(box_sample_uniforms),
+        });
+        GRAPHICS_draw_texture(bloom_chain[i], NULL, NULL, SDL_FLIP_NONE, white);
     }
-    SDL_SetGPURenderState(renderer, upsample_states[0]);
-    SDL_SetTextureBlendMode(bloom_chain[0], SDL_BLENDMODE_ADD);
-    SDL_SetRenderTarget(renderer, base_screen);
-    SDL_RenderTexture(renderer, bloom_chain[0], NULL, NULL);
-
-    SDL_SetRenderTarget(renderer, final_screen);
-    SDL_SetGPURenderState(renderer, tonemap_state);
-    SDL_RenderTexture(renderer, base_screen, NULL, NULL);
-    SDL_SetGPURenderState(renderer, NULL);
-#endif
+    GRAPHICS_set_state(NULL);
 }
 
 
 
+// base_screen is tone mapped straight onto the window, centered and stretched.
+// It's sampled with nearest filtering, so it's the same as tone mapping it onto
+// a texture of its size and stretching that.
 static void render_final_screen(void) {
-#ifndef TEST
-    SDL_SetRenderTarget(renderer, NULL);
-    SDL_SetRenderDrawColor(renderer, COL_BLACK);
-    SDL_RenderClear(renderer);
+    GRAPHICS_set_target(NULL);
+    GRAPHICS_clear(black);
 
-    // SDL's GPU renderer only resizes its backbuffer on present, so drawing on
-    // the frame the window grew would use a viewport bigger than the
-    // backbuffer. Clearing doesn't use the viewport, so just clear and present
-    // this frame to resize it.
-    if (window_resized) {
-        window_resized = false;
-        SDL_RenderPresent(renderer);
-        return;
-    }
-
-    int window_w, window_h;
-    SDL_GetWindowSize(window, &window_w, &window_h);
+    Uint32 window_w, window_h;
+    if (!GRAPHICS_get_swapchain_size(&window_w, &window_h)) return;
     float window_ar = (float)window_w / (float)window_h;
     float base_ar = (float)WINDOW_SIZE_X / (float)WINDOW_SIZE_Y;
 
-    // Center and stretch final_screen
     int x, y, w, h;
     if (window_ar >= base_ar) {
         h = window_h;
@@ -891,20 +507,27 @@ static void render_final_screen(void) {
         y = (window_h - h) / 2;
     }
 
-    // Render final_screen
-    SDL_FRect dstrect = (SDL_FRect){
-        .x = x,
-        .y = y,
-        .w = w,
-        .h = h,
-    };
-    SDL_RenderTexture(renderer, final_screen, NULL, &dstrect);
+    GRAPHICS_set_state(&(graphics_state){.shader = tonemap_shader});
+    GRAPHICS_draw_texture(
+        base_screen, NULL, &(SDL_FRect){x, y, w, h}, SDL_FLIP_NONE, white);
+    GRAPHICS_set_state(NULL);
 
 #ifdef DEV
-    PROFILER_draw(renderer);
-#endif
-
-    SDL_RenderPresent(renderer);
+    SDL_SetRenderDrawColor(profiler_renderer, 0, 0, 0, 0);
+    SDL_RenderClear(profiler_renderer);
+    PROFILER_draw(profiler_renderer);
+    SDL_FlushRenderer(profiler_renderer);
+    GRAPHICS_upload_surface(profiler_texture, profiler_surface);
+    GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_blend});
+    GRAPHICS_draw_texture(profiler_texture,
+                          NULL,
+                          &(SDL_FRect){0.0f,
+                                       0.0f,
+                                       RENDERER_PROFILER_OVERLAY_X,
+                                       RENDERER_PROFILER_OVERLAY_Y},
+                          SDL_FLIP_NONE,
+                          white);
+    GRAPHICS_set_state(NULL);
 #endif
 }
 
@@ -912,60 +535,48 @@ static void render_final_screen(void) {
 
 int RENDERER_start(void) {
     load_bloom_data_from_csv();
-    if (start_graphics_pipeline()) return 1;
-    if (load_graphics_files()) return 1;
+    if (GRAPHICS_start()) return 1;
+    if (create_textures()) return 1;
+    if (load_spritesheet()) return 1;
+    if (load_shaders()) return 1;
     return 0;
 }
 
 
 void RENDERER_stop(void) {
     for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++) {
-        SDL_free(queues[i].calls);
+        SDL_free(queues[i].vertices);
         queues[i] = (draw_queue){0};
     }
 
-#ifndef TEST
-    for (int i = 0; i < bloom_iterations; i++)
-        SDL_DestroyGPURenderState(upsample_states[i]);
-    SDL_DestroyGPURenderState(downsample_state);
-    SDL_ReleaseGPUShader(device, box_sample_shader);
-    SDL_DestroyGPURenderState(bloom_prefilter_state);
-    SDL_ReleaseGPUShader(device, bloom_prefilter_shader);
-    SDL_DestroyGPURenderState(tint_state);
-    SDL_ReleaseGPUShader(device, tint_shader);
-    SDL_DestroyGPURenderState(tonemap_state);
-    SDL_ReleaseGPUShader(device, tonemap_shader);
-    SDL_DestroyGPURenderState(fluids.ripples_state);
-    SDL_ReleaseGPUShader(device, ripples_shader);
-    for (Uint8 i = 0; i < 2; i++) {
-        SDL_DestroyGPURenderState(fluids.render_states[i]);
-        SDL_DestroyTexture(fluids.ripples[i]);
-    }
-    SDL_ReleaseGPUShader(device, fluids_shader);
-    SDL_ReleaseGPUSampler(device, nearest_sampler);
-    SDL_DestroyTexture(fluids.texture);
-    SDL_DestroyTexture(pre_fluids_texture);
-    for (int i = 0; i < bloom_iterations; i++)
-        SDL_DestroyTexture(bloom_chain[i]);
-    SDL_DestroyTexture(bloom_prefilter);
-    SDL_DestroyTexture(final_screen);
-    SDL_DestroyTexture(base_screen);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyGPUDevice(device);
-    SDL_DestroyWindow(window);
-    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+#ifdef DEV
+    GRAPHICS_destroy_texture(profiler_texture);
+    SDL_DestroyRenderer(profiler_renderer);
+    SDL_DestroySurface(profiler_surface);
 #endif
+    GRAPHICS_release_shader(box_sample_shader);
+    GRAPHICS_release_shader(bloom_prefilter_shader);
+    GRAPHICS_release_shader(tonemap_shader);
+    GRAPHICS_release_shader(fluids.ripples_shader);
+    GRAPHICS_release_shader(fluids.shader);
+    for (Uint8 i = 0; i < 2; i++)
+        GRAPHICS_destroy_texture(fluids.ripples[i]);
+    GRAPHICS_destroy_texture(fluids.texture);
+    GRAPHICS_destroy_texture(pre_fluids_texture);
+    for (int i = 0; i < bloom_iterations; i++)
+        GRAPHICS_destroy_texture(bloom_chain[i]);
+    GRAPHICS_destroy_texture(bloom_prefilter);
+    GRAPHICS_destroy_texture(base_screen);
+    GRAPHICS_destroy_texture(spritesheet);
+    GRAPHICS_stop();
 }
 
-
-void RENDERER_process(SDL_Event* event) {
-    if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
-        window_resized = true;
-}
 
 
 void RENDERER_update(void) {
+    GRAPHICS_begin_frame();
     render_base_screen();
     render_post_processing();
     render_final_screen();
+    GRAPHICS_end_frame();
 }
