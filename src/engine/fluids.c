@@ -8,10 +8,6 @@
 #include "services/csv.h"
 #include <SDL3/SDL.h>
 
-#ifdef TEST
-#include "stubs.h"
-#endif
-
 
 
 typedef struct {
@@ -101,6 +97,9 @@ static Uint8 ripples_idx = 0;
 static float ripples_x = 0.0f;
 static float ripples_y = 0.0f;
 static SDL_AtomicInt ripples_ticks = {0};
+// The camera when `FLUIDS_prepare()` was called, so `FLUIDS_draw()` draws what
+// it prepared even if the camera moved since.
+static SDL_FRect prepared_cam = {0};
 static float ripples_damping = 0.0f;
 static float ripples_refraction = 0.0f;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
@@ -1135,7 +1134,7 @@ static double quarter_px(double vol) {
 //
 // Only the cells on `area`, the ripples area, are drawn, relative to its top
 // left.
-static void draw_grid(SDL_Renderer* renderer, SDL_FRect area) {
+static void draw_grid(SDL_FRect area) {
     Uint32 from_x = SDL_max(SDL_floor(area.x / FLUIDS_CELL_W), 0.0f);
     Uint32 from_y = SDL_max(SDL_floor(area.y / FLUIDS_CELL_H), 0.0f);
     Uint32 to_x = SDL_min(SDL_ceil((area.x + area.w) / FLUIDS_CELL_W),
@@ -1149,12 +1148,8 @@ static void draw_grid(SDL_Renderer* renderer, SDL_FRect area) {
                                   y * FLUIDS_CELL_H - area.y,
                                   FLUIDS_CELL_W,
                                   FLUIDS_CELL_H};
-#ifndef TEST
-                SDL_SetRenderDrawColor(renderer, FLUIDS_WALL_COLOR);
-                SDL_RenderFillRect(renderer, &rect);
-#else
-                stubbed_SDL_RenderFillRect(&rect);
-#endif
+                GRAPHICS_fill_rect(
+                    rect, GRAPHICS_fcolor((SDL_Color){FLUIDS_WALL_COLOR}));
                 continue;
             }
             bool empty = !has_any_fluid(x, y);
@@ -1185,23 +1180,17 @@ static void draw_grid(SDL_Renderer* renderer, SDL_FRect area) {
                               (below > EPSILON ? quarter_px(below) : 0.0f);
                 }
                 below += vol;
-#ifndef TEST
-                SDL_SetRenderDrawColor(renderer,
-                                       FLUIDS_SHADER_IDX_STEP * (type + 1),
-                                       FLUIDS_SHADER_IDX_STEP *
-                                           (FLUIDS_TOTAL - t),
-                                       0,
-                                       255);
-                SDL_RenderFillRect(renderer, &rect);
-#else
-                stubbed_SDL_RenderFillRect(&rect);
-#endif
+                SDL_Color col = {FLUIDS_SHADER_IDX_STEP * (type + 1),
+                                 FLUIDS_SHADER_IDX_STEP * (FLUIDS_TOTAL - t),
+                                 0,
+                                 255};
+                GRAPHICS_fill_rect(rect, GRAPHICS_fcolor(col));
             }
         }
     }
 }
 
-static void draw_particles(SDL_Renderer* renderer, SDL_FRect cam) {
+static void draw_particles(SDL_FRect cam) {
     SDL_LockMutex(particles_mutex);
     for (size_t i = 0; i < particles_len; i++) {
         fluid_particle p = particles[i];
@@ -1213,22 +1202,16 @@ static void draw_particles(SDL_Renderer* renderer, SDL_FRect cam) {
             data[p.type].particle_vol < particles_data.size_threshold ? 1 : 4;
         SDL_FPoint points[4] = {
             {x, y}, {x + 1.0f, y}, {x, y + 1.0f}, {x + 1.0f, y + 1.0f}};
-#ifndef TEST
-        SDL_SetRenderDrawColor(renderer,
-                               data[p.type].col_r,
-                               data[p.type].col_g,
-                               data[p.type].col_b,
-                               data[p.type].col_a);
-        SDL_RenderPoints(renderer, points, n);
-#else
+        SDL_FColor col = GRAPHICS_fcolor((SDL_Color){data[p.type].col_r,
+                                                     data[p.type].col_g,
+                                                     data[p.type].col_b,
+                                                     data[p.type].col_a});
         for (int j = 0; j < n; j++)
-            stubbed_SDL_RenderPoint(points[j].x, points[j].y);
-#endif
+            GRAPHICS_draw_point(points[j].x, points[j].y, col);
     }
     SDL_UnlockMutex(particles_mutex);
 }
 
-#ifndef TEST
 // Matches the fluids shader's uniforms on
 // `src/gpu/includes/fluids-uniforms.hlsli`, padded to a multiple of 16 bytes.
 typedef struct {
@@ -1243,8 +1226,7 @@ typedef struct {
     float refraction;
 } shader_uniforms;
 
-static void set_shader_uniforms(SDL_GPURenderState* render_state,
-                                SDL_FRect cam) {
+static shader_uniforms get_shader_uniforms(SDL_FRect cam) {
     shader_uniforms uniforms = {.cam_pos = {cam.x / cam.w, cam.y / cam.h},
                                 .time = SDL_GetTicks() / 1000.0f,
                                 .refraction = ripples_refraction};
@@ -1254,10 +1236,8 @@ static void set_shader_uniforms(SDL_GPURenderState* render_state,
         uniforms.colors[t][2] = data[t].col_b / 255.0f;
         uniforms.colors[t][3] = data[t].col_a / 255.0f;
     }
-    SDL_SetGPURenderStateFragmentUniforms(
-        render_state, 0, &uniforms, sizeof(uniforms));
+    return uniforms;
 }
-#endif
 
 // Ripples are simulated on two float textures the size of `fluids_texture`,
 // `fluids_canvas.ripples`, holding each pixel's current height on red and its
@@ -1278,68 +1258,64 @@ static void set_shader_uniforms(SDL_GPURenderState* render_state,
 //
 // Queued ripples are in world pixels, so they're drawn relative to the top left
 // of `area`, the ripples area.
-static void
-step_ripples(SDL_Renderer* renderer, fluids_canvas* canvas, SDL_FRect area) {
+static void step_ripples(fluids_canvas* canvas, SDL_FRect area) {
     int ticks = SDL_SetAtomicInt(&ripples_ticks, 0);
     if (ticks <= 0) return;
     ticks = SDL_min(ticks, FLUIDS_RIPPLES_MAX_TICKS);
 
-#ifndef TEST
-    SDL_SetRenderTarget(renderer, canvas->ripples[ripples_idx]);
-    SDL_BlendMode blend_mode = SDL_BLENDMODE_NONE;
-    SDL_GetRenderDrawBlendMode(renderer, &blend_mode);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_ADD);
+    GRAPHICS_set_target(canvas->ripples[ripples_idx]);
+    GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_add});
 
     // SDL mutexes are recursive, so it stays locked while draining.
     SDL_LockMutex(ripples_mutex);
     for (size_t i = 0; i < ripples.len; i++) {
         ripple* r = ripples.at[i];
-        SDL_SetRenderDrawColorFloat(renderer, r->strength, 0.0f, 0.0f, 1.0f);
         SDL_FRect rect = {r->x - area.x - r->size / 2.0f,
                           r->y - area.y - r->size / 2.0f,
                           r->size,
                           r->size};
-        SDL_RenderFillRect(renderer, &rect);
+        GRAPHICS_fill_rect(rect, (SDL_FColor){r->strength, 0.0f, 0.0f, 1.0f});
     }
     drain_queue(&ripples, ripples_mutex, NULL);
     SDL_UnlockMutex(ripples_mutex);
-    SDL_SetRenderDrawBlendMode(renderer, blend_mode);
 
-    SDL_SetGPURenderStateFragmentUniforms(
-        canvas->ripples_state, 0, &ripples_damping, sizeof(ripples_damping));
-    SDL_SetGPURenderState(renderer, canvas->ripples_state);
+    GRAPHICS_set_state(&(graphics_state){
+        .shader = canvas->ripples_shader,
+        .samplers = {GRAPHICS_binding(canvas->texture)},
+        .num_samplers = 1,
+        .uniforms = &ripples_damping,
+        .uniforms_size = sizeof(ripples_damping),
+    });
     for (int i = 0; i < ticks; i++) {
-        SDL_Texture* from = canvas->ripples[ripples_idx];
-        SDL_SetRenderTarget(renderer, canvas->ripples[1 - ripples_idx]);
-        SDL_RenderTexture(renderer, from, NULL, NULL);
+        graphics_texture* from = canvas->ripples[ripples_idx];
+        GRAPHICS_set_target(canvas->ripples[1 - ripples_idx]);
+        GRAPHICS_draw_texture(
+            from, NULL, NULL, SDL_FLIP_NONE, (SDL_FColor){1, 1, 1, 1});
         ripples_idx = 1 - ripples_idx;
     }
-    SDL_SetGPURenderState(renderer, NULL);
-#else
-    drain_queue(&ripples, ripples_mutex, NULL);
-#endif
+    GRAPHICS_set_state(NULL);
 }
 
 // Ripples are kept on textures covering `area`, the ripples area, so when it
 // moves the latest is drawn into the other shifted the opposite way, making
 // that one the latest, so they stay in place in the world. Ripples shifted in
 // from outside it start flat.
-static void
-shift_ripples(SDL_Renderer* renderer, fluids_canvas* canvas, SDL_FRect area) {
+static void shift_ripples(fluids_canvas* canvas, SDL_FRect area) {
     float dx = area.x - ripples_x;
     float dy = area.y - ripples_y;
     if (dx == 0.0f && dy == 0.0f) return;
     ripples_x = area.x;
     ripples_y = area.y;
 
-#ifndef TEST
-    SDL_SetRenderTarget(renderer, canvas->ripples[1 - ripples_idx]);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-    SDL_RenderClear(renderer);
+    GRAPHICS_set_target(canvas->ripples[1 - ripples_idx]);
+    GRAPHICS_clear((SDL_FColor){0, 0, 0, 0});
     SDL_FRect dst = {-dx, -dy, area.w, area.h};
-    SDL_RenderTexture(renderer, canvas->ripples[ripples_idx], NULL, &dst);
+    GRAPHICS_draw_texture(canvas->ripples[ripples_idx],
+                          NULL,
+                          &dst,
+                          SDL_FLIP_NONE,
+                          (SDL_FColor){1, 1, 1, 1});
     ripples_idx = 1 - ripples_idx;
-#endif
 }
 
 // Area covered by `fluids_canvas.texture` and `fluids_canvas.ripples`, in world
@@ -1355,32 +1331,41 @@ static SDL_FRect get_ripples_area(SDL_FRect cam) {
     };
 }
 
-void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas) {
-    SDL_FRect cam = CAMERA_get_rect();
+void FLUIDS_prepare(fluids_canvas* canvas) {
+    prepared_cam = CAMERA_get_rect();
+    SDL_FRect area = get_ripples_area(prepared_cam);
+
+    GRAPHICS_set_target(canvas->texture);
+    GRAPHICS_clear((SDL_FColor){0, 0, 0, 0});
+    draw_grid(area);
+    shift_ripples(canvas, area);
+    step_ripples(canvas, area);
+}
+
+// The fluids shader is opaque and covers the whole target, so it isn't
+// blended.
+void FLUIDS_draw(fluids_canvas* canvas) {
+    SDL_FRect cam = prepared_cam;
     SDL_FRect area = get_ripples_area(cam);
 
-#ifndef TEST
-    SDL_Texture* target = SDL_GetRenderTarget(renderer);
-    SDL_SetRenderTarget(renderer, canvas->texture);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
-    SDL_RenderClear(renderer);
-#endif
-
-    draw_grid(renderer, area);
-    shift_ripples(renderer, canvas, area);
-    step_ripples(renderer, canvas, area);
-
-#ifndef TEST
-    SDL_GPURenderState* render_state = canvas->render_states[ripples_idx];
-    SDL_SetRenderTarget(renderer, target);
-    set_shader_uniforms(render_state, cam);
-    SDL_SetGPURenderState(renderer, render_state);
+    shader_uniforms uniforms = get_shader_uniforms(cam);
+    GRAPHICS_set_state(&(graphics_state){
+        .shader = canvas->shader,
+        .samplers = {GRAPHICS_binding(canvas->ripples[ripples_idx]),
+                     GRAPHICS_binding(canvas->pre_fluids)},
+        .num_samplers = 2,
+        .uniforms = &uniforms,
+        .uniforms_size = sizeof(uniforms),
+    });
     SDL_FRect screen = {cam.x - area.x, cam.y - area.y, cam.w, cam.h};
-    SDL_RenderTexture(renderer, canvas->texture, &screen, NULL);
-    SDL_SetGPURenderState(renderer, NULL);
-#endif
+    GRAPHICS_draw_texture(canvas->texture,
+                          &screen,
+                          NULL,
+                          SDL_FLIP_NONE,
+                          (SDL_FColor){1, 1, 1, 1});
+    GRAPHICS_set_state(NULL);
 
-    draw_particles(renderer, cam);
+    draw_particles(cam);
 }
 
 SDL_Rect FLUIDS_get_simulated_rect(void) {

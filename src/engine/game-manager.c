@@ -211,7 +211,6 @@ int GAME_MANAGER_events(SDL_Event* event) {
     if (!running) return 1;
 
     INPUTS_process(event);
-    RENDERER_process(event);
 
     return 0;
 }

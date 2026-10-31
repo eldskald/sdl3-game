@@ -10,8 +10,10 @@ endif
 # File/directory names
 GAME_NAME	?= game
 SRC_FILES	= $(shell find src -type f -name '*.c')
-TEST_SRC_FILES  = $(shell find src -type f -name '*.c' -not -name 'main.c')
-TEST_FILES = $(shell find tests -type f -name '*.c')
+TEST_STUBBED_FILES = $(shell find tests/stubbed -type f -name '*.c')
+TEST_EXCLUDED_FILES = main.c $(notdir $(TEST_STUBBED_FILES))
+TEST_SRC_FILES  = $(shell find src -type f -name '*.c' $(foreach f,$(TEST_EXCLUDED_FILES),-not -name '$(f)'))
+TEST_FILES = $(shell find tests -type f -name '*.c' -not -path 'tests/stubbed/*')
 
 # Compilers
 LINUX_CC := gcc
@@ -50,7 +52,7 @@ dev:
 	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o $(GAME_NAME)$(EXT)
 
 test:
-	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -Itests -o test -DTEST -fsanitize=address
+	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_STUBBED_FILES) $(TEST_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -Itests -o test -DTEST -fsanitize=address
 
 windows:
 	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) -O2 $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe

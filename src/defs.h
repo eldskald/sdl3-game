@@ -24,6 +24,17 @@
 
 
 
+// Graphics
+#define GRAPHICS_BASE_VERT_SPIRV_PATH "res/shaders/base.vert.spv"
+#define GRAPHICS_BASE_VERT_DXIL_PATH "res/shaders/base.vert.dxil"
+#define GRAPHICS_BASE_FRAG_SPIRV_PATH "res/shaders/base.frag.spv"
+#define GRAPHICS_BASE_FRAG_DXIL_PATH "res/shaders/base.frag.dxil"
+#define GRAPHICS_MAX_EXTRA_SAMPLERS 3
+#define GRAPHICS_MAX_UNIFORMS_SIZE 64
+#define GRAPHICS_MAX_PIPELINES 32
+#define GRAPHICS_VERTICES_STARTING_CAP 4096
+#define GRAPHICS_COMMANDS_STARTING_CAP 64
+
 // Renderer
 #define RENDERER_TONEMAP_FRAG_SPIRV_PATH "res/shaders/tonemap.frag.spv"
 #define RENDERER_TONEMAP_FRAG_DXIL_PATH "res/shaders/tonemap.frag.dxil"
@@ -31,14 +42,14 @@
     "res/shaders/bloom-prefilter.frag.spv"
 #define RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH                                \
     "res/shaders/bloom-prefilter.frag.dxil"
-#define RENDERER_TINT_FRAG_SPIRV_PATH "res/shaders/tint.frag.spv"
-#define RENDERER_TINT_FRAG_DXIL_PATH "res/shaders/tint.frag.dxil"
 #define RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH "res/shaders/box-sample.frag.spv"
 #define RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH "res/shaders/box-sample.frag.dxil"
 #define RENDERER_BLOOM_CSV_PATH "data/graphics/bloom.csv"
 #define RENDERER_BLOOM_MAX_ITERATIONS 8
 #define RENDERER_Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -128 to 127
-#define RENDERER_DRAW_CALLS_STARTING_CAP 64
+#define RENDERER_VERTICES_STARTING_CAP 1024
+#define RENDERER_PROFILER_OVERLAY_X 400
+#define RENDERER_PROFILER_OVERLAY_Y 360
 
 // Spritesheet
 #define SPRITESHEET_PATH "res/textures/spritesheet.png"
@@ -51,7 +62,8 @@
 #define SPRITES_STARTING_DYNARR_CAP 1024
 #define SPRITES_ANIM_MAX_KEYFRAMES 8
 #define SPRITES_FRAME_STARTING_CAP 1024
-#define SPRITES_FRAME_STARTING_LINES_CAP 1024
+#define SPRITES_FRAME_STARTING_SHAPES_CAP 1024
+#define SPRITES_SHAPES_STARTING_CAP 64
 #define SPRITES_FRAME_CULL_MARGIN 16
 
 
@@ -122,7 +134,7 @@
 
 // Player
 #define PLAYER_BASE_CSV_PATH "data/player/core.csv"
-#define PLAYER_SPRITE_CSV_PATH "data/player/presentation.csv"
+#define PLAYER_PRESENTATION_CSV_PATH "data/player/presentation.csv"
 #define PLAYER_HAIR_MAX_SEGMENTS 8
 #define PLAYER_CLOAK_MAX_HORIZ_SEGMENTS 8
 #define PLAYER_CLOAK_MAX_VERT_SEGMENTS 8

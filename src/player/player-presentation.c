@@ -47,7 +47,7 @@ typedef struct {
     animation crouch_idle_anim;
     animation crouch_moving_anim;
     animation swimming_anim;
-    SDL_Color hair_col;
+    SDL_FColor hair_col;
     double hair_gravity;
     double hair_fluid_gravity;
     double hair_damping;
@@ -57,8 +57,8 @@ typedef struct {
     bool hair_segments_two_ways;
     hair_pin hair_pins[SPRITESHEET_X / SPRITESHEET_CELL_X]
                       [SPRITESHEET_Y / SPRITESHEET_CELL_Y];
-    SDL_Color cloak_in;
-    SDL_Color cloak_out;
+    SDL_FColor cloak_in;
+    SDL_FColor cloak_out;
     double cloak_gravity;
     double cloak_fluid_gravity;
     double cloak_damping;
@@ -356,36 +356,28 @@ static int cross(SDL_Point a, SDL_Point b, SDL_Point c) {
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-static bool is_in_triangle(SDL_Point a, SDL_Point b, SDL_Point c, SDL_Point p) {
-    int w0 = cross(a, b, p);
-    int w1 = cross(b, c, p);
-    int w2 = cross(c, a, p);
-    return (w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0);
+// Attaches the line from pixel `a` to pixel `b` to the player's sprite.
+static void attach_edge(SDL_Point a, SDL_Point b, SDL_FColor col) {
+    SPRITES_attach_line_to_sprite(state.sprite_id, a.x, a.y, b.x, b.y, col);
 }
 
-// Attaches the triangle `a,b,c` to the player's sprite as a line on each of its
-// rows, from its first to its last pixel inside it or on its edges, then its
-// edges too, so thin triangles almost edge on still show up as lines.
+// Attaches the triangle with corners on pixels `a,b,c` to the player's sprite,
+// filled by the GPU through the pixels' centers, then its edges as lines, so
+// pixels on them are filled like pixels inside it and thin triangles almost
+// edge on still show up as lines.
 static void
-attach_triangle(SDL_Point a, SDL_Point b, SDL_Point c, SDL_Color col) {
-    int min_x = SDL_min(a.x, SDL_min(b.x, c.x));
-    int max_x = SDL_max(a.x, SDL_max(b.x, c.x));
-    int min_y = SDL_min(a.y, SDL_min(b.y, c.y));
-    int max_y = SDL_max(a.y, SDL_max(b.y, c.y));
-    for (int y = min_y; y <= max_y; y++) {
-        int from = max_x + 1;
-        int to = min_x - 1;
-        for (int x = min_x; x <= max_x; x++) {
-            if (!is_in_triangle(a, b, c, (SDL_Point){x, y})) continue;
-            from = SDL_min(from, x);
-            to = x;
-        }
-        if (from <= to)
-            SPRITES_attach_line_to_sprite(state.sprite_id, from, y, to, y, col);
-    }
-    SPRITES_attach_line_to_sprite(state.sprite_id, a.x, a.y, b.x, b.y, col);
-    SPRITES_attach_line_to_sprite(state.sprite_id, b.x, b.y, c.x, c.y, col);
-    SPRITES_attach_line_to_sprite(state.sprite_id, c.x, c.y, a.x, a.y, col);
+attach_triangle(SDL_Point a, SDL_Point b, SDL_Point c, SDL_FColor col) {
+    SPRITES_attach_triangle_to_sprite(state.sprite_id,
+                                      a.x + 0.5f,
+                                      a.y + 0.5f,
+                                      b.x + 0.5f,
+                                      b.y + 0.5f,
+                                      c.x + 0.5f,
+                                      c.y + 0.5f,
+                                      col);
+    attach_edge(a, b, col);
+    attach_edge(b, c, col);
+    attach_edge(c, a, col);
 }
 
 // Each square of the grid is split into two triangles going clockwise at rest,
@@ -397,8 +389,6 @@ static void attach_triangle_facing(SDL_Point a, SDL_Point b, SDL_Point c) {
         a, b, c, cross(a, b, c) >= 0 ? data.cloak_in : data.cloak_out);
 }
 
-// Attaches the cloak's triangles to the player's sprite, row by row from top to
-// bottom.
 static void attach_cloak(void) {
     for (Uint8 r = 0; r < data.cloak_vert_segments; r++) {
         for (Uint8 c = 0; c < data.cloak_horiz_segments; c++) {
@@ -449,12 +439,8 @@ static void attach_hair(void) {
     }
 }
 
-// Lines attached later are drawn over the earlier ones, all right behind the
-// sprite. When every point of the hair after its pin is above it, the hair is
-// up over the player's back so it's drawn over the cloak, otherwise it hangs
-// behind the cloak.
 static void attach_props(void) {
-    SPRITES_clear_attached_lines(state.sprite_id);
+    SPRITES_clear_attached_shapes(state.sprite_id);
     prop_point pin = (prop_point){0};
     PHYSICS_get_prop_point(state.hair[0], &pin);
     bool hair_up = true;
@@ -545,9 +531,9 @@ static void load_cloak_pins(dynarr* parsed) {
     }
 }
 
-void PLAYER_SPRITE_start(void) {
+void PLAYER_PRESENTATION_start(void) {
     char csv[] = {
-#embed PLAYER_SPRITE_CSV_PATH suffix(, '\0')
+#embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
     };
 
     dynarr parsed = CSV_parse(csv);
@@ -572,10 +558,10 @@ void PLAYER_SPRITE_start(void) {
         }
         if (SDL_strcmp(key, "hair_col") == 0) {
             dynarr* row = (dynarr*)parsed.at[i];
-            data.hair_col.r = SDL_strtol((char*)row->at[1], NULL, 10);
-            data.hair_col.g = SDL_strtol((char*)row->at[2], NULL, 10);
-            data.hair_col.b = SDL_strtol((char*)row->at[3], NULL, 10);
-            data.hair_col.a = SDL_strtol((char*)row->at[4], NULL, 10);
+            data.hair_col.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
+            data.hair_col.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
+            data.hair_col.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
+            data.hair_col.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
         }
         if (SDL_strcmp(key, "hair_gravity") == 0) {
             char* val = (char*)((dynarr*)parsed.at[i])->at[1];
@@ -607,17 +593,17 @@ void PLAYER_SPRITE_start(void) {
         }
         if (SDL_strcmp(key, "cloak_in_col") == 0) {
             dynarr* row = (dynarr*)parsed.at[i];
-            data.cloak_in.r = SDL_strtol((char*)row->at[1], NULL, 10);
-            data.cloak_in.g = SDL_strtol((char*)row->at[2], NULL, 10);
-            data.cloak_in.b = SDL_strtol((char*)row->at[3], NULL, 10);
-            data.cloak_in.a = SDL_strtol((char*)row->at[4], NULL, 10);
+            data.cloak_in.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
+            data.cloak_in.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
+            data.cloak_in.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
+            data.cloak_in.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
         }
         if (SDL_strcmp(key, "cloak_out_col") == 0) {
             dynarr* row = (dynarr*)parsed.at[i];
-            data.cloak_out.r = SDL_strtol((char*)row->at[1], NULL, 10);
-            data.cloak_out.g = SDL_strtol((char*)row->at[2], NULL, 10);
-            data.cloak_out.b = SDL_strtol((char*)row->at[3], NULL, 10);
-            data.cloak_out.a = SDL_strtol((char*)row->at[4], NULL, 10);
+            data.cloak_out.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
+            data.cloak_out.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
+            data.cloak_out.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
+            data.cloak_out.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
         }
         if (SDL_strcmp(key, "cloak_horiz_segments") == 0) {
             char* val = (char*)((dynarr*)parsed.at[i])->at[1];
@@ -805,7 +791,7 @@ void PLAYER_SPRITE_start(void) {
                 "Player sprite data loaded successfully.");
 }
 
-void PLAYER_SPRITE_create(player_state player) {
+void PLAYER_PRESENTATION_create(player_state player) {
     SPRITES_new_sprite(
         (sprite){
             .coords_x = data.coords_x,
@@ -826,7 +812,7 @@ void PLAYER_SPRITE_create(player_state player) {
     state_changed(state.state);
 }
 
-void PLAYER_SPRITE_destroy(void) {
+void PLAYER_PRESENTATION_destroy(void) {
     SPRITES_del_sprite(state.sprite_id);
     delete_hair();
     delete_cloak();
@@ -835,7 +821,7 @@ void PLAYER_SPRITE_destroy(void) {
 
 
 
-void PLAYER_SPRITE_update(player_state player) {
+void PLAYER_PRESENTATION_update(player_state player) {
     if (!state.created) return;
 
     sprite s = (sprite){0};

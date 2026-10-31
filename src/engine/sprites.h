@@ -96,20 +96,38 @@ int SPRITES_edit_sprite(size_t sprite_id, sprite data);
 
 
 
-// Attaches a line from `(x1,y1)` to `(x2,y2)` in world pixels with color `col`
-// to the sprite at `sprite_id`. Attached lines are drawn in the order they were
-// attached right before the sprite on its z_index, so nothing else is drawn
-// between them, but only while the sprite itself is on screen. Returns `0` if
-// everything went fine, `1` if `sprite_id` pointed to an empty slot or `3` if
-// `sprite_id` is outside the buffer's range.
-int SPRITES_attach_line_to_sprite(
-    size_t sprite_id, float x1, float y1, float x2, float y2, SDL_Color col);
+// Attached lines and triangles are drawn in the order they were attached, all
+// right before the sprite on its z_index, so nothing else is drawn between
+// them, but only while the sprite itself is on screen. Coords are in world
+// pixels and colors are sRGB from `0.0` to `1.0`, which can go beyond `1.0` to
+// make them bloom.
 
-// Removes all lines attached to the sprite at `sprite_id`, keeping their memory
-// allocated so attaching them again is quick. Returns `0` if everything went
-// fine, `1` if `sprite_id` pointed to an empty slot or `3` if `sprite_id` is
-// outside the buffer's range.
-int SPRITES_clear_attached_lines(size_t sprite_id);
+// Attaches the line from `(x1,y1)` to `(x2,y2)` with `col` to the
+// sprite at `sprite_id`, drawn pixel by pixel with Bresenham's line algorithm,
+// both ends included. Returns `0` if everything went fine, `1` if `sprite_id`
+// pointed to an empty slot or `3` if `sprite_id` is outside the buffer's range.
+int SPRITES_attach_line_to_sprite(
+    size_t sprite_id, float x1, float y1, float x2, float y2, SDL_FColor col);
+
+// Attaches the triangle `(x1,y1),(x2,y2),(x3,y3)` filled with `col` to the
+// sprite at `sprite_id`. Only pixels whose centers are inside it are
+// drawn, so a pixel's center is half a pixel past its integer coords. Returns
+// `0` if everything went fine, `1` if `sprite_id` pointed to an empty slot or
+// `3` if `sprite_id` is outside the buffer's range.
+int SPRITES_attach_triangle_to_sprite(size_t sprite_id,
+                                      float x1,
+                                      float y1,
+                                      float x2,
+                                      float y2,
+                                      float x3,
+                                      float y3,
+                                      SDL_FColor col);
+
+// Removes all lines and triangles attached to the sprite at `sprite_id`,
+// keeping their memory allocated so attaching them again is quick. Returns `0`
+// if everything went fine, `1` if `sprite_id` pointed to an empty slot or `3`
+// if `sprite_id` is outside the buffer's range.
+int SPRITES_clear_attached_shapes(size_t sprite_id);
 
 
 

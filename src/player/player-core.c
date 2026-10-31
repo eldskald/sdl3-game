@@ -46,12 +46,12 @@ void PLAYER_create(double at_x, double at_y) {
         &state.body_id);
     state.created = true;
     state.facing = 1;
-    PLAYER_SPRITE_create(state);
+    PLAYER_PRESENTATION_create(state);
 }
 
 void PLAYER_destroy(void) {
     PHYSICS_del_body(state.body_id);
-    PLAYER_SPRITE_destroy();
+    PLAYER_PRESENTATION_destroy();
     state.created = false;
 }
 
@@ -190,7 +190,7 @@ void PLAYER_update(void) {
     if (dir && dir != state.facing) state.facing = dir;
 
     update_body(dir);
-    PLAYER_SPRITE_update(state);
+    PLAYER_PRESENTATION_update(state);
 }
 
 
@@ -249,5 +249,5 @@ static void load_base_data_from_csv(void) {
 
 void PLAYER_start(void) {
     load_base_data_from_csv();
-    PLAYER_SPRITE_start();
+    PLAYER_PRESENTATION_start();
 }

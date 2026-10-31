@@ -5,7 +5,7 @@
 #include "engine/renderer.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
-#include "stubs.h"
+#include "stubbed/graphics.h"
 #include "tests.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -37,6 +37,80 @@ static void record_anim_finished(size_t sprite_id, size_t arg) {
 static void tick(void) {
     SPRITES_update();
     RENDERER_update();
+}
+
+// A sprite decoded back from its 6 vertices, in pixels on the spritesheet and
+// on the screen.
+typedef struct {
+    SDL_FRect src;
+    SDL_FRect dst;
+    SDL_FlipMode flip_mode;
+} drawn_sprite;
+
+typedef struct {
+    SDL_FPoint a, b, c;
+} drawn_triangle;
+
+// Reads the vertices drawn in order. Each `read_...()` decodes what's at `at`
+// and moves past it, reading zeroes past the end, so checking `at == len`
+// after reading everything expected checks nothing else was drawn.
+typedef struct {
+    graphics_vertex* v;
+    graphics_texture* texture;
+    size_t len, at;
+} vertex_reader;
+
+static vertex_reader read_vertices(void) {
+    vertex_reader r = {0};
+    r.len = get_GRAPHICS_vertices(&r.v, &r.texture);
+    return r;
+}
+
+static graphics_vertex* read(vertex_reader* r, size_t n) {
+    static graphics_vertex zeroes[6] = {0};
+    graphics_vertex* v = r->at + n <= r->len ? &r->v[r->at] : zeroes;
+    r->at += n;
+    return v;
+}
+
+static drawn_sprite read_sprite(vertex_reader* r) {
+    graphics_vertex* v = read(r, 6);
+    float w = r->texture ? r->texture->w : 0.0f;
+    float h = r->texture ? r->texture->h : 0.0f;
+    float u0 = v[0].u * w, v0 = v[0].v * h, u1 = v[4].u * w, v1 = v[4].v * h;
+    return (drawn_sprite){
+        .src = {SDL_roundf(SDL_min(u0, u1)),
+                SDL_roundf(SDL_min(v0, v1)),
+                SDL_roundf(SDL_fabsf(u1 - u0)),
+                SDL_roundf(SDL_fabsf(v1 - v0))},
+        .dst = {v[0].x, v[0].y, v[4].x - v[0].x, v[4].y - v[0].y},
+        .flip_mode = (u0 > u1 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE) |
+                     (v0 > v1 ? SDL_FLIP_VERTICAL : SDL_FLIP_NONE),
+    };
+}
+
+// Reads a pixel of a line, returning its top left.
+static SDL_FPoint read_pixel(vertex_reader* r) {
+    graphics_vertex* v = read(r, 6);
+    return (SDL_FPoint){v[0].x, v[0].y};
+}
+
+static drawn_triangle read_triangle(vertex_reader* r) {
+    graphics_vertex* v = read(r, 3);
+    return (drawn_triangle){
+        {v[0].x, v[0].y}, {v[1].x, v[1].y}, {v[2].x, v[2].y}};
+}
+
+// Decodes every vertex drawn as sprites, for when only sprites are drawn.
+// Points `ptr` to them and returns how many there are.
+static size_t get_drawn_sprites(drawn_sprite** ptr) {
+    static drawn_sprite sprites[SUB_CALLS_MAX] = {0};
+    vertex_reader r = read_vertices();
+    size_t n = 0;
+    while (r.at < r.len && n < SUB_CALLS_MAX)
+        sprites[n++] = read_sprite(&r);
+    *ptr = sprites;
+    return n;
 }
 
 void test_drawing(void) {
@@ -102,8 +176,8 @@ void test_drawing(void) {
 
 
     tick();
-    SDL_RenderTexture_call* calls = NULL;
-    size_t calls_n = get_SDL_RenderTexture_calls(&calls);
+    drawn_sprite* calls = NULL;
+    size_t calls_n = get_drawn_sprites(&calls);
     expect("Added 4 sprites, should draw them correctly...",
            37,
            (bool[]){
@@ -160,7 +234,7 @@ void test_drawing(void) {
                             .flip_mode = SDL_FLIP_NONE,
                         });
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Updated a sprite, checking calls...",
            37,
            (bool[]){
@@ -207,7 +281,7 @@ void test_drawing(void) {
 
     SPRITES_del_sprite(id0);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Deleted a sprite, checking calls...",
            28,
            (bool[]){
@@ -280,7 +354,7 @@ void test_drawing(void) {
         },
         &partial);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Added 2 sprites just off screen and 1 partially on screen, should "
            "only draw the partial one...",
            10,
@@ -310,7 +384,7 @@ void test_drawing(void) {
                    1,
                    &data);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Added a tile on the tilemap, checking calls...",
            37,
            (bool[]){
@@ -362,7 +436,7 @@ void test_drawing(void) {
                    1,
                    &platform);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Added a platform tile next to the tile, checking if it's drawn "
            "before the sprites and the tile after them...",
            9,
@@ -398,7 +472,7 @@ void test_drawing(void) {
     TILEMAP_set_at(cam_tx + 5, cam_ty + screen_th + 1, 1, 1, &data);
     TILEMAP_set_at(cam_tx + 6, cam_ty + screen_th, 1, 1, &data);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Added 4 tiles just off screen and 1 partially on screen, should "
            "only draw the partial one...",
            10,
@@ -427,8 +501,8 @@ void test_drawing(void) {
     FLUIDS_set_at(cam_cx + 2, cam_cy + 2, 1, 1, fluid_water, 1.0f);
     FLUIDS_update();
     tick();
-    SDL_RenderFillRect_call* rect_calls = NULL;
-    size_t rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
+    GRAPHICS_fill_rect_call* rect_calls = NULL;
+    size_t rect_calls_n = get_GRAPHICS_fill_rect_calls(&rect_calls);
     SDL_Rect sim = FLUIDS_get_simulated_rect();
     // The tile set earlier at (3,2) is drawn as wall cells after the water. The
     // camera's center is at tile (120,61.25), so the simulated rect, centered
@@ -475,7 +549,7 @@ void test_drawing(void) {
     FLUIDS_set_at(cam_cx - 2, cam_cy + 2, 1, 1, fluid_water, 1.0f);
     FLUIDS_update();
     tick();
-    rect_calls_n = get_SDL_RenderFillRect_calls(&rect_calls);
+    rect_calls_n = get_GRAPHICS_fill_rect_calls(&rect_calls);
     expect("Added 4 cells of water just outside the ripples area and 1 off "
            "screen inside it, should only draw the one inside it...",
            9,
@@ -504,8 +578,8 @@ void test_drawing(void) {
         added = false;
     FLUIDS_update();
     tick();
-    SDL_RenderPoint_call* point_calls = NULL;
-    size_t point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
+    GRAPHICS_draw_point_call* point_calls = NULL;
+    size_t point_calls_n = get_GRAPHICS_draw_point_calls(&point_calls);
     expect("Added a particle of water and one of lava, checking calls...",
            12,
            (bool[]){
@@ -539,7 +613,7 @@ void test_drawing(void) {
         added = false;
     FLUIDS_update();
     tick();
-    point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
+    point_calls_n = get_GRAPHICS_draw_point_calls(&point_calls);
     expect("Added 4 particles of lava just off screen and 1 partially on "
            "screen, should only draw the partial one...",
            12,
@@ -588,7 +662,7 @@ void test_drawing(void) {
             }});
 
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Reset the renderer, added a new sprite with a non-looping "
            "animation, checking calls...",
            9,
@@ -607,7 +681,7 @@ void test_drawing(void) {
         tick();
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect(
         "Ticked enough to get to the next animation frame, checking calls...",
         9,
@@ -626,7 +700,7 @@ void test_drawing(void) {
         tick();
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect(
         "Ticked enough to get to the last animation frame, checking calls...",
         9,
@@ -645,7 +719,7 @@ void test_drawing(void) {
         tick();
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Advanced to the second to last tick to check that no animation "
            "finished function was called and the calls...",
            10,
@@ -662,7 +736,7 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Ticked enough to get to the end of the animation, checking calls "
            "and if the animation finished function was called once with the "
            "sprite's ID and arg...",
@@ -682,7 +756,7 @@ void test_drawing(void) {
     clear_stubbed_calls();
 
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("One more tick to see if it remains on the same frame and no end of "
            "animation finished function call, checking calls...",
            10,
@@ -708,7 +782,7 @@ void test_drawing(void) {
                 (keyframe){.coords_x = 3, .coords_y = 0, .duration = 0.25f},
             }});
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Play looping animation, checking initial calls...",
            9,
            (bool[]){calls_n == 1,
@@ -726,7 +800,7 @@ void test_drawing(void) {
         tick();
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect(
         "Ticked enough to get to the next animation frame, checking calls...",
         9,
@@ -745,7 +819,7 @@ void test_drawing(void) {
         tick();
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect(
         "Ticked enough to get to the last animation frame, checking calls...",
         9,
@@ -764,7 +838,7 @@ void test_drawing(void) {
         tick();
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Ticked enough to loop back to the first, checking calls and if no "
            "animation finished function was called...",
            10,
@@ -785,7 +859,7 @@ void test_drawing(void) {
         tick();
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Stopped animation and ticked enough to get to what would be the "
            "next frame, checking calls...",
            9,
@@ -858,7 +932,7 @@ void test_drawing(void) {
     sprite edge_sprite = (sprite){0};
     SPRITES_get_sprite(out_id, &out_sprite);
     SPRITES_get_sprite(edge_id, &edge_sprite);
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Animated a sprite outside the simulation space and another "
            "partially inside it, both off screen, and ticked once, checking if "
            "only the one partially inside is animating and neither was "
@@ -876,98 +950,121 @@ void test_drawing(void) {
     // The sprite at the camera's top left is still there on z_index 0
     SDL_FColor white = (SDL_FColor){1.0f, 1.0f, 1.0f, 1.0f};
     RENDERER_draw_from_spritesheet(10, 10, 0, 0, 1, 1, 0, white, 3);
-    RENDERER_draw_line(1, 2, 3, 4, (SDL_Color){COL_WHITE}, -5);
+    RENDERER_draw_line(1, 2, 3, 4, white, -5);
     RENDERER_draw_from_spritesheet(20, 20, 0, 0, 1, 1, 0, white, 3);
     RENDERER_draw_from_spritesheet(30, 30, 0, 0, 1, 1, 0, white, -5);
     RENDERER_draw_from_spritesheet(
         40, 40, 0, 0, 1, 1, 0, white, FLUIDS_Z_INDEX);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
-    SDL_RenderLine_call* line_calls = NULL;
-    size_t line_calls_n = get_SDL_RenderLine_calls(&line_calls);
+    vertex_reader r = read_vertices();
+    SDL_FPoint line0 = read_pixel(&r);
+    SDL_FPoint line1 = read_pixel(&r);
+    SDL_FPoint line2 = read_pixel(&r);
+    float dst_x[5] = {0};
+    for (int i = 0; i < 5; i++)
+        dst_x[i] = read_sprite(&r).dst.x;
     expect("Queued draw calls on several z_indexes, checking if they're drawn "
-           "in z_index order and in queue order within the same z_index...",
-           9,
+           "in z_index order and in queue order within the same z_index, the "
+           "line pixel by pixel...",
+           12,
            (bool[]){
-               calls_n == 5,
-               calls[0].dst.x == 30,
-               calls[1].dst.x == 0,
-               calls[2].dst.x == 10,
-               calls[3].dst.x == 20,
-               calls[4].dst.x == 40,
-               line_calls_n == 1,
-               line_calls[0].x1 == 1,
-               line_calls[0].y2 == 4,
+               r.at == r.len,
+               line0.x == 1,
+               line0.y == 2,
+               line1.x == 2,
+               line1.y == 3,
+               line2.x == 3,
+               line2.y == 4,
+               dst_x[0] == 30,
+               dst_x[1] == 0,
+               dst_x[2] == 10,
+               dst_x[3] == 20,
+               dst_x[4] == 40,
            });
     clear_stubbed_calls();
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
+    calls_n = get_drawn_sprites(&calls);
     expect("Rendered again, checking if the queues were emptied...",
            1,
            (bool[]){calls_n == 1});
     clear_stubbed_calls();
 
-    RENDERER_draw_line(7, 9, 7, 9, (SDL_Color){COL_WHITE}, 0);
+    RENDERER_draw_line(7, 9, 7, 9, white, 0);
     tick();
-    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
-    point_calls_n = get_SDL_RenderPoint_calls(&point_calls);
+    r = read_vertices();
+    SDL_FPoint pixel = read_pixel(&r);
+    read_sprite(&r);
     expect("Queued a line from a point to itself, checking if it's drawn as a "
-           "point...",
+           "single pixel...",
+           3,
+           (bool[]){
+               r.at == r.len,
+               pixel.x == 7,
+               pixel.y == 9,
+           });
+    clear_stubbed_calls();
+
+    int attach_r0 = SPRITES_attach_triangle_to_sprite(id0,
+                                                      CAM_X + 1,
+                                                      CAM_Y + 2,
+                                                      CAM_X + 3,
+                                                      CAM_Y + 4,
+                                                      CAM_X + 1,
+                                                      CAM_Y + 4,
+                                                      white);
+    int attach_r1 = SPRITES_attach_triangle_to_sprite(id0,
+                                                      CAM_X + 5,
+                                                      CAM_Y + 6,
+                                                      CAM_X + 7,
+                                                      CAM_Y + 8,
+                                                      CAM_X + 5,
+                                                      CAM_Y + 8,
+                                                      white);
+    int attach_r2 =
+        SPRITES_attach_triangle_to_sprite(id1, 0, 0, 1, 1, 0, 1, white);
+    int attach_r3 =
+        SPRITES_attach_triangle_to_sprite(1 << 20, 0, 0, 1, 1, 0, 1, white);
+    int attach_r4 = SPRITES_attach_line_to_sprite(
+        id0, CAM_X + 2, CAM_Y + 3, CAM_X + 6, CAM_Y + 7, white);
+    int attach_r5 = SPRITES_attach_line_to_sprite(id1, 0, 0, 1, 1, white);
+    int attach_r6 = SPRITES_attach_line_to_sprite(1 << 20, 0, 0, 1, 1, white);
+    tick();
+    r = read_vertices();
+    drawn_triangle tri0 = read_triangle(&r);
+    drawn_triangle tri1 = read_triangle(&r);
+    SDL_FPoint line_from = read_pixel(&r);
+    for (int i = 0; i < 3; i++)
+        read_pixel(&r);
+    SDL_FPoint line_to = read_pixel(&r);
+    read_sprite(&r);
+    expect(
+        "Attached 2 triangles and a line to a sprite, checking if they're "
+        "drawn in order with it and the error codes...",
+        22,
+        (bool[]){
+            attach_r0 == 0,   attach_r1 == 0,   attach_r2 == 1, attach_r3 == 3,
+            attach_r4 == 0,   attach_r5 == 1,   attach_r6 == 3, r.at == r.len,
+            line_from.x == 2, line_from.y == 3, line_to.x == 6, line_to.y == 7,
+            tri0.a.x == 1,    tri0.a.y == 2,    tri0.b.x == 3,  tri0.b.y == 4,
+            tri0.c.x == 1,    tri0.c.y == 4,    tri1.a.x == 5,  tri1.a.y == 6,
+            tri1.b.x == 7,    tri1.c.y == 8,
+        });
+    clear_stubbed_calls();
+
+    int clear_r0 = SPRITES_clear_attached_shapes(id0);
+    int clear_r1 = SPRITES_clear_attached_shapes(id1);
+    int clear_r2 = SPRITES_clear_attached_shapes(1 << 20);
+    tick();
+    r = read_vertices();
+    read_sprite(&r);
+    expect("Cleared the sprite's attached lines and triangles, checking if "
+           "only the sprite is drawn and the error codes...",
            4,
-           (bool[]){
-               line_calls_n == 0,
-               point_calls_n == 1,
-               point_calls[0].x == 7,
-               point_calls[0].y == 9,
-           });
-    clear_stubbed_calls();
-
-    SDL_Color red = (SDL_Color){255, 0, 0, 255};
-    int attach_r0 = SPRITES_attach_line_to_sprite(
-        id0, CAM_X + 1, CAM_Y + 2, CAM_X + 3, CAM_Y + 4, red);
-    int attach_r1 = SPRITES_attach_line_to_sprite(
-        id0, CAM_X + 5, CAM_Y + 6, CAM_X + 7, CAM_Y + 8, red);
-    int attach_r2 = SPRITES_attach_line_to_sprite(id1, 0, 0, 1, 1, red);
-    int attach_r3 = SPRITES_attach_line_to_sprite(1 << 20, 0, 0, 1, 1, red);
-    tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
-    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
-    expect("Attached 2 lines to a sprite, checking if they're drawn in order "
-           "with it and the error codes...",
-           14,
-           (bool[]){
-               attach_r0 == 0,
-               attach_r1 == 0,
-               attach_r2 == 1,
-               attach_r3 == 3,
-               calls_n == 1,
-               line_calls_n == 2,
-               line_calls[0].x1 == 1,
-               line_calls[0].y1 == 2,
-               line_calls[0].x2 == 3,
-               line_calls[0].y2 == 4,
-               line_calls[1].x1 == 5,
-               line_calls[1].y1 == 6,
-               line_calls[1].x2 == 7,
-               line_calls[1].y2 == 8,
-           });
-    clear_stubbed_calls();
-
-    int clear_r0 = SPRITES_clear_attached_lines(id0);
-    int clear_r1 = SPRITES_clear_attached_lines(id1);
-    int clear_r2 = SPRITES_clear_attached_lines(1 << 20);
-    tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
-    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
-    expect("Cleared the sprite's attached lines, checking if only the sprite "
-           "is drawn and the error codes...",
-           5,
            (bool[]){
                clear_r0 == 0,
                clear_r1 == 1,
                clear_r2 == 3,
-               calls_n == 1,
-               line_calls_n == 0,
+               r.at == r.len,
            });
     clear_stubbed_calls();
 
@@ -982,33 +1079,38 @@ void test_drawing(void) {
             .coords_h = 1,
         },
         &off_id);
-    SPRITES_attach_line_to_sprite(off_id,
-                                  CAM_X - 3 * SPRITESHEET_CELL_X,
-                                  CAM_Y + 44,
-                                  CAM_X + 10,
-                                  CAM_Y + 44,
-                                  red);
+    SPRITES_attach_triangle_to_sprite(off_id,
+                                      CAM_X - 3 * SPRITESHEET_CELL_X,
+                                      CAM_Y + 44,
+                                      CAM_X + 10,
+                                      CAM_Y + 44,
+                                      CAM_X + 10,
+                                      CAM_Y + 46,
+                                      white);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
-    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
-    expect("Added a sprite off screen with an attached line reaching on "
+    r = read_vertices();
+    read_sprite(&r);
+    drawn_triangle tri = read_triangle(&r);
+    drawn_sprite off = read_sprite(&r);
+    expect("Added a sprite off screen with an attached triangle reaching on "
            "screen, checking if both are drawn...",
            4,
            (bool[]){
-               calls_n == 2,
-               line_calls_n == 1,
-               line_calls[0].x2 == 10,
-               line_calls[0].y2 == 44,
+               r.at == r.len,
+               tri.b.x == 10,
+               tri.c.y == 46,
+               off.dst.x == -4 * SPRITESHEET_CELL_X,
            });
     clear_stubbed_calls();
 
-    SPRITES_clear_attached_lines(off_id);
+    SPRITES_clear_attached_shapes(off_id);
     tick();
-    calls_n = get_SDL_RenderTexture_calls(&calls);
-    line_calls_n = get_SDL_RenderLine_calls(&line_calls);
-    expect("Cleared its attached line, checking if neither is drawn anymore...",
-           2,
-           (bool[]){calls_n == 1, line_calls_n == 0});
+    r = read_vertices();
+    read_sprite(&r);
+    expect("Cleared its attached triangle, checking if neither is drawn "
+           "anymore...",
+           1,
+           (bool[]){r.at == r.len});
     clear_stubbed_calls();
     SPRITES_del_sprite(off_id);
 
@@ -1022,13 +1124,19 @@ void test_drawing(void) {
             .coords_h = 1,
         },
         &out_id);
-    SPRITES_attach_line_to_sprite(
-        out_id, space_r + SPRITESHEET_CELL_X, CAM_Y, space_r - 1, CAM_Y, red);
+    SPRITES_attach_triangle_to_sprite(out_id,
+                                      space_r + SPRITESHEET_CELL_X,
+                                      CAM_Y,
+                                      space_r - 1,
+                                      CAM_Y,
+                                      space_r - 1,
+                                      CAM_Y + 1,
+                                      white);
     SPRITES_play_anim(out_id, short_anim);
     tick();
     SPRITES_get_sprite(out_id, &out_sprite);
-    expect("Added a sprite outside the simulation space with an attached line "
-           "reaching inside it, checking if it's animating...",
+    expect("Added a sprite outside the simulation space with an attached "
+           "triangle reaching inside it, checking if it's animating...",
            1,
            (bool[]){out_sprite.coords_x == 1});
     clear_stubbed_calls();

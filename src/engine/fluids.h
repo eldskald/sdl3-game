@@ -1,6 +1,7 @@
 #pragma once
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/graphics.h"
 #include <SDL3/SDL.h>
 
 // Fluid types, for interactions etc.
@@ -21,25 +22,28 @@ typedef struct {
     bool solid;
 } fluid_cell;
 
-// Textures and render states the fluids are drawn with, owned by `renderer.c`.
-// `texture` is what the fluid cells are drawn into and `render_states[i]` draws
-// it with the fluids shader, sampling `ripples[i]` for the ripples. Ripples are
-// ticked by drawing one of `ripples` into the other with `ripples_state`, which
-// samples `texture` to keep them inside the fluids.
+// Textures and shaders the fluids are drawn with, owned by `renderer.c`.
+// `texture` is what the fluid cells are drawn into, and it's drawn with
+// `shader`, sampling the latest of `ripples` for the ripples and `pre_fluids`
+// for everything drawn before the fluids. Ripples are ticked by drawing one of
+// `ripples` into the other with `ripples_shader`, which samples `texture` to
+// keep them inside the fluids.
 //
 // ```
 // struct fluids_canvas {
-//     SDL_Texture* texture;
-//     SDL_Texture* ripples[2];
-//     SDL_GPURenderState* ripples_state;
-//     SDL_GPURenderState* render_states[2];
+//     graphics_texture* texture;
+//     graphics_texture* ripples[2];
+//     graphics_texture* pre_fluids;
+//     SDL_GPUShader* shader;
+//     SDL_GPUShader* ripples_shader;
 // };
 // ```
 typedef struct {
-    SDL_Texture* texture;
-    SDL_Texture* ripples[2];
-    SDL_GPURenderState* ripples_state;
-    SDL_GPURenderState* render_states[2];
+    graphics_texture* texture;
+    graphics_texture* ripples[2];
+    graphics_texture* pre_fluids;
+    SDL_GPUShader* shader;
+    SDL_GPUShader* ripples_shader;
 } fluids_canvas;
 
 
@@ -98,19 +102,24 @@ int FLUIDS_add_particle(
 
 // Ticks the simulation on the simulated rect, after centering it on the camera.
 // Ripples are ticked as many times as this was called on the next
-// `FLUIDS_draw()`, since they're simulated on the GPU. Call on update in any
+// `FLUIDS_prepare()`, since they're simulated on the GPU. Call on update in any
 // thread.
 void FLUIDS_update(void);
 
-// Draws the fluid cells around the screen into `canvas->texture`, ticks the
-// ripples as many times as `FLUIDS_update()` was called since the last draw, up
-// to `FLUIDS_RIPPLES_MAX_TICKS`, then draws the part of it on screen on the
-// current render target with the fluids shader. `canvas->texture` and
-// `canvas->ripples` must be `FLUIDS_RIPPLES_TEXTURE_RES_FACTOR` times the
-// screen's size, covering that much of the world centered on
-// the camera. Everything is drawn relative to the camera. Call on renderer
-// update.
-void FLUIDS_draw(SDL_Renderer* renderer, fluids_canvas* canvas);
+// Draws the fluid cells around the screen into `canvas->texture` and ticks the
+// ripples as many times as `FLUIDS_update()` was called since the last time,
+// up to `FLUIDS_RIPPLES_MAX_TICKS`. `canvas->texture` and `canvas->ripples`
+// must be `FLUIDS_RIPPLES_TEXTURE_RES_FACTOR` times the screen's size, covering
+// that much of the world centered on the camera. It leaves the render target on
+// `canvas->texture`, so call it before setting the target `FLUIDS_draw()` draws
+// on. Call on renderer update.
+void FLUIDS_prepare(fluids_canvas* canvas);
+
+// Draws the part of `canvas->texture` on screen, as `FLUIDS_prepare()` left
+// it, on the whole current render target with the fluids shader, covering
+// everything on it, then the fluid particles over it. Everything is drawn
+// relative to the camera. Call on renderer update, after `FLUIDS_prepare()`.
+void FLUIDS_draw(fluids_canvas* canvas);
 
 // Gets the rect being simulated, in fluid cell coords. It's the simulation
 // space from `CAMERA_get_simulation_rect()`, updated on each `FLUIDS_update()`.

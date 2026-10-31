@@ -16,32 +16,45 @@
 // full, we double its size like a dynamic array but hopefully it shouldn't need
 // to.
 //
-// Its attached lines are split across three dynarrs, since each slot only fits
-// 8 bytes: `lines_from` has each line's `x1,y1` packed together, `lines_to` its
-// `x2,y2` and `lines_col` its color. `lines_rect` is the rect bounding all its
-// attached lines in world pixels, only meaningful while it has any, and it gets
-// expanded each time a line is attached.
+// A line or triangle attached to a sprite, in world pixels. Lines only use
+// `x1,y1` and `x2,y2`.
+//
+// ```
+// struct attached_shape {
+//     attached_shape_type type; // attached_shape_line, attached_shape_triangle
+//     float x1, y1, x2, y2, x3, y3;
+//     SDL_FColor col;
+// };
+// ```
+typedef enum {
+    attached_shape_line,
+    attached_shape_triangle,
+} attached_shape_type;
+
+typedef struct {
+    attached_shape_type type;
+    float x1, y1, x2, y2, x3, y3;
+    SDL_FColor col;
+} attached_shape;
+
+// Its attached lines and triangles are on `shapes`, in the order they were
+// attached. `shapes_rect` is the rect bounding all of them in world pixels,
+// only meaningful while it has any, and it gets expanded each time one is
+// attached.
 typedef struct {
     sprite sprite;
     animation anim;
     double anim_time;
     bool anim_playing;
-    dynarr lines_from;
-    dynarr lines_to;
-    dynarr lines_col;
-    SDL_FRect lines_rect;
+    attached_shape* shapes;
+    size_t shapes_len, shapes_cap;
+    SDL_FRect shapes_rect;
 } sprite_data;
 
-// A line attached to a sprite, in world pixels.
-typedef struct {
-    float x1, y1, x2, y2;
-    SDL_Color col;
-} attached_line;
-
 // A sprite ready to be drawn, `x,y` is in world pixels so the camera is only
-// applied when drawing. Its attached lines are the `lines_len` ones starting at
-// `lines_start` on its frame's `lines`, and `rect` bounds both them and the
-// sprite, also in world pixels.
+// applied when drawing. Its attached lines and triangles are the `shapes_len`
+// ones starting at `shapes_start` on its frame's `shapes`, and `rect` bounds
+// both them and the sprite, also in world pixels.
 typedef struct {
     SDL_FRect rect;
     float x, y;
@@ -49,7 +62,7 @@ typedef struct {
     SDL_FlipMode flip_mode;
     SDL_FColor tint;
     Sint8 z_index;
-    size_t lines_start, lines_len;
+    size_t shapes_start, shapes_len;
 } sprite_draw;
 
 // What the update function saw of the sprites, for the draw function to queue
@@ -57,8 +70,8 @@ typedef struct {
 typedef struct {
     sprite_draw* draws;
     size_t len, cap;
-    attached_line* lines;
-    size_t lines_len, lines_cap;
+    attached_shape* shapes;
+    size_t shapes_len, shapes_cap;
 } sprite_frame;
 
 static sprite_data* sprites = NULL;
@@ -123,9 +136,7 @@ int SPRITES_del_sprite(size_t sprite_id) {
                     sprite_id);
         return 1;
     }
-    clear_dynarr(&sprites[sprite_id].lines_from);
-    clear_dynarr(&sprites[sprite_id].lines_to);
-    clear_dynarr(&sprites[sprite_id].lines_col);
+    SDL_free(sprites[sprite_id].shapes);
     sprites[sprite_id] = (sprite_data){0};
     return 0;
 }
@@ -180,83 +191,108 @@ int SPRITES_edit_sprite(size_t sprite_id, sprite data) {
 
 
 
-static void* pack_floats(float a, float b) {
-    float pair[2] = {a, b};
-    void* packed = NULL;
-    SDL_memcpy((void*)&packed, pair, sizeof(pair));
-    return packed;
-}
-
-static void unpack_floats(void* packed, float* a, float* b) {
-    float pair[2] = {0};
-    SDL_memcpy(pair, (void*)&packed, sizeof(pair));
-    *a = pair[0];
-    *b = pair[1];
-}
-
-int SPRITES_attach_line_to_sprite(
-    size_t sprite_id, float x1, float y1, float x2, float y2, SDL_Color col) {
+// Attaches `shape` to the sprite at `sprite_id`, expanding its `shapes_rect` by
+// the first `points` points of `shape`.
+static int attach_shape(size_t sprite_id, attached_shape shape, Uint8 points) {
     if (sprite_id >= sprites_size) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Tried to attach line to sprite_id=%lu but this is outside "
-                    "the buffer range",
+                    "Tried to attach shape to sprite_id=%lu but this is "
+                    "outside the buffer range",
                     sprite_id);
         return 3;
     }
     if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
-            "Tried to attach line to inexistent sprite at sprite_id=%lu",
+            "Tried to attach shape to inexistent sprite at sprite_id=%lu",
             sprite_id);
         return 1;
     }
 
     sprite_data* sd = &sprites[sprite_id];
-    SDL_FRect line = (SDL_FRect){
-        .x = SDL_min(x1, x2),
-        .y = SDL_min(y1, y2),
-        .w = SDL_fabsf(x2 - x1),
-        .h = SDL_fabsf(y2 - y1),
-    };
-    if (sd->lines_col.len == 0) {
-        sd->lines_rect = line;
-    } else {
-        float r = SDL_max(sd->lines_rect.x + sd->lines_rect.w, line.x + line.w);
-        float b = SDL_max(sd->lines_rect.y + sd->lines_rect.h, line.y + line.h);
-        sd->lines_rect.x = SDL_min(sd->lines_rect.x, line.x);
-        sd->lines_rect.y = SDL_min(sd->lines_rect.y, line.y);
-        sd->lines_rect.w = r - sd->lines_rect.x;
-        sd->lines_rect.h = b - sd->lines_rect.y;
+    float xs[3] = {shape.x1, shape.x2, shape.x3};
+    float ys[3] = {shape.y1, shape.y2, shape.y3};
+    float left = xs[0], top = ys[0], right = xs[0], bottom = ys[0];
+    for (Uint8 i = 1; i < points; i++) {
+        left = SDL_min(left, xs[i]);
+        top = SDL_min(top, ys[i]);
+        right = SDL_max(right, xs[i]);
+        bottom = SDL_max(bottom, ys[i]);
     }
+    if (sd->shapes_len > 0) {
+        SDL_FRect* r = &sd->shapes_rect;
+        left = SDL_min(left, r->x);
+        top = SDL_min(top, r->y);
+        right = SDL_max(right, r->x + r->w);
+        bottom = SDL_max(bottom, r->y + r->h);
+    }
+    sd->shapes_rect = (SDL_FRect){left, top, right - left, bottom - top};
 
-    void* packed_col = NULL;
-    SDL_memcpy((void*)&packed_col, &col, sizeof(col));
-    push_to_dynarr(pack_floats(x1, y1), &sprites[sprite_id].lines_from);
-    push_to_dynarr(pack_floats(x2, y2), &sprites[sprite_id].lines_to);
-    push_to_dynarr(packed_col, &sprites[sprite_id].lines_col);
+    if (sd->shapes_len == sd->shapes_cap) {
+        sd->shapes_cap =
+            sd->shapes_cap ? sd->shapes_cap << 1 : SPRITES_SHAPES_STARTING_CAP;
+        sd->shapes =
+            SDL_realloc(sd->shapes, sd->shapes_cap * sizeof(attached_shape));
+    }
+    sd->shapes[sd->shapes_len] = shape;
+    sd->shapes_len++;
     return 0;
 }
 
-int SPRITES_clear_attached_lines(size_t sprite_id) {
+int SPRITES_attach_line_to_sprite(
+    size_t sprite_id, float x1, float y1, float x2, float y2, SDL_FColor col) {
+    return attach_shape(sprite_id,
+                        (attached_shape){
+                            .type = attached_shape_line,
+                            .x1 = x1,
+                            .y1 = y1,
+                            .x2 = x2,
+                            .y2 = y2,
+                            .col = col,
+                        },
+                        2);
+}
+
+int SPRITES_attach_triangle_to_sprite(size_t sprite_id,
+                                      float x1,
+                                      float y1,
+                                      float x2,
+                                      float y2,
+                                      float x3,
+                                      float y3,
+                                      SDL_FColor col) {
+    return attach_shape(sprite_id,
+                        (attached_shape){
+                            .type = attached_shape_triangle,
+                            .x1 = x1,
+                            .y1 = y1,
+                            .x2 = x2,
+                            .y2 = y2,
+                            .x3 = x3,
+                            .y3 = y3,
+                            .col = col,
+                        },
+                        3);
+}
+
+int SPRITES_clear_attached_shapes(size_t sprite_id) {
     if (sprite_id >= sprites_size) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Tried to clear lines of sprite_id=%lu but this is outside "
-                    "the buffer range",
+                    "Tried to clear shapes of sprite_id=%lu but this is "
+                    "outside the buffer range",
                     sprite_id);
         return 3;
     }
     if (sprites[sprite_id].sprite.coords_w == 0) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
-            "Tried to clear lines of inexistent sprite at sprite_id=%lu",
+            "Tried to clear shapes of inexistent sprite at sprite_id=%lu",
             sprite_id);
         return 1;
     }
 
-    sprites[sprite_id].lines_from.len = 0;
-    sprites[sprite_id].lines_to.len = 0;
-    sprites[sprite_id].lines_col.len = 0;
-    sprites[sprite_id].lines_rect = (SDL_FRect){0};
+    sprites[sprite_id].shapes_len = 0;
+    sprites[sprite_id].shapes_rect = (SDL_FRect){0};
     return 0;
 }
 
@@ -271,9 +307,9 @@ void SPRITES_start(void) {
             .draws =
                 SDL_calloc(SPRITES_FRAME_STARTING_CAP, sizeof(sprite_draw)),
             .cap = SPRITES_FRAME_STARTING_CAP,
-            .lines = SDL_calloc(SPRITES_FRAME_STARTING_LINES_CAP,
-                                sizeof(attached_line)),
-            .lines_cap = SPRITES_FRAME_STARTING_LINES_CAP,
+            .shapes = SDL_calloc(SPRITES_FRAME_STARTING_SHAPES_CAP,
+                                 sizeof(attached_shape)),
+            .shapes_cap = SPRITES_FRAME_STARTING_SHAPES_CAP,
         };
     }
     back = 0;
@@ -328,7 +364,8 @@ int SPRITES_stop_anim(size_t sprite_id) {
     return 0;
 }
 
-// The rect bounding the sprite and its attached lines, in world pixels.
+// The rect bounding the sprite and its attached lines and triangles, in world
+// pixels.
 static SDL_FRect get_rect(sprite_data* sd) {
     SDL_FRect rect = (SDL_FRect){
         .x = sd->sprite.pos_x,
@@ -336,8 +373,8 @@ static SDL_FRect get_rect(sprite_data* sd) {
         .w = SPRITESHEET_CELL_X * sd->sprite.coords_w,
         .h = SPRITESHEET_CELL_Y * sd->sprite.coords_h,
     };
-    if (sd->lines_col.len == 0) return rect;
-    SDL_FRect l = sd->lines_rect;
+    if (sd->shapes_len == 0) return rect;
+    SDL_FRect l = sd->shapes_rect;
     float r = SDL_max(rect.x + rect.w, l.x + l.w);
     float b = SDL_max(rect.y + rect.h, l.y + l.h);
     rect.x = SDL_min(rect.x, l.x);
@@ -348,7 +385,7 @@ static SDL_FRect get_rect(sprite_data* sd) {
 }
 
 // Sprites are simulated when any part of their rect, which includes their
-// attached lines, is within `space`, in tiles.
+// attached lines and triangles, is within `space`, in tiles.
 static bool is_simulated(SDL_FRect rect, SDL_Rect space) {
     return rect.x + rect.w > space.x * SPRITESHEET_CELL_X &&
            rect.x < (space.x + space.w) * SPRITESHEET_CELL_X &&
@@ -391,18 +428,20 @@ static void push_draw(sprite_frame* f, sprite_draw d) {
     f->len++;
 }
 
-static void push_line(sprite_frame* f, attached_line l) {
-    if (f->lines_len == f->lines_cap) {
-        f->lines_cap = f->lines_cap << 1;
-        f->lines = SDL_realloc(f->lines, f->lines_cap * sizeof(attached_line));
+static void push_shapes(sprite_frame* f, attached_shape* t, size_t n) {
+    if (f->shapes_len + n > f->shapes_cap) {
+        while (f->shapes_len + n > f->shapes_cap)
+            f->shapes_cap = f->shapes_cap << 1;
+        f->shapes =
+            SDL_realloc(f->shapes, f->shapes_cap * sizeof(attached_shape));
     }
-    f->lines[f->lines_len] = l;
-    f->lines_len++;
+    SDL_memcpy(&f->shapes[f->shapes_len], t, n * sizeof(*t));
+    f->shapes_len += n;
 }
 
 // Adds the sprite to `f` if it's near the camera. The margin is because the
 // camera may move until the frame gets drawn. Its rect includes its attached
-// lines, so a sprite off screen still gets added if any of them are on it.
+// triangles, so a sprite off screen still gets added if any of them are on it.
 static void
 add_to_frame(sprite_frame* f, sprite_data* sd, SDL_FRect rect, SDL_FRect cam) {
     sprite s = sd->sprite;
@@ -412,14 +451,8 @@ add_to_frame(sprite_frame* f, sprite_data* sd, SDL_FRect rect, SDL_FRect cam) {
         rect.y >= cam.y + cam.h + SPRITES_FRAME_CULL_MARGIN)
         return;
 
-    size_t lines_start = f->lines_len;
-    for (size_t i = 0; i < sd->lines_col.len; i++) {
-        attached_line l = (attached_line){0};
-        unpack_floats(sd->lines_from.at[i], &l.x1, &l.y1);
-        unpack_floats(sd->lines_to.at[i], &l.x2, &l.y2);
-        SDL_memcpy(&l.col, (void*)&sd->lines_col.at[i], sizeof(l.col));
-        push_line(f, l);
-    }
+    size_t shapes_start = f->shapes_len;
+    push_shapes(f, sd->shapes, sd->shapes_len);
 
     push_draw(f,
               (sprite_draw){
@@ -433,8 +466,8 @@ add_to_frame(sprite_frame* f, sprite_data* sd, SDL_FRect rect, SDL_FRect cam) {
                   .flip_mode = s.flip_mode,
                   .tint = {s.tint_r, s.tint_g, s.tint_b, s.tint_a},
                   .z_index = s.z_index,
-                  .lines_start = lines_start,
-                  .lines_len = sd->lines_col.len,
+                  .shapes_start = shapes_start,
+                  .shapes_len = sd->shapes_len,
               });
 }
 
@@ -443,7 +476,7 @@ void SPRITES_update(void) {
     SDL_Rect space = CAMERA_get_simulation_rect();
     sprite_frame* f = &frames[back];
     f->len = 0;
-    f->lines_len = 0;
+    f->shapes_len = 0;
 
     // Animation finished functions are only called after looping through
     // sprites, so they're free to create, edit or delete sprites.
@@ -504,15 +537,25 @@ void SPRITES_draw(void) {
 
         // Queued right before the sprite on its z_index, so nothing else can
         // be drawn between them
-        for (size_t j = d->lines_start; j < d->lines_start + d->lines_len;
+        for (size_t j = d->shapes_start; j < d->shapes_start + d->shapes_len;
              j++) {
-            attached_line* l = &f->lines[j];
-            RENDERER_draw_line(l->x1 - cam.x,
-                               l->y1 - cam.y,
-                               l->x2 - cam.x,
-                               l->y2 - cam.y,
-                               l->col,
-                               d->z_index);
+            attached_shape* t = &f->shapes[j];
+            if (t->type == attached_shape_line)
+                RENDERER_draw_line(t->x1 - cam.x,
+                                   t->y1 - cam.y,
+                                   t->x2 - cam.x,
+                                   t->y2 - cam.y,
+                                   t->col,
+                                   d->z_index);
+            else
+                RENDERER_draw_triangle(t->x1 - cam.x,
+                                       t->y1 - cam.y,
+                                       t->x2 - cam.x,
+                                       t->y2 - cam.y,
+                                       t->x3 - cam.x,
+                                       t->y3 - cam.y,
+                                       t->col,
+                                       d->z_index);
         }
         RENDERER_draw_from_spritesheet(x,
                                        y,
@@ -529,9 +572,7 @@ void SPRITES_draw(void) {
 
 void SPRITES_stop(void) {
     for (size_t i = 0; i < sprites_size; i++) {
-        clear_dynarr(&sprites[i].lines_from);
-        clear_dynarr(&sprites[i].lines_to);
-        clear_dynarr(&sprites[i].lines_col);
+        SDL_free(sprites[i].shapes);
     }
     SDL_free(sprites);
     sprites = NULL;
@@ -539,7 +580,7 @@ void SPRITES_stop(void) {
 
     for (Uint8 i = 0; i < SPRITES_FRAMES_TOTAL; i++) {
         SDL_free(frames[i].draws);
-        SDL_free(frames[i].lines);
+        SDL_free(frames[i].shapes);
         frames[i] = (sprite_frame){0};
     }
     SDL_DestroyMutex(frames_mutex);

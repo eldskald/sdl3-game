@@ -7,9 +7,6 @@ int RENDERER_start(void);
 // Unloads textures, shaders, etc. Call when quitting the game.
 void RENDERER_stop(void);
 
-// Processes window events. Call on game manager events.
-void RENDERER_process(SDL_Event* event);
-
 // Render step of game loop. Must happen on main thread.
 void RENDERER_update(void);
 
@@ -22,7 +19,6 @@ void RENDERER_update(void);
 // which refract them, and the rest are drawn over them. Positions are in screen
 // pixels, so the camera must already be applied. Call them on the `..._draw()`
 // functions called by the renderer, on the main thread.
-
 // Queues drawing the `coords_w,coords_h` cells of the spritesheet starting at
 // cell `coords_x,coords_y` at `(x,y)`, flipped by `flip_mode`. Its color is
 // multiplied by `tint`, which should be `1.0` to draw it as is and can go
@@ -37,7 +33,18 @@ void RENDERER_draw_from_spritesheet(float x,
                                     SDL_FColor tint,
                                     Sint8 z_index);
 
+// Queues filling the triangle `(x1,y1),(x2,y2),(x3,y3)` with `col`, blended by
+// its alpha. Its color can go beyond `1.0` to make it bloom.
+void RENDERER_draw_triangle(float x1,
+                            float y1,
+                            float x2,
+                            float y2,
+                            float x3,
+                            float y3,
+                            SDL_FColor col,
+                            Sint8 z_index);
+
 // Queues drawing a line from `(x1,y1)` to `(x2,y2)` with color `col`, blended
 // by its alpha. When both ends are the same, it's drawn as a single point.
 void RENDERER_draw_line(
-    float x1, float y1, float x2, float y2, SDL_Color col, Sint8 z_index);
+    float x1, float y1, float x2, float y2, SDL_FColor col, Sint8 z_index);

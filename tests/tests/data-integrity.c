@@ -424,7 +424,7 @@ static void check_pins(report* r,
 
 static void check_player_presentation(void) {
     char csv[] = {
-#embed PLAYER_SPRITE_CSV_PATH suffix(, '\0')
+#embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
     };
     const char* anims[] = {"idle_anim",
                            "moving_anim",
@@ -544,7 +544,7 @@ static void check_player_presentation(void) {
                keys,
                SDL_arraysize(anims));
     CSV_free(&parsed);
-    finish(PLAYER_SPRITE_CSV_PATH, &r);
+    finish(PLAYER_PRESENTATION_CSV_PATH, &r);
 }
 
 static void check_fluid_particles(void) {
