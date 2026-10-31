@@ -5,8 +5,10 @@
 #include "engine/game-manager.h"
 #include "engine/inputs.h"
 #include "engine/physics.h"
+#include "paths.h"
 #include "player/player-presentation.h"
 #include "services/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
 typedef struct {
@@ -200,47 +202,29 @@ static void load_base_data_from_csv(void) {
 #embed PLAYER_BASE_CSV_PATH suffix(, '\0')
     };
 
+    parsing_field fields[] = {
+        {"max_speed", parsing_double, &data.max_speed},
+        {"acceleration", parsing_double, &data.acceleration},
+        {"friction", parsing_double, &data.friction},
+        {"gravity", parsing_double, &data.gravity},
+        {"max_fall_speed", parsing_double, &data.max_fall_speed},
+        {"jump_speed", parsing_double, &data.jump_speed},
+        {"jump_cut", parsing_double, &data.jump_cut},
+        {"width", parsing_uint8, &data.w},
+        {"height", parsing_uint8, &data.h},
+        {"coyote_jump_time", parsing_double, &data.coyote_jump_time},
+        {"jump_buffer_time", parsing_double, &data.jump_buffer_time},
+        {"swimming_max_speed", parsing_double, &data.swimming_max_speed},
+        {"swimming_max_fall_speed",
+         parsing_double,
+         &data.swimming_max_fall_speed},
+        {"swimming_acceleration", parsing_double, &data.swimming_acceleration},
+        {"swimming_friction", parsing_double, &data.swimming_friction},
+        {"swimming_gravity", parsing_double, &data.swimming_gravity},
+        {"swimming_swim_speed", parsing_double, &data.swimming_swim_speed},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "max_speed") == 0)
-            data.max_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "acceleration") == 0)
-            data.acceleration = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "friction") == 0)
-            data.friction = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "gravity") == 0)
-            data.gravity = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "max_fall_speed") == 0)
-            data.max_fall_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "jump_speed") == 0)
-            data.jump_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "jump_cut") == 0)
-            data.jump_cut = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "width") == 0)
-            data.w = SDL_strtol(val, NULL, 10);
-        else if (SDL_strcmp(key, "height") == 0)
-            data.h = SDL_strtol(val, NULL, 10);
-        else if (SDL_strcmp(key, "coyote_jump_time") == 0)
-            data.coyote_jump_time = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "jump_buffer_time") == 0)
-            data.jump_buffer_time = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "swimming_max_speed") == 0)
-            data.swimming_max_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "swimming_max_fall_speed") == 0)
-            data.swimming_max_fall_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "swimming_acceleration") == 0)
-            data.swimming_acceleration = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "swimming_friction") == 0)
-            data.swimming_friction = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "swimming_gravity") == 0)
-            data.swimming_gravity = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "swimming_swim_speed") == 0)
-            data.swimming_swim_speed = SDL_strtod(val, NULL);
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

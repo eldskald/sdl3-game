@@ -8,30 +8,29 @@
 // other than SDL3 to be sure the game is easily portable.
 
 static void store_cell(char** curr_cell, dynarr* curr_row) {
-    push_to_dynarr(*curr_cell, curr_row);
+    push_to_dynarr(curr_cell, curr_row);
     *curr_cell = SDL_calloc(CSV_STARTING_CELL_SIZE, sizeof(char));
 }
 
-static void store_row(dynarr** curr_row, dynarr* res) {
-    dynarr* row = *curr_row;
-    while (row->len > 0 && SDL_strlen(row->at[row->len - 1]) == 0) {
-        SDL_free(row->at[row->len - 1]);
-        remove_at_from_dynarr(row->len - 1, row);
+static void store_row(dynarr* curr_row, dynarr* res) {
+    while (curr_row->len > 0 &&
+           SDL_strlen(CSV_cell(curr_row->len - 1, curr_row)) == 0) {
+        SDL_free(CSV_cell(curr_row->len - 1, curr_row));
+        curr_row->len--;
     }
-    if (row->len == 0) return;
+    if (curr_row->len == 0) return;
 
-    push_to_dynarr(*curr_row, res);
-    *curr_row = SDL_malloc(sizeof(dynarr));
-    init_dynarr(*curr_row);
+    push_to_dynarr(curr_row, res);
+    init_dynarr(curr_row, sizeof(char*));
 }
 
 dynarr CSV_parse(const char* data) {
     dynarr res = (dynarr){0};
-    init_dynarr(&res);
+    init_dynarr(&res, sizeof(dynarr));
 
     char* curr_cell = SDL_calloc(CSV_STARTING_CELL_SIZE, sizeof(char));
-    dynarr* curr_row = SDL_malloc(sizeof(dynarr));
-    init_dynarr(curr_row);
+    dynarr curr_row = (dynarr){0};
+    init_dynarr(&curr_row, sizeof(char*));
 
     bool curr_cell_starts_with_dquote = false;
     bool just_ended_quot_cell = false;
@@ -62,7 +61,7 @@ dynarr CSV_parse(const char* data) {
         // Dealing with ,
         if (curr == ',' &&
             !(curr_cell_starts_with_dquote && !just_ended_quot_cell)) {
-            store_cell(&curr_cell, curr_row);
+            store_cell(&curr_cell, &curr_row);
             just_ended_quot_cell = false;
             curr_cell_starts_with_dquote = false;
             last_char = ',';
@@ -75,7 +74,7 @@ dynarr CSV_parse(const char* data) {
             // Skip empty lines.
             if (last_char == '\n') continue;
 
-            if (last_char != ',') store_cell(&curr_cell, curr_row);
+            if (last_char != ',') store_cell(&curr_cell, &curr_row);
             store_row(&curr_row, &res);
             just_ended_quot_cell = false;
             curr_cell_starts_with_dquote = false;
@@ -90,23 +89,20 @@ dynarr CSV_parse(const char* data) {
         continue;
     }
 
-    if (SDL_strlen(curr_cell) > 0) store_cell(&curr_cell, curr_row);
+    if (SDL_strlen(curr_cell) > 0) store_cell(&curr_cell, &curr_row);
     if (last_char != '\n') store_row(&curr_row, &res);
     SDL_free(curr_cell);
-    clear_dynarr(curr_row);
-    SDL_free(curr_row);
+    deinit_dynarr(&curr_row);
 
     return res;
 }
 
 void CSV_free(dynarr* data) {
-    for (int i = 0; i < data->len; i++) {
-        dynarr* row = data->at[i];
-        for (int j = 0; j < row->len; j++) {
-            SDL_free(row->at[j]);
-        }
-        clear_dynarr(row);
-        SDL_free(row);
+    for (size_t i = 0; i < data->len; i++) {
+        dynarr* row = CSV_row(i, data);
+        for (size_t j = 0; j < row->len; j++)
+            SDL_free(CSV_cell(j, row));
+        deinit_dynarr(row);
     }
-    clear_dynarr(data);
+    deinit_dynarr(data);
 }

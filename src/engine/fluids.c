@@ -5,7 +5,9 @@
 #include "engine/camera.h"
 #include "engine/game-manager.h"
 #include "engine/tilemap.h"
+#include "paths.h"
 #include "services/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
 
@@ -104,113 +106,74 @@ static float ripples_damping = 0.0f;
 static float ripples_refraction = 0.0f;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
-static fluid_particle* particles = NULL;
-static size_t particles_cap = 0;
-static size_t particles_len = 0;
+static dynarr particles = (dynarr){0}; // fluid_particle dynarr
 static SDL_Mutex* particles_mutex = NULL;
 
 // Down, diagonal and sideways move timers, in that order.
 static double move_timers[3][FLUIDS_TOTAL] = {0};
 
-static void double_particles_dynarr(void) {
-    fluid_particle* new_particles =
-        SDL_calloc(particles_cap << 1, sizeof(fluid_particle));
-    SDL_memcpy(
-        new_particles, particles, particles_cap * sizeof(fluid_particle));
-    SDL_free(particles);
-    particles_cap = particles_cap << 1;
-    particles = new_particles;
-}
-
 // We treat these differently from sprites and bodies because these particles
 // are not exposed, their indexes are not IDs that other code should keep track
 // of so we can move them around the array safely.
 static void remove_fluid_particle(size_t index) {
-    particles_len--;
-    particles[index] = particles[particles_len];
+    fluid_particle* last = dynarr_at(particles.len - 1, &particles);
+    *(fluid_particle*)dynarr_at(index, &particles) = *last;
+    remove_at_from_dynarr(particles.len - 1, &particles);
 }
 
 static void add_fluid_particle(fluid_particle particle) {
-    if (particles_len >= particles_cap) double_particles_dynarr();
-    particles[particles_len] = particle;
-    particles_len++;
+    push_to_dynarr(&particle, &particles);
 }
 
-static void
-queue_item(dynarr* queue, SDL_Mutex* mutex, const void* item, size_t size) {
-    void* copy = SDL_malloc(size);
-    SDL_memcpy(copy, item, size);
+static void queue_item(dynarr* queue, SDL_Mutex* mutex, const void* item) {
     SDL_LockMutex(mutex);
-    push_to_dynarr(copy, queue);
+    push_to_dynarr(item, queue);
     SDL_UnlockMutex(mutex);
 }
 
 static void drain_queue(dynarr* queue, SDL_Mutex* mutex, void (*apply)(void*)) {
     SDL_LockMutex(mutex);
-    for (size_t i = 0; i < queue->len; i++) {
-        if (apply) apply(queue->at[i]);
-        SDL_free(queue->at[i]);
-    }
-    while (queue->len > 0)
-        remove_at_from_dynarr(queue->len - 1, queue);
+    if (apply)
+        for (size_t i = 0; i < queue->len; i++)
+            apply(dynarr_at(i, queue));
+    clear_dynarr(queue);
     SDL_UnlockMutex(mutex);
 }
 
 static void clear_queue(dynarr* queue, SDL_Mutex** mutex) {
-    drain_queue(queue, *mutex, NULL);
-    clear_dynarr(queue);
+    deinit_dynarr(queue);
     SDL_DestroyMutex(*mutex);
     *mutex = NULL;
 }
 
 
 
-static double read_prop(dynarr* row, char* prop, hashmap* props) {
-    return SDL_strtod((char*)row->at[(size_t)get_from_hashmap(prop, props)],
-                      NULL);
-}
-
 static void load_fluid_data(const char* csv) {
+    // Rows can be in any order, so they're read here and then placed on `data`
+    // by their fluid.
+    struct {
+        fluid_type type;
+        fluid_data data;
+    } rows[FLUIDS_TOTAL] = {0};
+    fluid_data* d = &rows[0].data;
+    parsing_field fields[] = {
+        {"fluid", parsing_fluid, &rows[0].type},
+        {"density", parsing_double, &d->density},
+        {"move_down_time", parsing_double, &d->move_down_time},
+        {"move_diag_time", parsing_double, &d->move_diag_time},
+        {"move_side_time", parsing_double, &d->move_side_time},
+        {"min_spread", parsing_double, &d->min_spread},
+        {"particle_vol", parsing_double, &d->particle_vol},
+        {"col_r", parsing_uint8, &d->col_r},
+        {"col_g", parsing_uint8, &d->col_g},
+        {"col_b", parsing_uint8, &d->col_b},
+        {"col_a", parsing_uint8, &d->col_a},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    // Single cell rows are headers organizing the file, so the first row with
-    // more cells names the columns and the others are skipped.
-    size_t header = 0;
-    while (((dynarr*)parsed.at[header])->len < 2)
-        header++;
-
-    // Get hashmap of property indexes
-    hashmap props = (hashmap){0};
-    int props_count = ((dynarr*)parsed.at[header])->len - 1;
-    init_hashmap(&props);
-    for (size_t i = 1; i <= props_count; i++)
-        set_on_hashmap(
-            (void*)i, (char*)((dynarr*)parsed.at[header])->at[i], &props);
-
-    // Get hashmap of fluid names
-    hashmap names = FLUIDS_get_string_fluid_types_map();
-
-    // Sets fluids data
-    for (size_t i = header + 1; i < parsed.len; i++) {
-        dynarr* row = (dynarr*)parsed.at[i];
-        if (row->len < 2) continue;
-        char* name = (char*)row->at[0];
-        data[(size_t)get_from_hashmap(name, &names)] = (fluid_data){
-            .density = read_prop(row, "density", &props),
-            .move_down_time = read_prop(row, "move_down_time", &props),
-            .move_diag_time = read_prop(row, "move_diag_time", &props),
-            .move_side_time = read_prop(row, "move_side_time", &props),
-            .min_spread = read_prop(row, "min_spread", &props),
-            .particle_vol = read_prop(row, "particle_vol", &props),
-            .col_r = read_prop(row, "col_r", &props),
-            .col_g = read_prop(row, "col_g", &props),
-            .col_b = read_prop(row, "col_b", &props),
-            .col_a = read_prop(row, "col_a", &props),
-        };
-    }
-
-    clear_hashmap(&names);
-    clear_hashmap(&props);
+    size_t n = PARSING_read_table(
+        &parsed, fields, SDL_arraysize(fields), sizeof(rows[0]));
+    for (size_t i = 0; i < n; i++)
+        data[rows[i].type] = rows[i].data;
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -295,27 +258,18 @@ static void stagger_move_timers(void) {
 }
 
 static void load_fluid_particles_data(const char* csv) {
+    fluid_particles_data* p = &particles_data;
+    parsing_field fields[] = {
+        {"gravity", parsing_double, &p->gravity},
+        {"size_threshold", parsing_double, &p->size_threshold},
+        {"fan_angle", parsing_double, &p->splash_fan_angle},
+        {"angle_jitter", parsing_double, &p->splash_angle_jitter},
+        {"particle_max_speed", parsing_double, &p->splash_particle_max_speed},
+        {"volume", parsing_double, &p->splash_volume},
+        {"body_max_speed", parsing_double, &p->splash_body_max_speed},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "gravity") == 0)
-            particles_data.gravity = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "size_threshold") == 0)
-            particles_data.size_threshold = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "fan_angle") == 0)
-            particles_data.splash_fan_angle = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "angle_jitter") == 0)
-            particles_data.splash_angle_jitter = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "particle_max_speed") == 0)
-            particles_data.splash_particle_max_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "volume") == 0)
-            particles_data.splash_volume = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "body_max_speed") == 0)
-            particles_data.splash_body_max_speed = SDL_strtod(val, NULL);
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -323,17 +277,12 @@ static void load_fluid_particles_data(const char* csv) {
 }
 
 static void load_ripples_data(const char* csv) {
+    parsing_field fields[] = {
+        {"damping", parsing_float, &ripples_damping},
+        {"refraction", parsing_float, &ripples_refraction},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "damping") == 0)
-            ripples_damping = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "refraction") == 0)
-            ripples_refraction = SDL_strtod(val, NULL);
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -341,7 +290,6 @@ static void load_ripples_data(const char* csv) {
 }
 
 void FLUIDS_start(void) {
-#ifndef TEST
     char fluids_csv[] = {
 #embed FLUIDS_CSV_PATH suffix(, '\0')
     };
@@ -353,41 +301,27 @@ void FLUIDS_start(void) {
     char ripples_csv[] = {
 #embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
     };
-#else
-    char fluids_csv[] = {
-#embed TESTS_FLUIDS_CSV_PATH suffix(, '\0')
-    };
-
-    char fluid_particles_csv[] = {
-#embed TESTS_FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
-    };
-
-    char ripples_csv[] = {
-#embed TESTS_FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
-    };
-#endif
 
     load_fluid_data(fluids_csv);
     load_fluid_particles_data(fluid_particles_csv);
     load_ripples_data(ripples_csv);
     order_fluids_by_density();
     stagger_move_timers();
-    init_dynarr(&mods);
+    init_dynarr(&mods, sizeof(mod));
     mods_mutex = SDL_CreateMutex();
-    init_dynarr(&queued_particles);
+    init_dynarr(&queued_particles, sizeof(fluid_particle));
     queued_particles_mutex = SDL_CreateMutex();
-    init_dynarr(&splashes);
+    init_dynarr(&splashes, sizeof(splash));
     splashes_mutex = SDL_CreateMutex();
-    init_dynarr(&ripples);
+    init_dynarr(&ripples, sizeof(ripple));
     ripples_mutex = SDL_CreateMutex();
     ripples_idx = 0;
     ripples_x = 0.0f;
     ripples_y = 0.0f;
     SDL_SetAtomicInt(&ripples_ticks, 0);
-    particles = SDL_calloc(FLUIDS_STARTING_PARTICLES_DYNARR_CAP,
-                           sizeof(fluid_particle));
-    particles_cap = FLUIDS_STARTING_PARTICLES_DYNARR_CAP;
-    particles_len = 0;
+    init_dynarr_with(&particles,
+                     sizeof(fluid_particle),
+                     FLUIDS_STARTING_PARTICLES_DYNARR_CAP);
     particles_mutex = SDL_CreateMutex();
 }
 
@@ -398,10 +332,7 @@ void FLUIDS_stop(void) {
     clear_queue(&ripples, &ripples_mutex);
     SDL_memset(grid, 0, sizeof(grid));
     SDL_memset(move_timers, 0, sizeof(move_timers));
-    SDL_free(particles);
-    particles = NULL;
-    particles_cap = 0;
-    particles_len = 0;
+    deinit_dynarr(&particles);
     SDL_DestroyMutex(particles_mutex);
     particles_mutex = NULL;
 }
@@ -857,8 +788,8 @@ static void add_queued_particle(void* item) {
 static void simulate_fluid_particles(void) {
     double dt = GAME_MANAGER_get_current_dt();
     size_t i = 0;
-    while (i < particles_len) {
-        fluid_particle* p = &particles[i];
+    while (i < particles.len) {
+        fluid_particle* p = dynarr_at(i, &particles);
         p->vel_y += particles_data.gravity * dt;
         double dx = p->vel_x * dt;
         double dy = p->vel_y * dt;
@@ -1040,7 +971,7 @@ void FLUIDS_set_at(
     if (GAME_MANAGER_is_fluids_thread())
         apply_mod(&m);
     else
-        queue_item(&mods, mods_mutex, &m, sizeof(mod));
+        queue_item(&mods, mods_mutex, &m);
 }
 
 void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type) {
@@ -1048,7 +979,7 @@ void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type) {
     if (GAME_MANAGER_is_fluids_thread())
         apply_mod(&m);
     else
-        queue_item(&mods, mods_mutex, &m, sizeof(mod));
+        queue_item(&mods, mods_mutex, &m);
 }
 
 void FLUIDS_get_at(
@@ -1192,8 +1123,8 @@ static void draw_grid(SDL_FRect area) {
 
 static void draw_particles(SDL_FRect cam) {
     SDL_LockMutex(particles_mutex);
-    for (size_t i = 0; i < particles_len; i++) {
-        fluid_particle p = particles[i];
+    for (size_t i = 0; i < particles.len; i++) {
+        fluid_particle p = *(fluid_particle*)dynarr_at(i, &particles);
         float x = SDL_floor(p.x) - cam.x;
         float y = SDL_floor(p.y) - cam.y;
         if (x + 1.0f < 0.0f || y + 1.0f < 0.0f || x >= cam.w || y >= cam.h)
@@ -1269,7 +1200,7 @@ static void step_ripples(fluids_canvas* canvas, SDL_FRect area) {
     // SDL mutexes are recursive, so it stays locked while draining.
     SDL_LockMutex(ripples_mutex);
     for (size_t i = 0; i < ripples.len; i++) {
-        ripple* r = ripples.at[i];
+        ripple* r = dynarr_at(i, &ripples);
         SDL_FRect rect = {r->x - area.x - r->size / 2.0f,
                           r->y - area.y - r->size / 2.0f,
                           r->size,
@@ -1387,26 +1318,26 @@ int FLUIDS_add_particle(
     if (is_solid(cell_x, cell_y)) return 1;
     fluid_particle p = {
         .x = x, .y = y, .vel_x = vel_x, .vel_y = vel_y, .type = type};
-    queue_item(&queued_particles, queued_particles_mutex, &p, sizeof(p));
+    queue_item(&queued_particles, queued_particles_mutex, &p);
     return 0;
 }
 
 void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed) {
     splash sp = {.x = x, .y = y, .w = w, .speed = speed};
-    queue_item(&splashes, splashes_mutex, &sp, sizeof(sp));
+    queue_item(&splashes, splashes_mutex, &sp);
 }
 
 void FLUIDS_ripple_at(Uint32 x, Uint32 y, Uint32 size, double strength) {
     ripple r = {.x = x, .y = y, .size = size, .strength = strength};
-    queue_item(&ripples, ripples_mutex, &r, sizeof(r));
+    queue_item(&ripples, ripples_mutex, &r);
 }
 
 
 
 hashmap FLUIDS_get_string_fluid_types_map(void) {
     hashmap map;
-    init_hashmap(&map);
-    set_on_hashmap((void*)fluid_water, "water", &map);
-    set_on_hashmap((void*)fluid_lava, "lava", &map);
+    init_hashmap(&map, sizeof(fluid_type));
+    set_on_hashmap(&(fluid_type){fluid_water}, "water", &map);
+    set_on_hashmap(&(fluid_type){fluid_lava}, "lava", &map);
     return map;
 }

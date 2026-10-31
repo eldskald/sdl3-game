@@ -117,9 +117,9 @@ int PHYSICS_set_body_position(size_t body_id, double x, double y);
 // body at that index, `0` when everything went right.
 int PHYSICS_edit_body(size_t body_id, body data);
 
-// Deletes all values in `arr` and puts in all body indexes intersecting `rect`.
-// Returns `0` when everything went right, `1` if `rect` is out of bounds and
-// `2` if `arr` is not initialized.
+// Deletes all values in `arr`, a `size_t` dynarr, and puts in all body indexes
+// intersecting `rect`. Returns `0` when everything went right, `1` if `rect` is
+// out of bounds and `2` if `arr` is not initialized.
 int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr);
 
 // Checks if the body at `body_id` is touching tiles below, setting `check` to
@@ -221,10 +221,10 @@ int PHYSICS_get_prop_point_velocity(size_t point_id,
 int PHYSICS_connect_prop_points(
     size_t id_a, size_t id_b, double elasticity, double length, bool two_ways);
 
-// Deletes all values in `arr` and puts in the IDs of all points connected to
-// the point at `point_id`. Returns `3` when `point_id` is outside the array's
-// range, `2` if `arr` is not initialized, `1` when there is no point at that
-// index, `0` when everything went right.
+// Deletes all values in `arr`, a `size_t` dynarr, and puts in the IDs of all
+// points connected to the point at `point_id`. Returns `3` when `point_id` is
+// outside the array's range, `2` if `arr` is not initialized, `1` when there is
+// no point at that index, `0` when everything went right.
 int PHYSICS_get_connected_points(size_t point_id, dynarr* arr);
 
 // Sets the `on_delete_func` and `on_delete_arg` of the point at `point_id`
@@ -263,7 +263,7 @@ void PHYSICS_update(void);
 #ifdef TEST
 // Gets the connection at index `connection_id` and returns its points on
 // `point_a` and `point_b` and its values on `elasticity`, `length` and
-// `two_ways`.
+// `two_ways`, all zeroes if there's none.
 void PHYSICS_test_get_connection(size_t connection_id,
                                  size_t* point_a,
                                  size_t* point_b,

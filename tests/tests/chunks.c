@@ -21,7 +21,7 @@ static bool is_empty_at(Uint16 x, Uint16 y) {
 static bool
 is_vine_point(dynarr* chain, size_t i, double x, double y, bool pinned) {
     prop_point p = (prop_point){0};
-    PHYSICS_get_prop_point((size_t)chain->at[i], &p);
+    PHYSICS_get_prop_point(*(size_t*)dynarr_at(i, chain), &p);
     return p.x == x && p.y == y && p.pinned == pinned;
 }
 
@@ -35,9 +35,9 @@ static bool is_vine_link(dynarr* chain, size_t i, size_t conn_id) {
     bool two_ways = false;
     PHYSICS_test_get_connection(
         conn_id, &a, &b, &elasticity, &length, &two_ways);
-    return a == (size_t)chain->at[i] && b == (size_t)chain->at[i + 1] &&
-           elasticity == 0.0f && length == SPRITESHEET_CELL_Y / 2.0f &&
-           two_ways;
+    return a == *(size_t*)dynarr_at(i, chain) &&
+           b == *(size_t*)dynarr_at(i + 1, chain) && elasticity == 0.0f &&
+           length == SPRITESHEET_CELL_Y / 2.0f && two_ways;
 }
 #endif
 
@@ -178,40 +178,40 @@ void test_chunks(void) {
         (*map)[6][7].type == 0,
         (*map)[7][7].type == 0,
         data.fluids.len == 1,
-        ((fluid_pool*)data.fluids.at[0])->type == fluid_water,
-        ((fluid_pool*)data.fluids.at[0])->x == 10,
-        ((fluid_pool*)data.fluids.at[0])->y == 2,
-        ((fluid_pool*)data.fluids.at[0])->w == 4,
-        ((fluid_pool*)data.fluids.at[0])->h == 4,
+        ((fluid_pool*)dynarr_at(0, &data.fluids))->type == fluid_water,
+        ((fluid_pool*)dynarr_at(0, &data.fluids))->x == 10,
+        ((fluid_pool*)dynarr_at(0, &data.fluids))->y == 2,
+        ((fluid_pool*)dynarr_at(0, &data.fluids))->w == 4,
+        ((fluid_pool*)dynarr_at(0, &data.fluids))->h == 4,
         data.vines.len == 4,
-        ((vine_spawn*)data.vines.at[0])->double_pinned == true,
-        ((vine_spawn*)data.vines.at[0])->a_x == 21,
-        ((vine_spawn*)data.vines.at[0])->a_y == 24,
-        ((vine_spawn*)data.vines.at[0])->b_x == 29,
-        ((vine_spawn*)data.vines.at[0])->b_y == 24,
-        ((vine_spawn*)data.vines.at[0])->bend_y == 28,
-        ((vine_spawn*)data.vines.at[0])->segments == 4,
-        ((vine_spawn*)data.vines.at[1])->double_pinned == false,
-        ((vine_spawn*)data.vines.at[1])->a_x == 18,
-        ((vine_spawn*)data.vines.at[1])->a_y == 40,
-        ((vine_spawn*)data.vines.at[1])->b_x == 18,
-        ((vine_spawn*)data.vines.at[1])->b_y == 52,
-        ((vine_spawn*)data.vines.at[1])->bend_y == 52,
-        ((vine_spawn*)data.vines.at[1])->segments == 3,
-        ((vine_spawn*)data.vines.at[2])->double_pinned == false,
-        ((vine_spawn*)data.vines.at[2])->a_x == 34,
-        ((vine_spawn*)data.vines.at[2])->a_y == 40,
-        ((vine_spawn*)data.vines.at[2])->b_x == 64,
-        ((vine_spawn*)data.vines.at[2])->b_y == 52,
-        ((vine_spawn*)data.vines.at[2])->bend_y == 52,
-        ((vine_spawn*)data.vines.at[2])->segments == 10,
-        ((vine_spawn*)data.vines.at[3])->double_pinned == false,
-        ((vine_spawn*)data.vines.at[3])->a_x == 53,
-        ((vine_spawn*)data.vines.at[3])->a_y == 40,
-        ((vine_spawn*)data.vines.at[3])->b_x == 53,
-        ((vine_spawn*)data.vines.at[3])->b_y == 60,
-        ((vine_spawn*)data.vines.at[3])->bend_y == 60,
-        ((vine_spawn*)data.vines.at[3])->segments == 5,
+        ((vine_spawn*)dynarr_at(0, &data.vines))->double_pinned == true,
+        ((vine_spawn*)dynarr_at(0, &data.vines))->a_x == 21,
+        ((vine_spawn*)dynarr_at(0, &data.vines))->a_y == 24,
+        ((vine_spawn*)dynarr_at(0, &data.vines))->b_x == 29,
+        ((vine_spawn*)dynarr_at(0, &data.vines))->b_y == 24,
+        ((vine_spawn*)dynarr_at(0, &data.vines))->bend_y == 28,
+        ((vine_spawn*)dynarr_at(0, &data.vines))->segments == 4,
+        ((vine_spawn*)dynarr_at(1, &data.vines))->double_pinned == false,
+        ((vine_spawn*)dynarr_at(1, &data.vines))->a_x == 18,
+        ((vine_spawn*)dynarr_at(1, &data.vines))->a_y == 40,
+        ((vine_spawn*)dynarr_at(1, &data.vines))->b_x == 18,
+        ((vine_spawn*)dynarr_at(1, &data.vines))->b_y == 52,
+        ((vine_spawn*)dynarr_at(1, &data.vines))->bend_y == 52,
+        ((vine_spawn*)dynarr_at(1, &data.vines))->segments == 3,
+        ((vine_spawn*)dynarr_at(2, &data.vines))->double_pinned == false,
+        ((vine_spawn*)dynarr_at(2, &data.vines))->a_x == 34,
+        ((vine_spawn*)dynarr_at(2, &data.vines))->a_y == 40,
+        ((vine_spawn*)dynarr_at(2, &data.vines))->b_x == 64,
+        ((vine_spawn*)dynarr_at(2, &data.vines))->b_y == 52,
+        ((vine_spawn*)dynarr_at(2, &data.vines))->bend_y == 52,
+        ((vine_spawn*)dynarr_at(2, &data.vines))->segments == 10,
+        ((vine_spawn*)dynarr_at(3, &data.vines))->double_pinned == false,
+        ((vine_spawn*)dynarr_at(3, &data.vines))->a_x == 53,
+        ((vine_spawn*)dynarr_at(3, &data.vines))->a_y == 40,
+        ((vine_spawn*)dynarr_at(3, &data.vines))->b_x == 53,
+        ((vine_spawn*)dynarr_at(3, &data.vines))->b_y == 60,
+        ((vine_spawn*)dynarr_at(3, &data.vines))->bend_y == 60,
+        ((vine_spawn*)dynarr_at(3, &data.vines))->segments == 5,
     };
 
     expect("Initiated mocked chunk, checking contents...",
@@ -453,12 +453,12 @@ void test_chunks(void) {
         is_vine_point(&vine5, 0, 178.0f, 280.0f, true),
         is_vine_point(&vine5, 3, 178.0f, 292.0f, false),
     };
-    clear_dynarr(&vine0);
-    clear_dynarr(&vine1);
-    clear_dynarr(&vine2);
-    clear_dynarr(&vine3);
-    clear_dynarr(&vine4);
-    clear_dynarr(&vine5);
+    deinit_dynarr(&vine0);
+    deinit_dynarr(&vine1);
+    deinit_dynarr(&vine2);
+    deinit_dynarr(&vine3);
+    deinit_dynarr(&vine4);
+    deinit_dynarr(&vine5);
 
     expect("Checking mocked chunk's vines, loaded normally and at an "
            "offset...",

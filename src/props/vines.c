@@ -1,6 +1,6 @@
 #include "props/vines.h"
 #include "data-structs/dynarr.h"
-#include "data-structs/hashmap.h"
+#include "data-structs/pool.h"
 #include "defs.h"
 #include "engine/camera.h"
 #include "engine/fluids.h"
@@ -8,7 +8,9 @@
 #include "engine/physics.h"
 #include "engine/renderer.h"
 #include "engine/tilemap.h"
+#include "paths.h"
 #include "services/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
 #define VINE_SEGMENT_LENGTH (SPRITESHEET_CELL_Y / 2.0f)
@@ -35,14 +37,13 @@ typedef struct {
 // then `fade` counts the time until it's deleted. `under_fluid` has a bool for
 // each point on `chain`, whether it was in a fluid cell on the last update.
 // `(x,y,w,h)` is the rect bounding its points on the last update, in pixels.
-// `used` is so we know an empty index, since its points keep the vine's index
-// as their `on_delete_arg`.
+// Vines are on a pool since their points keep the vine's id as their
+// `on_delete_arg`.
 typedef struct {
-    dynarr chain;
-    dynarr under_fluid;
+    dynarr chain;       // size_t dynarr
+    dynarr under_fluid; // bool dynarr
     double x, y, w, h;
     double fade;
-    bool used;
 } vine;
 
 // A run of visible segments of a vine, `len` points starting at `start` on its
@@ -56,16 +57,13 @@ typedef struct {
 // Points are rounded world pixel coordinates, so the camera is only applied
 // when drawing.
 typedef struct {
-    SDL_FPoint* points;
-    size_t points_len, points_cap;
-    vine_strip* strips;
-    size_t strips_len, strips_cap;
+    dynarr points; // SDL_FPoint dynarr
+    dynarr strips; // vine_strip dynarr
 } vine_frame;
 
 
 
-static vine* vines = NULL;
-static size_t vines_cap = 0;
+static pool vines = (pool){0};
 
 static vine_data settings = (vine_data){0};
 
@@ -79,32 +77,20 @@ static Uint8 front = 2;
 static bool fresh = false;
 static SDL_Mutex* frames_mutex = NULL;
 
-static void double_vines_dynarr(void) {
-    vine* new_vines = SDL_calloc(vines_cap << 1, sizeof(vine));
-    SDL_memcpy(new_vines, vines, vines_cap * sizeof(vine));
-    SDL_free(vines);
-    vines_cap = vines_cap << 1;
-    vines = new_vines;
+// Might grow the vines pool, so don't hold on to vine pointers across it.
+static size_t add_vine(double fade) {
+    vine v = (vine){.fade = fade};
+    init_dynarr(&v.chain, sizeof(size_t));
+    init_dynarr(&v.under_fluid, sizeof(bool));
+    return add_to_pool(&v, &vines);
 }
 
-// Might double the vines array, so don't hold on to vine pointers across it.
-static size_t add_vine(double fade) {
-    size_t index = vines_cap;
-    for (size_t idx = 0; idx < vines_cap; idx++) {
-        if (!vines[idx].used) {
-            index = idx;
-            break;
-        }
-    }
-    if (index == vines_cap) double_vines_dynarr();
-    vines[index] = (vine){.fade = fade, .used = true};
-    init_dynarr(&vines[index].chain);
-    init_dynarr(&vines[index].under_fluid);
-    return index;
+static vine* get_vine(size_t id) {
+    return pool_at(id, &vines);
 }
 
 static size_t chain_at(vine* v, size_t i) {
-    return (size_t)v->chain.at[i];
+    return *(size_t*)dynarr_at(i, &v->chain);
 }
 
 static bool is_in_tilemap(double x, double y) {
@@ -124,32 +110,32 @@ static bool is_on_tile_bottom(double y) {
 // with nothing left is freed here, even when it's the vine deleting itself.
 static void on_point_deleted(size_t point_id, size_t vine_idx) {
     size_t at = 0;
-    while (at < vines[vine_idx].chain.len &&
-           chain_at(&vines[vine_idx], at) != point_id)
+    while (at < get_vine(vine_idx)->chain.len &&
+           chain_at(get_vine(vine_idx), at) != point_id)
         at++;
-    if (at == vines[vine_idx].chain.len) return;
+    if (at == get_vine(vine_idx)->chain.len) return;
 
-    if (at + 1 < vines[vine_idx].chain.len) {
-        size_t tail_idx = add_vine(vines[vine_idx].fade);
-        vine* v = &vines[vine_idx];
-        vine* tail = &vines[tail_idx];
+    if (at + 1 < get_vine(vine_idx)->chain.len) {
+        size_t tail_idx = add_vine(get_vine(vine_idx)->fade);
+        vine* v = get_vine(vine_idx);
+        vine* tail = get_vine(tail_idx);
         for (size_t i = at + 1; i < v->chain.len; i++) {
-            push_to_dynarr(v->chain.at[i], &tail->chain);
-            push_to_dynarr(v->under_fluid.at[i], &tail->under_fluid);
+            push_to_dynarr(dynarr_at(i, &v->chain), &tail->chain);
+            push_to_dynarr(dynarr_at(i, &v->under_fluid), &tail->under_fluid);
             PHYSICS_set_prop_point_on_delete(
                 chain_at(v, i), on_point_deleted, tail_idx);
         }
     }
 
-    vine* v = &vines[vine_idx];
+    vine* v = get_vine(vine_idx);
     while (v->chain.len > at) {
         remove_at_from_dynarr(v->chain.len - 1, &v->chain);
         remove_at_from_dynarr(v->under_fluid.len - 1, &v->under_fluid);
     }
     if (v->chain.len == 0) {
-        clear_dynarr(&v->chain);
-        clear_dynarr(&v->under_fluid);
-        *v = (vine){0};
+        deinit_dynarr(&v->chain);
+        deinit_dynarr(&v->under_fluid);
+        remove_from_pool(vine_idx, &vines);
     }
 }
 
@@ -196,8 +182,8 @@ static void create_chain(size_t vine_idx,
         };
         size_t id = 0;
         PHYSICS_new_prop_point(p, &id);
-        push_to_dynarr((void*)id, &vines[vine_idx].chain);
-        push_to_dynarr((void*)(size_t)false, &vines[vine_idx].under_fluid);
+        push_to_dynarr(&id, &get_vine(vine_idx)->chain);
+        push_to_dynarr(&(bool){false}, &get_vine(vine_idx)->under_fluid);
         if (i > 0)
             PHYSICS_connect_prop_points(
                 prev, id, 0.0f, VINE_SEGMENT_LENGTH, true);
@@ -234,17 +220,18 @@ int VINES_add(const SDL_FPoint* path,
     }
     size_t idx = add_vine(0.0f);
     create_chain(idx, path, len, segments);
-    set_pinned(chain_at(&vines[idx], 0), true);
-    if (double_pinned) set_pinned(chain_at(&vines[idx], segments), true);
+    set_pinned(chain_at(get_vine(idx), 0), true);
+    if (double_pinned) set_pinned(chain_at(get_vine(idx), segments), true);
     return 0;
 }
 
 #ifdef TEST
 dynarr VINES_test_get_vine(size_t vine_id) {
+    vine* v = get_vine(vine_id);
     dynarr chain = (dynarr){0};
-    init_dynarr(&chain);
-    for (size_t i = 0; i < vines[vine_id].chain.len; i++)
-        push_to_dynarr(vines[vine_id].chain.at[i], &chain);
+    init_dynarr(&chain, sizeof(size_t));
+    for (size_t i = 0; i < v->chain.len; i++)
+        push_to_dynarr(dynarr_at(i, &v->chain), &chain);
     return chain;
 }
 #endif
@@ -313,7 +300,7 @@ static bool check_fluid(size_t point_id, bool was_under, dynarr* doomed) {
         ripple_fluids(p.x, p.y, vel_x, vel_y);
     }
     if (destroyer >= FLUIDS_INTERACTION_VOL_THRESHOLD) {
-        push_to_dynarr((void*)point_id, doomed);
+        push_to_dynarr(&point_id, doomed);
         return was_under;
     }
 
@@ -331,26 +318,9 @@ static bool check_fluid(size_t point_id, bool was_under, dynarr* doomed) {
 // Deleting from the last point means each deletion only shortens the chain on
 // `on_point_deleted()`, which frees the vine once the last one is gone.
 static void delete_vine(size_t idx) {
-    while (vines[idx].used)
-        PHYSICS_del_prop_point(chain_at(&vines[idx], vines[idx].chain.len - 1));
-}
-
-static void push_frame_point(vine_frame* f, SDL_FPoint p) {
-    if (f->points_len == f->points_cap) {
-        f->points_cap = f->points_cap << 1;
-        f->points = SDL_realloc(f->points, f->points_cap * sizeof(SDL_FPoint));
-    }
-    f->points[f->points_len] = p;
-    f->points_len++;
-}
-
-static void push_frame_strip(vine_frame* f, vine_strip s) {
-    if (f->strips_len == f->strips_cap) {
-        f->strips_cap = f->strips_cap << 1;
-        f->strips = SDL_realloc(f->strips, f->strips_cap * sizeof(vine_strip));
-    }
-    f->strips[f->strips_len] = s;
-    f->strips_len++;
+    vine* v = NULL;
+    while ((v = get_vine(idx)))
+        PHYSICS_del_prop_point(chain_at(v, v->chain.len - 1));
 }
 
 static bool is_segment_visible(SDL_FPoint a, SDL_FPoint b, SDL_FRect cam) {
@@ -382,15 +352,15 @@ static void add_to_frame(vine_frame* f, vine* v, bool loose, SDL_FRect cam) {
             open = false;
         } else {
             if (!open) {
-                push_frame_strip(f,
-                                 (vine_strip){.start = f->points_len,
-                                              .len = 1,
-                                              .alpha = alpha});
-                push_frame_point(f, a);
+                push_to_dynarr(&(vine_strip){.start = f->points.len,
+                                             .len = 1,
+                                             .alpha = alpha},
+                               &f->strips);
+                push_to_dynarr(&a, &f->points);
                 open = true;
             }
-            push_frame_point(f, b);
-            f->strips[f->strips_len - 1].len++;
+            push_to_dynarr(&b, &f->points);
+            ((vine_strip*)dynarr_at(f->strips.len - 1, &f->strips))->len++;
         }
         a = b;
     }
@@ -431,17 +401,17 @@ void VINES_update(void) {
     SDL_FRect cam = CAMERA_get_rect();
     SDL_Rect space = CAMERA_get_simulation_rect();
     vine_frame* f = &frames[back];
-    f->points_len = 0;
-    f->strips_len = 0;
+    clear_dynarr(&f->points);
+    clear_dynarr(&f->strips);
 
     // Deleting points mid-chain splits vines on `on_point_deleted()`, so we
     // only delete the ones doomed by fluids after looping through vines.
     dynarr doomed = (dynarr){0};
-    init_dynarr(&doomed);
+    init_dynarr(&doomed, sizeof(size_t));
 
-    for (size_t idx = 0; idx < vines_cap; idx++) {
-        if (!vines[idx].used) continue;
-        vine* v = &vines[idx];
+    for (size_t idx = 0; idx < vines.cap; idx++) {
+        vine* v = get_vine(idx);
+        if (!v) continue;
 
         // The simulation space is larger than the screen, so vines outside it
         // aren't drawn either.
@@ -449,9 +419,10 @@ void VINES_update(void) {
         if (is_outside_simulation(v, space)) continue;
 
         size_t doomed_before = doomed.len;
-        for (size_t i = 0; i < v->chain.len; i++)
-            v->under_fluid.at[i] = (void*)(size_t)check_fluid(
-                chain_at(v, i), (bool)v->under_fluid.at[i], &doomed);
+        for (size_t i = 0; i < v->chain.len; i++) {
+            bool* under = dynarr_at(i, &v->under_fluid);
+            *under = check_fluid(chain_at(v, i), *under, &doomed);
+        }
 
         bool first_pinned = check_pin(chain_at(v, 0));
         bool last_pinned = check_pin(chain_at(v, v->chain.len - 1));
@@ -471,8 +442,8 @@ void VINES_update(void) {
     }
 
     for (size_t i = 0; i < doomed.len; i++)
-        PHYSICS_del_prop_point((size_t)doomed.at[i]);
-    clear_dynarr(&doomed);
+        PHYSICS_del_prop_point(*(size_t*)dynarr_at(i, &doomed));
+    deinit_dynarr(&doomed);
 
     SDL_LockMutex(frames_mutex);
     Uint8 swap = back;
@@ -496,13 +467,13 @@ void VINES_draw(void) {
 
     SDL_FRect cam = CAMERA_get_rect();
     vine_frame* f = &frames[front];
-    for (size_t s = 0; s < f->strips_len; s++) {
-        vine_strip strip = f->strips[s];
+    for (size_t s = 0; s < f->strips.len; s++) {
+        vine_strip strip = *(vine_strip*)dynarr_at(s, &f->strips);
         SDL_FColor col = settings.col;
         col.a = strip.alpha;
         for (size_t i = strip.start + 1; i < strip.start + strip.len; i++) {
-            SDL_FPoint a = f->points[i - 1];
-            SDL_FPoint b = f->points[i];
+            SDL_FPoint a = *(SDL_FPoint*)dynarr_at(i - 1, &f->points);
+            SDL_FPoint b = *(SDL_FPoint*)dynarr_at(i, &f->points);
             RENDERER_draw_line(a.x - cam.x,
                                a.y - cam.y,
                                b.x - cam.x,
@@ -516,34 +487,23 @@ void VINES_draw(void) {
 
 
 static void load_vine_data(const char* csv) {
-    hashmap fluids_map = FLUIDS_get_string_fluid_types_map();
+    fluid_type destroyers[FLUIDS_TOTAL] = {0};
+    parsing_field fields[] = {
+        {"vine_color", parsing_color, &settings.col},
+        {"vine_gravity", parsing_double, &settings.gravity},
+        {"vine_fluid_gravity", parsing_double, &settings.fluid_gravity},
+        {"vine_destroyer_fluids",
+         parsing_fluid,
+         destroyers,
+         .count = FLUIDS_TOTAL},
+        {"vine_cut_duration", parsing_double, &settings.cut_duration},
+        {"vine_fade_time", parsing_double, &settings.fade_time},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        dynarr* row = (dynarr*)parsed.at[i];
-        char* key = (char*)row->at[0];
-        if (SDL_strcmp(key, "vine_color") == 0) {
-            settings.col.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
-            settings.col.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
-            settings.col.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
-            settings.col.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
-        } else if (SDL_strcmp(key, "vine_gravity") == 0)
-            settings.gravity = SDL_strtod((char*)row->at[1], NULL);
-        else if (SDL_strcmp(key, "vine_fluid_gravity") == 0)
-            settings.fluid_gravity = SDL_strtod((char*)row->at[1], NULL);
-        else if (SDL_strcmp(key, "vine_destroyer_fluids") == 0) {
-            for (size_t j = 1; j < row->len; j++) {
-                fluid_type type = (fluid_type)(size_t)get_from_hashmap(
-                    (char*)row->at[j], &fluids_map);
-                settings.destroyer_fluids[type] = true;
-            }
-        } else if (SDL_strcmp(key, "vine_cut_duration") == 0)
-            settings.cut_duration = SDL_strtod((char*)row->at[1], NULL);
-        else if (SDL_strcmp(key, "vine_fade_time") == 0)
-            settings.fade_time = SDL_strtod((char*)row->at[1], NULL);
-    }
-
-    clear_hashmap(&fluids_map);
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    size_t n = PARSING_count_values(&parsed, "vine_destroyer_fluids");
+    for (size_t i = 0; i < n && i < FLUIDS_TOTAL; i++)
+        settings.destroyer_fluids[destroyers[i]] = true;
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -551,21 +511,14 @@ static void load_vine_data(const char* csv) {
 }
 
 static void load_ripples_data(const char* csv) {
+    parsing_field fields[] = {
+        {"prop_max_speed", parsing_double, &settings.ripple_max_speed},
+        {"prop_min_speed", parsing_double, &settings.ripple_min_speed},
+        {"prop_ripple_strength", parsing_double, &settings.ripple_strength},
+        {"new_prop_ripple_pix_size", parsing_uint32, &settings.ripple_size},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "prop_max_speed") == 0)
-            settings.ripple_max_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "prop_min_speed") == 0)
-            settings.ripple_min_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "prop_ripple_strength") == 0)
-            settings.ripple_strength = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "new_prop_ripple_pix_size") == 0)
-            settings.ripple_size = SDL_strtol(val, NULL, 10);
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -573,37 +526,25 @@ static void load_ripples_data(const char* csv) {
 }
 
 void VINES_start(void) {
-#ifndef TEST
     char csv[] = {
 #embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
     };
     char ripples_csv[] = {
 #embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
     };
-#else
-    char csv[] = {
-#embed TESTS_PHYSICS_PROPS_CSV_PATH suffix(, '\0')
-    };
-    char ripples_csv[] = {
-#embed TESTS_FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
-    };
-#endif
 
     load_vine_data(csv);
     load_ripples_data(ripples_csv);
 
-    vines = SDL_calloc(PROPS_VINE_STARTING_DYNARR_CAP, sizeof(vine));
-    vines_cap = PROPS_VINE_STARTING_DYNARR_CAP;
+    init_pool_with(&vines, sizeof(vine), PROPS_VINE_STARTING_DYNARR_CAP);
 
     for (Uint8 i = 0; i < VINE_FRAMES_TOTAL; i++) {
-        frames[i] = (vine_frame){
-            .points = SDL_calloc(PROPS_VINE_FRAME_STARTING_POINTS_CAP,
-                                 sizeof(SDL_FPoint)),
-            .points_cap = PROPS_VINE_FRAME_STARTING_POINTS_CAP,
-            .strips = SDL_calloc(PROPS_VINE_FRAME_STARTING_STRIPS_CAP,
-                                 sizeof(vine_strip)),
-            .strips_cap = PROPS_VINE_FRAME_STARTING_STRIPS_CAP,
-        };
+        init_dynarr_with(&frames[i].points,
+                         sizeof(SDL_FPoint),
+                         PROPS_VINE_FRAME_STARTING_POINTS_CAP);
+        init_dynarr_with(&frames[i].strips,
+                         sizeof(vine_strip),
+                         PROPS_VINE_FRAME_STARTING_STRIPS_CAP);
     }
     back = 0;
     ready = 1;
@@ -613,18 +554,17 @@ void VINES_start(void) {
 }
 
 void VINES_stop(void) {
-    for (size_t idx = 0; idx < vines_cap; idx++) {
-        clear_dynarr(&vines[idx].chain);
-        clear_dynarr(&vines[idx].under_fluid);
+    for (size_t idx = 0; idx < vines.cap; idx++) {
+        vine* v = get_vine(idx);
+        if (!v) continue;
+        deinit_dynarr(&v->chain);
+        deinit_dynarr(&v->under_fluid);
     }
-    SDL_free(vines);
-    vines = NULL;
-    vines_cap = 0;
+    deinit_pool(&vines);
 
     for (Uint8 i = 0; i < VINE_FRAMES_TOTAL; i++) {
-        SDL_free(frames[i].points);
-        SDL_free(frames[i].strips);
-        frames[i] = (vine_frame){0};
+        deinit_dynarr(&frames[i].points);
+        deinit_dynarr(&frames[i].strips);
     }
     SDL_DestroyMutex(frames_mutex);
     frames_mutex = NULL;

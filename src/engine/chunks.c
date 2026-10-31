@@ -4,9 +4,11 @@
 #include "defs.h"
 #include "engine/fluids.h"
 #include "engine/tilemap.h"
+#include "paths.h"
 #include "props/vines.h"
 #include "services/csv.h"
 #include "services/json.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
 
@@ -19,7 +21,7 @@ typedef struct {
 } platforms_rect;
 
 typedef struct {
-    Uint8 type;
+    tile_type type;
     Uint8 x;
     Uint8 y;
     Uint8 w;
@@ -93,67 +95,18 @@ static dynarr types_map = (dynarr){0};
 
 
 
-static void* pack_platforms_rect(platforms_rect r) {
-    void* p = NULL;
-    SDL_memcpy(&p, &r, sizeof(r));
-    return p;
-}
-
-static platforms_rect unpack_platforms_rect(void* p) {
-    platforms_rect r;
-    SDL_memcpy(&r, &p, sizeof(r));
-    return r;
-}
-
-static void* pack_tile_type_rect(tile_type_rect r) {
-    void* p = NULL;
-    SDL_memcpy(&p, &r, sizeof(r));
-    return p;
-}
-
-static tile_type_rect unpack_tile_type_rect(void* p) {
-    tile_type_rect r;
-    SDL_memcpy(&r, &p, sizeof(r));
-    return r;
-}
-
-static Uint8 read_prop(dynarr* row, char* prop, hashmap* props) {
-    return SDL_strtol(
-        (char*)row->at[(size_t)get_from_hashmap(prop, props)], NULL, 10);
-}
-
 static void load_platforms_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
-
-    // Single cell rows are headers organizing the file, so the first row with
-    // more cells names the columns and the others are skipped.
-    size_t header = 0;
-    while (((dynarr*)parsed.at[header])->len < 2)
-        header++;
-
-    // Get hashmap of property indexes
-    hashmap props = (hashmap){0};
-    size_t props_count = ((dynarr*)parsed.at[header])->len;
-    init_hashmap(&props);
-    for (size_t i = 0; i < props_count; i++)
-        set_on_hashmap(
-            (void*)i, (char*)((dynarr*)parsed.at[header])->at[i], &props);
-
-    // Set platforms data
-    init_dynarr(&platforms);
-    for (size_t i = header + 1; i < parsed.len; i++) {
-        dynarr* row = (dynarr*)parsed.at[i];
-        if (row->len < 2) continue;
-        platforms_rect r = (platforms_rect){
-            .x = read_prop(row, "x", &props),
-            .y = read_prop(row, "y", &props),
-            .w = read_prop(row, "w", &props),
-            .h = read_prop(row, "h", &props),
-        };
-        push_to_dynarr(pack_platforms_rect(r), &platforms);
-    }
-
-    clear_hashmap(&props);
+    size_t n = PARSING_count_entries(&parsed);
+    init_dynarr_with(&platforms, sizeof(platforms_rect), n);
+    platforms_rect* r = grow_dynarr(n, &platforms);
+    parsing_field fields[] = {
+        {"x", parsing_uint8, &r->x},
+        {"y", parsing_uint8, &r->y},
+        {"w", parsing_uint8, &r->w},
+        {"h", parsing_uint8, &r->h},
+    };
+    PARSING_read_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -161,42 +114,18 @@ static void load_platforms_data(const char* csv) {
 }
 
 static void load_types_map_data(const char* csv) {
-    hashmap tiles_map = TILEMAP_get_string_tile_types_map();
-
     dynarr parsed = CSV_parse(csv);
-
-    // Single cell rows are headers organizing the file, so the first row with
-    // more cells names the columns and the others are skipped.
-    size_t header = 0;
-    while (((dynarr*)parsed.at[header])->len < 2)
-        header++;
-
-    // Get hashmap of property indexes
-    hashmap props = (hashmap){0};
-    size_t props_count = ((dynarr*)parsed.at[header])->len;
-    init_hashmap(&props);
-    for (size_t i = 0; i < props_count; i++)
-        set_on_hashmap(
-            (void*)i, (char*)((dynarr*)parsed.at[header])->at[i], &props);
-
-    // Set types map data
-    init_dynarr(&types_map);
-    for (size_t i = header + 1; i < parsed.len; i++) {
-        dynarr* row = (dynarr*)parsed.at[i];
-        if (row->len < 2) continue;
-        char* type = (char*)row->at[(size_t)get_from_hashmap("type", &props)];
-        tile_type_rect r = (tile_type_rect){
-            .type = (tile_type)(size_t)get_from_hashmap(type, &tiles_map),
-            .x = read_prop(row, "x", &props),
-            .y = read_prop(row, "y", &props),
-            .w = read_prop(row, "w", &props),
-            .h = read_prop(row, "h", &props),
-        };
-        push_to_dynarr(pack_tile_type_rect(r), &types_map);
-    }
-
-    clear_hashmap(&tiles_map);
-    clear_hashmap(&props);
+    size_t n = PARSING_count_entries(&parsed);
+    init_dynarr_with(&types_map, sizeof(tile_type_rect), n);
+    tile_type_rect* r = grow_dynarr(n, &types_map);
+    parsing_field fields[] = {
+        {"type", parsing_tile, &r->type},
+        {"x", parsing_uint8, &r->x},
+        {"y", parsing_uint8, &r->y},
+        {"w", parsing_uint8, &r->w},
+        {"h", parsing_uint8, &r->h},
+    };
+    PARSING_read_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -205,17 +134,18 @@ static void load_types_map_data(const char* csv) {
 
 static tile_type get_type_from_coords(Uint8 x, Uint8 y) {
     for (size_t i = 0; i < types_map.len; i++) {
-        tile_type_rect r = unpack_tile_type_rect(types_map.at[i]);
-        if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
-            return (tile_type)r.type;
+        tile_type_rect* r = dynarr_at(i, &types_map);
+        if (x >= r->x && x < r->x + r->w && y >= r->y && y < r->y + r->h)
+            return r->type;
     }
     return 0;
 }
 
 static bool get_platform_from_coords(Uint8 x, Uint8 y) {
     for (size_t i = 0; i < platforms.len; i++) {
-        platforms_rect r = unpack_platforms_rect(platforms.at[i]);
-        if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return true;
+        platforms_rect* r = dynarr_at(i, &platforms);
+        if (x >= r->x && x < r->x + r->w && y >= r->y && y < r->y + r->h)
+            return true;
     }
     return false;
 }
@@ -230,7 +160,7 @@ typedef struct {
 // Tiles outside the layer or not from the helper tileset are empty.
 static const helper_tile* get_helper_tile(vines_layer* l, int x, int y) {
     if (x < 0 || y < 0 || x >= l->w || y >= l->h) return &empty_helper_tile;
-    int id = (int)((jsondata*)l->tiles.at[x + l->w * y])->num - l->firstgid;
+    int id = (int)JSON_at(x + l->w * y, &l->tiles)->num - l->firstgid;
     if (id < 0 || id >= CHUNKS_HELPER_TILES_TOTAL) return &empty_helper_tile;
     return &helper_tiles[id];
 }
@@ -317,52 +247,49 @@ static void load_vines(vines_layer* l, dynarr* vines) {
                 if (s.double_pinned &&
                     (s.b_y < s.a_y || (s.b_y == s.a_y && s.b_x < s.a_x)))
                     continue;
-                vine_spawn* v = SDL_malloc(sizeof(vine_spawn));
-                *v = s;
-                push_to_dynarr((void*)v, vines);
+                push_to_dynarr(&s, vines);
             }
         }
     }
 }
 
 static int get_helper_firstgid(jsondata* data) {
-    dynarr tilesets =
-        ((jsondata*)get_from_hashmap("tilesets", &data->obj))->arr;
+    dynarr tilesets = JSON_get("tilesets", data)->arr;
     for (size_t i = 0; i < tilesets.len; i++) {
-        hashmap ts = ((jsondata*)tilesets.at[i])->obj;
+        jsondata* ts = JSON_at(i, &tilesets);
         // Embedded tilesets have no source
-        jsondata* source = get_from_hashmap("source", &ts);
+        jsondata* source = JSON_get("source", ts);
         if (source && SDL_strstr(source->str, CHUNKS_HELPER_TILESET_NAME))
-            return (int)((jsondata*)get_from_hashmap("firstgid", &ts))->num;
+            return (int)JSON_get("firstgid", ts)->num;
     }
     return 0;
 }
 
 static chunk load_from_json(const char* json) {
     jsondata* data = JSON_parse(json);
-    int w = (int)((jsondata*)get_from_hashmap("width", &data->obj))->num;
-    int h = (int)((jsondata*)get_from_hashmap("height", &data->obj))->num;
+    int w = (int)JSON_get("width", data)->num;
+    int h = (int)JSON_get("height", data)->num;
     tile(*map)[w][h] = SDL_calloc(w * h, sizeof(tile));
     dynarr fluids = (dynarr){0};
-    init_dynarr(&fluids);
+    init_dynarr(&fluids, sizeof(fluid_pool));
     dynarr vines = (dynarr){0};
-    init_dynarr(&vines);
+    init_dynarr(&vines, sizeof(vine_spawn));
 
-    dynarr layers = ((jsondata*)get_from_hashmap("layers", &data->obj))->arr;
+    dynarr layers = JSON_get("layers", data)->arr;
 
     // Parse each layer
     for (int idx = 0; idx < layers.len; idx++) {
-        hashmap layer = ((jsondata*)layers.at[idx])->obj;
-        char* name = ((jsondata*)get_from_hashmap("name", &layer))->str;
-        char* type = ((jsondata*)get_from_hashmap("type", &layer))->str;
+        jsondata* layer = JSON_at(idx, &layers);
+        char* name = JSON_get("name", layer)->str;
+        char* type = JSON_get("type", layer)->str;
 
         // If layer is main tilemap
         if (SDL_strcmp(name, "Main") == 0 &&
             SDL_strcmp(type, "tilelayer") == 0) {
-            dynarr tiles = ((jsondata*)get_from_hashmap("data", &layer))->arr;
+            dynarr tiles = JSON_get("data", layer)->arr;
             for (int i = 0; i < w; i++) {
                 for (int j = 0; j < h; j++) {
-                    int curr = (int)((jsondata*)tiles.at[i + w * j])->num - 1;
+                    int curr = (int)JSON_at(i + w * j, &tiles)->num - 1;
                     if (curr == -1) continue;
                     (*map)[i][j].coords_x =
                         curr % (SPRITESHEET_X / SPRITESHEET_CELL_X);
@@ -380,7 +307,7 @@ static chunk load_from_json(const char* json) {
         if (SDL_strcmp(name, "Vines") == 0 &&
             SDL_strcmp(type, "tilelayer") == 0) {
             vines_layer l = (vines_layer){
-                .tiles = ((jsondata*)get_from_hashmap("data", &layer))->arr,
+                .tiles = JSON_get("data", layer)->arr,
                 .w = w,
                 .h = h,
                 .firstgid = get_helper_firstgid(data),
@@ -391,42 +318,38 @@ static chunk load_from_json(const char* json) {
         // If layer is a water layer
         if (SDL_strcmp(name, "Water") == 0 &&
             SDL_strcmp(type, "objectgroup") == 0) {
-            dynarr objects =
-                ((jsondata*)get_from_hashmap("objects", &layer))->arr;
+            dynarr objects = JSON_get("objects", layer)->arr;
             for (int i = 0; i < objects.len; i++) {
-                hashmap obj = ((jsondata*)objects.at[i])->obj;
-                double x = ((jsondata*)get_from_hashmap("x", &obj))->num;
-                double y = ((jsondata*)get_from_hashmap("y", &obj))->num;
-                double w = ((jsondata*)get_from_hashmap("width", &obj))->num;
-                double h = ((jsondata*)get_from_hashmap("height", &obj))->num;
-                fluid_pool* pool = SDL_malloc(sizeof(fluid_pool));
-                *pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
-                                     .y = y / FLUIDS_CELL_H,
-                                     .w = w / FLUIDS_CELL_W,
-                                     .h = h / FLUIDS_CELL_H,
-                                     .type = fluid_water};
-                push_to_dynarr((void*)pool, &fluids);
+                jsondata* obj = JSON_at(i, &objects);
+                double x = JSON_get("x", obj)->num;
+                double y = JSON_get("y", obj)->num;
+                double w = JSON_get("width", obj)->num;
+                double h = JSON_get("height", obj)->num;
+                fluid_pool pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
+                                               .y = y / FLUIDS_CELL_H,
+                                               .w = w / FLUIDS_CELL_W,
+                                               .h = h / FLUIDS_CELL_H,
+                                               .type = fluid_water};
+                push_to_dynarr(&pool, &fluids);
             }
         }
 
         // If layer is a lava layer
         if (SDL_strcmp(name, "Lava") == 0 &&
             SDL_strcmp(type, "objectgroup") == 0) {
-            dynarr objects =
-                ((jsondata*)get_from_hashmap("objects", &layer))->arr;
+            dynarr objects = JSON_get("objects", layer)->arr;
             for (int i = 0; i < objects.len; i++) {
-                hashmap obj = ((jsondata*)objects.at[i])->obj;
-                double x = ((jsondata*)get_from_hashmap("x", &obj))->num;
-                double y = ((jsondata*)get_from_hashmap("y", &obj))->num;
-                double w = ((jsondata*)get_from_hashmap("width", &obj))->num;
-                double h = ((jsondata*)get_from_hashmap("height", &obj))->num;
-                fluid_pool* pool = SDL_malloc(sizeof(fluid_pool));
-                *pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
-                                     .y = y / FLUIDS_CELL_H,
-                                     .w = w / FLUIDS_CELL_W,
-                                     .h = h / FLUIDS_CELL_H,
-                                     .type = fluid_lava};
-                push_to_dynarr((void*)pool, &fluids);
+                jsondata* obj = JSON_at(i, &objects);
+                double x = JSON_get("x", obj)->num;
+                double y = JSON_get("y", obj)->num;
+                double w = JSON_get("width", obj)->num;
+                double h = JSON_get("height", obj)->num;
+                fluid_pool pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
+                                               .y = y / FLUIDS_CELL_H,
+                                               .w = w / FLUIDS_CELL_W,
+                                               .h = h / FLUIDS_CELL_H,
+                                               .type = fluid_lava};
+                push_to_dynarr(&pool, &fluids);
             }
         }
     }
@@ -437,7 +360,6 @@ static chunk load_from_json(const char* json) {
 }
 
 void CHUNKS_start(void) {
-#ifndef TEST
     char platforms_csv[] = {
 #embed CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
     };
@@ -445,20 +367,10 @@ void CHUNKS_start(void) {
     char types_map_csv[] = {
 #embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
     };
-#else
-    char platforms_csv[] = {
-#embed TESTS_CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
-    };
-
-    char types_map_csv[] = {
-#embed TESTS_CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
-    };
-#endif
 
     load_platforms_data(platforms_csv);
     load_types_map_data(types_map_csv);
 
-#ifndef TEST
     char chunk001[] = {
 #embed CHUNKS_001_PATH suffix(, '\0')
     };
@@ -480,26 +392,16 @@ void CHUNKS_start(void) {
     chunks[3] = load_from_json(chunk004);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Chunks loaded successfully.");
-#else
-    char chunk001[] = {
-#embed TESTS_CHUNKS_001_PATH suffix(, '\0')
-    };
-    chunks[0] = load_from_json(chunk001);
-#endif
 }
 
 void CHUNKS_stop(void) {
     for (int i = 0; i < CHUNKS_TOTAL; i++) {
         SDL_free(chunks[i].map);
-        for (int k = 0; k < chunks[i].fluids.len; k++)
-            SDL_free(chunks[i].fluids.at[k]);
-        clear_dynarr(&chunks[i].fluids);
-        for (int k = 0; k < chunks[i].vines.len; k++)
-            SDL_free(chunks[i].vines.at[k]);
-        clear_dynarr(&chunks[i].vines);
+        deinit_dynarr(&chunks[i].fluids);
+        deinit_dynarr(&chunks[i].vines);
     }
-    clear_dynarr(&platforms);
-    clear_dynarr(&types_map);
+    deinit_dynarr(&platforms);
+    deinit_dynarr(&types_map);
 }
 
 int CHUNKS_get(size_t id, chunk* data) {
@@ -537,7 +439,7 @@ int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
 
     // Fluid pools are in fluid cell coords relative to the chunk
     for (size_t i = 0; i < c.fluids.len; i++) {
-        fluid_pool* p = c.fluids.at[i];
+        fluid_pool* p = dynarr_at(i, &c.fluids);
         FLUIDS_set_at(p->x + x * FLUIDS_SPLIT_X,
                       p->y + y * FLUIDS_SPLIT_Y,
                       p->w,
@@ -550,7 +452,7 @@ int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
     double px = x * SPRITESHEET_CELL_X;
     double py = y * SPRITESHEET_CELL_Y;
     for (size_t i = 0; i < c.vines.len; i++) {
-        vine_spawn* v = c.vines.at[i];
+        vine_spawn* v = dynarr_at(i, &c.vines);
         SDL_FPoint path[] = {
             {v->a_x + px, v->a_y + py},
             {v->a_x + px, v->bend_y + py},

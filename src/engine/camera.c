@@ -2,7 +2,9 @@
 #include "data-structs/dynarr.h"
 #include "defs.h"
 #include "engine/game-manager.h"
+#include "paths.h"
 #include "services/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_rect.h>
 #include <SDL3/SDL_stdinc.h>
@@ -73,16 +75,13 @@ void CAMERA_start(void) {
 #embed CAMERA_CSV_PATH suffix(, '\0')
     };
 
+    parsing_field fields[] = {
+        {"speed", parsing_double, &data.speed},
+        {"smoothing_range", parsing_double, &data.smoothing_range},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "speed") == 0)
-            data.speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "smoothing_range") == 0)
-            data.smoothing_range = SDL_strtod(val, NULL);
-    }
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    CSV_free(&parsed);
 }
 
 

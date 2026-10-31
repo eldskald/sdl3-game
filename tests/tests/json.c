@@ -62,81 +62,75 @@ void test_json(void) {
            5,
            (bool[]){
                test->type == arr,
-               ((jsondata*)test->arr.at[0])->type == num,
-               ((jsondata*)test->arr.at[0])->num == 24,
-               ((jsondata*)test->arr.at[1])->type == num,
-               ((jsondata*)test->arr.at[1])->num == 17,
+               JSON_at(0, &test->arr)->type == num,
+               JSON_at(0, &test->arr)->num == 24,
+               JSON_at(1, &test->arr)->type == num,
+               JSON_at(1, &test->arr)->num == 17,
            });
     JSON_free(test);
 
     test = JSON_parse("[24.3, \"array\"]");
-    expect(
-        "Parsing [24.3, \"array\"]...",
-        5,
-        (bool[]){test->type == arr,
-                 ((jsondata*)test->arr.at[0])->type == num,
-                 ((jsondata*)test->arr.at[0])->num == 24.3,
-                 ((jsondata*)test->arr.at[1])->type == str,
-                 SDL_strcmp(((jsondata*)test->arr.at[1])->str, "array") == 0});
+    expect("Parsing [24.3, \"array\"]...",
+           5,
+           (bool[]){test->type == arr,
+                    JSON_at(0, &test->arr)->type == num,
+                    JSON_at(0, &test->arr)->num == 24.3,
+                    JSON_at(1, &test->arr)->type == str,
+                    SDL_strcmp(JSON_at(1, &test->arr)->str, "array") == 0});
     JSON_free(test);
 
     test = JSON_parse("[[0, 1], [0, 2], \"recursion\"]");
-    expect(
-        "Parsing [[0, 1], [0, 2], \"recursion\"]...",
-        13,
-        (bool[]){
-            test->type == arr,
-            ((jsondata*)test->arr.at[0])->type == arr,
-            ((jsondata*)((jsondata*)test->arr.at[0])->arr.at[0])->type == num,
-            ((jsondata*)((jsondata*)test->arr.at[0])->arr.at[0])->num == 0,
-            ((jsondata*)((jsondata*)test->arr.at[0])->arr.at[1])->type == num,
-            ((jsondata*)((jsondata*)test->arr.at[0])->arr.at[1])->num == 1,
-            ((jsondata*)test->arr.at[1])->type == arr,
-            ((jsondata*)((jsondata*)test->arr.at[1])->arr.at[0])->type == num,
-            ((jsondata*)((jsondata*)test->arr.at[1])->arr.at[0])->num == 0,
-            ((jsondata*)((jsondata*)test->arr.at[1])->arr.at[1])->type == num,
-            ((jsondata*)((jsondata*)test->arr.at[1])->arr.at[1])->num == 2,
-            ((jsondata*)test->arr.at[2])->type == str,
-            SDL_strcmp(((jsondata*)test->arr.at[2])->str, "recursion") == 0});
+    expect("Parsing [[0, 1], [0, 2], \"recursion\"]...",
+           13,
+           (bool[]){test->type == arr,
+                    JSON_at(0, &test->arr)->type == arr,
+                    JSON_at(0, &JSON_at(0, &test->arr)->arr)->type == num,
+                    JSON_at(0, &JSON_at(0, &test->arr)->arr)->num == 0,
+                    JSON_at(1, &JSON_at(0, &test->arr)->arr)->type == num,
+                    JSON_at(1, &JSON_at(0, &test->arr)->arr)->num == 1,
+                    JSON_at(1, &test->arr)->type == arr,
+                    JSON_at(0, &JSON_at(1, &test->arr)->arr)->type == num,
+                    JSON_at(0, &JSON_at(1, &test->arr)->arr)->num == 0,
+                    JSON_at(1, &JSON_at(1, &test->arr)->arr)->type == num,
+                    JSON_at(1, &JSON_at(1, &test->arr)->arr)->num == 2,
+                    JSON_at(2, &test->arr)->type == str,
+                    SDL_strcmp(JSON_at(2, &test->arr)->str, "recursion") == 0});
     JSON_free(test);
 
     test = JSON_parse("{\"test\":42,\"key\":true}");
     expect("Parsing {\"test\":42,\"key\":true}...",
            5,
-           (bool[]){
-               test->type == obj,
-               ((jsondata*)get_from_hashmap("test", &test->obj))->type == num,
-               ((jsondata*)get_from_hashmap("test", &test->obj))->num == 42,
-               ((jsondata*)get_from_hashmap("key", &test->obj))->type == bln,
-               ((jsondata*)get_from_hashmap("key", &test->obj))->bln == true});
+           (bool[]){test->type == obj,
+                    JSON_get("test", test)->type == num,
+                    JSON_get("test", test)->num == 42,
+                    JSON_get("key", test)->type == bln,
+                    JSON_get("key", test)->bln == true});
     JSON_free(test);
 
     test = JSON_parse("{\"array\": [33, .5], \"object\": {\"key\": \"val\"}}");
-    jsondata* arrv = (jsondata*)get_from_hashmap("array", &test->obj);
-    jsondata* objv = (jsondata*)get_from_hashmap("object", &test->obj);
+    jsondata* arrv = JSON_get("array", test);
+    jsondata* objv = JSON_get("object", test);
     expect("Parsing {\"array\": [33, .5], \"object\": {\"key\": \"val\"}}...",
            9,
-           (bool[]){
-               test->type == obj,
-               arrv->type == arr,
-               ((jsondata*)arrv->arr.at[0])->type == num,
-               ((jsondata*)arrv->arr.at[0])->num == 33,
-               ((jsondata*)arrv->arr.at[1])->type == num,
-               ((jsondata*)arrv->arr.at[1])->num == 0.5,
-               objv->type == obj,
-               ((jsondata*)get_from_hashmap("key", &objv->obj))->type == str,
-               SDL_strcmp(((jsondata*)get_from_hashmap("key", &objv->obj))->str,
-                          "val") == 0});
+           (bool[]){test->type == obj,
+                    arrv->type == arr,
+                    JSON_at(0, &arrv->arr)->type == num,
+                    JSON_at(0, &arrv->arr)->num == 33,
+                    JSON_at(1, &arrv->arr)->type == num,
+                    JSON_at(1, &arrv->arr)->num == 0.5,
+                    objv->type == obj,
+                    JSON_get("key", objv)->type == str,
+                    SDL_strcmp(JSON_get("key", objv)->str, "val") == 0});
     JSON_free(test);
 
     test = JSON_parse(
         "[{\"id\":17,\"pos\":[33,-12]},{\"id\":04,\"pos\":[-.5,12]}]");
-    jsondata* v0 = (jsondata*)test->arr.at[0];
-    jsondata* id0 = (jsondata*)get_from_hashmap("id", &v0->obj);
-    jsondata* pos0 = (jsondata*)get_from_hashmap("pos", &v0->obj);
-    jsondata* v1 = (jsondata*)test->arr.at[1];
-    jsondata* id1 = (jsondata*)get_from_hashmap("id", &v1->obj);
-    jsondata* pos1 = (jsondata*)get_from_hashmap("pos", &v1->obj);
+    jsondata* v0 = JSON_at(0, &test->arr);
+    jsondata* id0 = JSON_get("id", v0);
+    jsondata* pos0 = JSON_get("pos", v0);
+    jsondata* v1 = JSON_at(1, &test->arr);
+    jsondata* id1 = JSON_get("id", v1);
+    jsondata* pos1 = JSON_get("pos", v1);
     expect("Parsing "
            "[{\"id\":17,\"pos\":[33,-12]},{\"id\":04,\"pos\":[-.5,12]}]...",
            17,
@@ -146,18 +140,18 @@ void test_json(void) {
                id0->type == num,
                id0->num == 17,
                pos0->type == arr,
-               ((jsondata*)pos0->arr.at[0])->type == num,
-               ((jsondata*)pos0->arr.at[0])->num == 33,
-               ((jsondata*)pos0->arr.at[1])->type == num,
-               ((jsondata*)pos0->arr.at[1])->num == -12,
+               JSON_at(0, &pos0->arr)->type == num,
+               JSON_at(0, &pos0->arr)->num == 33,
+               JSON_at(1, &pos0->arr)->type == num,
+               JSON_at(1, &pos0->arr)->num == -12,
                v1->type == obj,
                id1->type == num,
                id1->num == 4,
                pos1->type == arr,
-               ((jsondata*)pos1->arr.at[0])->type == num,
-               ((jsondata*)pos1->arr.at[0])->num == -0.5,
-               ((jsondata*)pos1->arr.at[1])->type == num,
-               ((jsondata*)pos1->arr.at[1])->num == 12,
+               JSON_at(0, &pos1->arr)->type == num,
+               JSON_at(0, &pos1->arr)->num == -0.5,
+               JSON_at(1, &pos1->arr)->type == num,
+               JSON_at(1, &pos1->arr)->num == 12,
            });
     JSON_free(test);
 }
