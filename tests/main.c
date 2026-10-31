@@ -9,8 +9,8 @@
 #include "tests/hashmap.h"
 #include "tests/inputs.h"
 #include "tests/json.h"
-#include "tests/list.h"
 #include "tests/physics.h"
+#include "tests/pool.h"
 #include "tests/reactions.h"
 #include "tests/tilemap.h"
 #include <SDL3/SDL.h>
@@ -27,8 +27,8 @@ int main(int argc, char* argv[]) {
 
     TILEMAP_start();
 
-    if (argc == 1 || SDL_strcmp(argv[1], "list") == 0) test_list();
     if (argc == 1 || SDL_strcmp(argv[1], "dynarr") == 0) test_dynarr();
+    if (argc == 1 || SDL_strcmp(argv[1], "pool") == 0) test_pool();
     if (argc == 1 || SDL_strcmp(argv[1], "hashmap") == 0) test_hashmap();
 
     if (argc == 1 || SDL_strcmp(argv[1], "json") == 0) test_json();

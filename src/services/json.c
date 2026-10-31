@@ -1,7 +1,6 @@
 #include "services/json.h"
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
-#include "data-structs/list.h"
 #include "services/defs.h"
 #include <SDL3/SDL.h>
 
@@ -27,38 +26,53 @@ static void reset_val(char** val, size_t* i, size_t* cap) {
     *i = 0;
 }
 
+// The innermost open array or object on `recursions`.
+static elemtype top(dynarr* recursions) {
+    return *(elemtype*)dynarr_at(recursions->len - 1, recursions);
+}
+
+static void free_value(jsondata* value);
+
 static void free_obj(hashmap* obj) {
-    for (size_t i = 0; i < obj->len; i++) {
-        JSON_free(obj->values[obj->indexes[i]]);
-    }
-    clear_hashmap(obj);
+    for (size_t i = 0; i < obj->len; i++)
+        free_value(hashmap_value_at(i, obj));
+    deinit_hashmap(obj);
 }
 
 static void free_arr(dynarr* arr) {
-    for (size_t i = 0; i < arr->len; i++) {
-        JSON_free(arr->at[i]);
-    }
-    clear_dynarr(arr);
+    for (size_t i = 0; i < arr->len; i++)
+        free_value(JSON_at(i, arr));
+    deinit_dynarr(arr);
+}
+
+// Frees what `value` holds, but not `value` itself.
+static void free_value(jsondata* value) {
+    if (value->type == str) SDL_free(value->str);
+    if (value->type == arr) free_arr(&value->arr);
+    if (value->type == obj) free_obj(&value->obj);
 }
 
 static void
-error_obj(hashmap* obj, char* val, list* recursions, char* message) {
+error_obj(hashmap* obj, char* val, dynarr* recursions, char* message) {
     free_obj(obj);
     SDL_free(val);
-    clear_list(recursions);
+    deinit_dynarr(recursions);
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", message);
 }
 
-static void error_arr(dynarr* arr, char* val, list* recursions, char* message) {
+static void
+error_arr(dynarr* arr, char* val, dynarr* recursions, char* message) {
     free_arr(arr);
     SDL_free(val);
-    clear_list(recursions);
+    deinit_dynarr(recursions);
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", message);
 }
 
 
 
-jsondata* JSON_parse(const char* string) {
+// Parses `string` into `res`. Returns false on errors, leaving nothing on
+// `res` to be freed.
+static bool parse(const char* string, jsondata* res) {
     bool parsing = false;
     jsontype parsing_type = obj;
     bool is_parsing_str = false;
@@ -80,7 +94,9 @@ jsondata* JSON_parse(const char* string) {
     char* parsing_obj_curr_key = NULL;
     bool parsing_obj_ended = false;
 
-    list recursions = (list){0};
+    // Stack of the elemtypes of the arrays and objects open inside the value
+    dynarr recursions = (dynarr){0};
+    init_dynarr_with(&recursions, sizeof(elemtype), 0);
 
     for (const char* p = string; *p; p++) {
         char curr = *p;
@@ -119,7 +135,7 @@ jsondata* JSON_parse(const char* string) {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                              "JSON ERROR: invalid entry");
                 SDL_free(val);
-                return NULL;
+                return false;
             case 'f':
                 // has to be 'false', check for next chars
                 p++;
@@ -140,17 +156,17 @@ jsondata* JSON_parse(const char* string) {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                              "JSON ERROR: invalid entry");
                 SDL_free(val);
-                return NULL;
+                return false;
             case '"':
                 parsing_type = str;
                 is_parsing_str = true;
                 continue;
             case '[':
-                init_dynarr(&arrval);
+                init_dynarr(&arrval, sizeof(jsondata));
                 parsing_type = arr;
                 continue;
             case '{':
-                init_hashmap(&objval);
+                init_hashmap(&objval, sizeof(jsondata));
                 parsing_type = obj;
                 // First char after { must be "
                 p++;
@@ -162,17 +178,17 @@ jsondata* JSON_parse(const char* string) {
                               &recursions,
                               "JSON ERROR: first char in object must be "
                               "quotation mark");
-                    return NULL;
+                    return false;
                 }
                 parsing_obj_key = true;
                 continue;
             default:
                 SDL_free(val);
-                clear_list(&recursions);
+                deinit_dynarr(&recursions);
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                              "JSON ERROR: invalid first char: %c",
                              curr);
-                return NULL;
+                return false;
             }
         }
 
@@ -180,10 +196,10 @@ jsondata* JSON_parse(const char* string) {
         if (parsing_type == num) {
             if (curr == '.' && parsing_num_found_dot) {
                 SDL_free(val);
-                clear_list(&recursions);
+                deinit_dynarr(&recursions);
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                              "JSON ERROR: invalid number");
-                return NULL;
+                return false;
             }
             if (curr == '.' && !parsing_num_found_dot) {
                 val[val_i] = curr;
@@ -208,7 +224,7 @@ jsondata* JSON_parse(const char* string) {
             if (parsing_arr_ended) {
                 error_arr(
                     &arrval, val, &recursions, "JSON ERROR: invalid array");
-                return NULL;
+                return false;
             }
 
             switch (curr) {
@@ -218,20 +234,20 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (recursions.head) {
+                if (recursions.len) {
                     val[val_i] = curr;
                     val_i++;
                     break;
                 }
-                jsondata* elem = JSON_parse(val);
-                if (!elem) {
+                jsondata elem = (jsondata){0};
+                if (!parse(val, &elem)) {
                     error_arr(&arrval,
                               val,
                               &recursions,
                               "JSON ERROR: invalid value in array");
-                    return NULL;
+                    return false;
                 }
-                push_to_dynarr(elem, &arrval);
+                push_to_dynarr(&elem, &arrval);
                 reset_val(&val, &val_i, &val_size);
                 break;
             case '"':
@@ -245,7 +261,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list((void*)elemobj, &recursions);
+                push_to_dynarr(&(elemtype){elemobj}, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -255,7 +271,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list((void*)elemarr, &recursions);
+                push_to_dynarr(&(elemtype){elemarr}, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -265,15 +281,15 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (recursions.head->val == (void*)elemobj) {
-                    pop_from_list(&recursions);
+                if (top(&recursions) == elemobj) {
+                    remove_at_from_dynarr(recursions.len - 1, &recursions);
                     val[val_i] = curr;
                     val_i++;
                     break;
                 } else {
                     error_arr(
                         &arrval, val, &recursions, "JSON ERROR: invalid array");
-                    return NULL;
+                    return false;
                 }
                 break;
             case ']':
@@ -282,28 +298,28 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (!recursions.head) {
-                    jsondata* elem = JSON_parse(val);
-                    if (!elem) {
+                if (!recursions.len) {
+                    jsondata elem = (jsondata){0};
+                    if (!parse(val, &elem)) {
                         error_arr(&arrval,
                                   val,
                                   &recursions,
                                   "JSON ERROR: invalid value in array");
-                        return NULL;
+                        return false;
                     }
-                    push_to_dynarr(elem, &arrval);
+                    push_to_dynarr(&elem, &arrval);
                     SDL_free(val);
                     parsing_arr_ended = true;
                     break;
-                } else if (recursions.head->val == elemarr) {
-                    pop_from_list(&recursions);
+                } else if (top(&recursions) == elemarr) {
+                    remove_at_from_dynarr(recursions.len - 1, &recursions);
                     val[val_i] = curr;
                     val_i++;
                     break;
-                } else if (recursions.head->val == (void*)elemobj) {
+                } else if (top(&recursions) == elemobj) {
                     error_arr(
                         &arrval, val, &recursions, "JSON ERROR: invalid array");
-                    return NULL;
+                    return false;
                 }
                 break;
             default:
@@ -318,7 +334,7 @@ jsondata* JSON_parse(const char* string) {
             if (parsing_obj_ended) {
                 error_obj(
                     &objval, val, &recursions, "JSON ERROR: invalid object");
-                return NULL;
+                return false;
             }
 
             switch (curr) {
@@ -329,7 +345,7 @@ jsondata* JSON_parse(const char* string) {
                               val,
                               &recursions,
                               "JSON ERROR: invalid key in object");
-                    return NULL;
+                    return false;
 
                     // Parsing key, quotation marks after non empty string
                 } else if (parsing_obj_key && val_i > 0) {
@@ -344,7 +360,7 @@ jsondata* JSON_parse(const char* string) {
                             val,
                             &recursions,
                             "JSON ERROR: missing colon after key in object");
-                        return NULL;
+                        return false;
                     }
 
                     // If everything is good, setup for parsing value
@@ -370,20 +386,20 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (recursions.head) {
+                if (recursions.len) {
                     val[val_i] = curr;
                     val_i++;
                     break;
                 }
-                jsondata* elem = JSON_parse(val);
-                if (!elem) {
+                jsondata elem = (jsondata){0};
+                if (!parse(val, &elem)) {
                     error_obj(&objval,
                               val,
                               &recursions,
                               "JSON ERROR: invalid element in object");
-                    return NULL;
+                    return false;
                 };
-                set_on_hashmap(elem, parsing_obj_curr_key, &objval);
+                set_on_hashmap(&elem, parsing_obj_curr_key, &objval);
                 SDL_free(parsing_obj_curr_key);
                 reset_val(&val, &val_i, &val_size);
 
@@ -397,7 +413,7 @@ jsondata* JSON_parse(const char* string) {
                               &recursions,
                               "JSON ERROR: missing quotation mark after comma "
                               "in object");
-                    return NULL;
+                    return false;
                 }
 
                 parsing_obj_key = true;
@@ -409,7 +425,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list((void*)elemobj, &recursions);
+                push_to_dynarr(&(elemtype){elemobj}, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -419,7 +435,7 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                push_to_list((void*)elemarr, &recursions);
+                push_to_dynarr(&(elemtype){elemarr}, &recursions);
                 val[val_i] = curr;
                 val_i++;
                 break;
@@ -429,32 +445,32 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (!recursions.head) {
-                    jsondata* elem = JSON_parse(val);
-                    if (!elem) {
+                if (!recursions.len) {
+                    jsondata elem = (jsondata){0};
+                    if (!parse(val, &elem)) {
                         error_obj(&objval,
                                   val,
                                   &recursions,
                                   "JSON ERROR: invalid element in object");
-                        return NULL;
+                        return false;
                     };
-                    set_on_hashmap(elem, parsing_obj_curr_key, &objval);
+                    set_on_hashmap(&elem, parsing_obj_curr_key, &objval);
                     SDL_free(parsing_obj_curr_key);
                     SDL_free(val);
                     parsing_obj_ended = true;
                     parsing_obj_val = false;
                     break;
-                } else if (recursions.head->val == (void*)elemobj) {
-                    pop_from_list(&recursions);
+                } else if (top(&recursions) == elemobj) {
+                    remove_at_from_dynarr(recursions.len - 1, &recursions);
                     val[val_i] = curr;
                     val_i++;
                     break;
-                } else if (recursions.head->val == elemarr) {
+                } else if (top(&recursions) == elemarr) {
                     error_obj(&objval,
                               val,
                               &recursions,
                               "JSON ERROR: invalid element in object");
-                    return NULL;
+                    return false;
                 }
                 break;
             case ']':
@@ -463,15 +479,14 @@ jsondata* JSON_parse(const char* string) {
                     val_i++;
                     break;
                 }
-                if (!recursions.head ||
-                    recursions.head->val == (void*)elemobj) {
+                if (!recursions.len || top(&recursions) == elemobj) {
                     error_obj(&objval,
                               val,
                               &recursions,
                               "JSON ERROR: invalid element in object");
-                    return NULL;
-                } else if (recursions.head->val == elemarr) {
-                    pop_from_list(&recursions);
+                    return false;
+                } else if (top(&recursions) == elemarr) {
+                    remove_at_from_dynarr(recursions.len - 1, &recursions);
                     val[val_i] = curr;
                     val_i++;
                     break;
@@ -487,17 +502,10 @@ jsondata* JSON_parse(const char* string) {
         if (val_i == val_size - 1) val = double_str_cap(val, &val_size);
     }
 
-    jsondata* res = SDL_malloc(sizeof(jsondata));
-    res->type = parsing_type;
-    res->num = 0;
-    res->str = NULL;
-    res->arr = arrval;
-    res->obj = objval;
-    res->bln = false;
-
-    if (parsing_type == bln) {
-        res->bln = parsed_true;
-    }
+    *res = (jsondata){.type = parsing_type};
+    if (parsing_type == arr) res->arr = arrval;
+    if (parsing_type == obj) res->obj = objval;
+    if (parsing_type == bln) res->bln = parsed_true;
 
     if (parsing_type == num) {
         res->num = SDL_strtod(val, NULL);
@@ -508,24 +516,29 @@ jsondata* JSON_parse(const char* string) {
         if (val[val_i - 1] != '"' ||
             (val[val_i - 1] == '"' && parsing_str_found_dquotes > 1)) {
             SDL_free(val);
-            clear_list(&recursions);
+            deinit_dynarr(&recursions);
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                          "JSON ERROR: invalid string ");
-            return NULL;
+            return false;
         }
         val[val_i - 1] = '\0';
         res->str = val;
     }
 
-    clear_list(&recursions);
-    return res;
+    deinit_dynarr(&recursions);
+    return true;
 }
 
 
 
+jsondata* JSON_parse(const char* string) {
+    jsondata* res = SDL_malloc(sizeof(jsondata));
+    if (parse(string, res)) return res;
+    SDL_free(res);
+    return NULL;
+}
+
 void JSON_free(jsondata* value) {
-    if (value->str) SDL_free(value->str);
-    if (value->arr.cap) free_arr(&value->arr);
-    if (value->obj.cap) free_obj(&value->obj);
+    free_value(value);
     SDL_free(value);
 }

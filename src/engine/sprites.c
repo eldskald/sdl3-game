@@ -1,5 +1,6 @@
 #include "engine/sprites.h"
 #include "data-structs/dynarr.h"
+#include "data-structs/pool.h"
 #include "defs.h"
 #include "engine/camera.h"
 #include "engine/game-manager.h"
@@ -8,13 +9,8 @@
 
 #define SPRITES_FRAMES_TOTAL 3
 
-// This is how we're doing it: we have this huge sprites array of sprite_data to
-// represent all current sprites rendering. It is just a big block of memory.
-// When SPRITES_new_sprite() is called, we iterate through it to find the
-// smallest unoccupied index and place the sprite there, where it shall remain
-// so that its sprite_id always points to it in the array. If the array gets
-// full, we double its size like a dynamic array but hopefully it shouldn't need
-// to.
+// Sprites are on a pool, so their `sprite_id` always points to them while they
+// exist.
 //
 // A line or triangle attached to a sprite, in world pixels. Lines only use
 // `x1,y1` and `x2,y2`.
@@ -37,17 +33,16 @@ typedef struct {
     SDL_FColor col;
 } attached_shape;
 
-// Its attached lines and triangles are on `shapes`, in the order they were
-// attached. `shapes_rect` is the rect bounding all of them in world pixels,
-// only meaningful while it has any, and it gets expanded each time one is
-// attached.
+// Its attached lines and triangles are on `shapes`, an `attached_shape` dynarr,
+// in the order they were attached. `shapes_rect` is the rect bounding all of
+// them in world pixels, only meaningful while it has any, and it gets expanded
+// each time one is attached.
 typedef struct {
     sprite sprite;
     animation anim;
     double anim_time;
     bool anim_playing;
-    attached_shape* shapes;
-    size_t shapes_len, shapes_cap;
+    dynarr shapes;
     SDL_FRect shapes_rect;
 } sprite_data;
 
@@ -68,14 +63,11 @@ typedef struct {
 // What the update function saw of the sprites, for the draw function to queue
 // on the renderer.
 typedef struct {
-    sprite_draw* draws;
-    size_t len, cap;
-    attached_shape* shapes;
-    size_t shapes_len, shapes_cap;
+    dynarr draws;  // sprite_draw dynarr
+    dynarr shapes; // attached_shape dynarr
 } sprite_frame;
 
-static sprite_data* sprites = NULL;
-static size_t sprites_size = 0;
+static pool sprites = (pool){0};
 
 // Triple buffering: the update function builds `back` and swaps it with
 // `ready`, the draw function swaps `ready` with `front` when `fresh` and draws
@@ -87,13 +79,8 @@ static Uint8 front = 2;
 static bool fresh = false;
 static SDL_Mutex* frames_mutex = NULL;
 
-static void double_dynarr(void) {
-    sprite_data* new_sprites =
-        SDL_calloc(sprites_size << 1, sizeof(sprite_data));
-    SDL_memcpy(new_sprites, sprites, sprites_size * sizeof(sprite_data));
-    SDL_free(sprites);
-    sprites_size = sprites_size << 1;
-    sprites = new_sprites;
+static sprite_data* get_sprite(size_t id) {
+    return pool_at(id, &sprites);
 }
 
 
@@ -107,63 +94,55 @@ int SPRITES_new_sprite(sprite data, size_t* sprite_id) {
                     data.coords_h);
         return 2;
     }
-    for (size_t i = 0; i < sprites_size; i++) {
-        if (sprites[i].sprite.coords_w == 0) {
-            sprites[i] = (sprite_data){.sprite = data};
-            *sprite_id = i;
-            return 0;
-        }
-    }
-    double_dynarr();
-    size_t index = sprites_size / 2;
-    sprites[index] = (sprite_data){.sprite = data};
-    *sprite_id = index;
+    sprite_data sd = (sprite_data){.sprite = data};
+    init_dynarr_with(&sd.shapes, sizeof(attached_shape), 0);
+    *sprite_id = add_to_pool(&sd, &sprites);
     return 0;
 }
 
 
 int SPRITES_del_sprite(size_t sprite_id) {
-    if (sprite_id >= sprites_size || sprite_id < 0) {
+    if (sprite_id >= sprites.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to delete sprite_id=%lu but this is outside the "
                     "buffer range",
                     sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].sprite.coords_w == 0) {
+    if (!get_sprite(sprite_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to delete inexistent sprite at sprite_id=%lu",
                     sprite_id);
         return 1;
     }
-    SDL_free(sprites[sprite_id].shapes);
-    sprites[sprite_id] = (sprite_data){0};
+    deinit_dynarr(&get_sprite(sprite_id)->shapes);
+    remove_from_pool(sprite_id, &sprites);
     return 0;
 }
 
 
 int SPRITES_get_sprite(size_t sprite_id, sprite* data) {
-    if (sprite_id >= sprites_size) {
+    if (sprite_id >= sprites.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to get sprite_id=%lu but this is outside the buffer range",
             sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].sprite.coords_w == 0) {
+    if (!get_sprite(sprite_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get inexistent sprite at sprite_id=%lu",
                     sprite_id);
         return 1;
     }
 
-    *data = sprites[sprite_id].sprite;
+    *data = get_sprite(sprite_id)->sprite;
     return 0;
 }
 
 
 int SPRITES_edit_sprite(size_t sprite_id, sprite data) {
-    if (sprite_id >= sprites_size || sprite_id < 0) {
+    if (sprite_id >= sprites.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to edit sprite_id=%lu but this is outside the "
                     "buffer range",
@@ -178,14 +157,14 @@ int SPRITES_edit_sprite(size_t sprite_id, sprite data) {
                     data.coords_h);
         return 2;
     }
-    if (sprites[sprite_id].sprite.coords_w == 0) {
+    if (!get_sprite(sprite_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to edit inexistent sprite at sprite_id=%lu",
                     sprite_id);
         return 1;
     }
 
-    sprites[sprite_id].sprite = data;
+    get_sprite(sprite_id)->sprite = data;
     return 0;
 }
 
@@ -194,14 +173,14 @@ int SPRITES_edit_sprite(size_t sprite_id, sprite data) {
 // Attaches `shape` to the sprite at `sprite_id`, expanding its `shapes_rect` by
 // the first `points` points of `shape`.
 static int attach_shape(size_t sprite_id, attached_shape shape, Uint8 points) {
-    if (sprite_id >= sprites_size) {
+    if (sprite_id >= sprites.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to attach shape to sprite_id=%lu but this is "
                     "outside the buffer range",
                     sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].sprite.coords_w == 0) {
+    if (!get_sprite(sprite_id)) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to attach shape to inexistent sprite at sprite_id=%lu",
@@ -209,7 +188,7 @@ static int attach_shape(size_t sprite_id, attached_shape shape, Uint8 points) {
         return 1;
     }
 
-    sprite_data* sd = &sprites[sprite_id];
+    sprite_data* sd = get_sprite(sprite_id);
     float xs[3] = {shape.x1, shape.x2, shape.x3};
     float ys[3] = {shape.y1, shape.y2, shape.y3};
     float left = xs[0], top = ys[0], right = xs[0], bottom = ys[0];
@@ -219,7 +198,7 @@ static int attach_shape(size_t sprite_id, attached_shape shape, Uint8 points) {
         right = SDL_max(right, xs[i]);
         bottom = SDL_max(bottom, ys[i]);
     }
-    if (sd->shapes_len > 0) {
+    if (sd->shapes.len > 0) {
         SDL_FRect* r = &sd->shapes_rect;
         left = SDL_min(left, r->x);
         top = SDL_min(top, r->y);
@@ -228,14 +207,7 @@ static int attach_shape(size_t sprite_id, attached_shape shape, Uint8 points) {
     }
     sd->shapes_rect = (SDL_FRect){left, top, right - left, bottom - top};
 
-    if (sd->shapes_len == sd->shapes_cap) {
-        sd->shapes_cap =
-            sd->shapes_cap ? sd->shapes_cap << 1 : SPRITES_SHAPES_STARTING_CAP;
-        sd->shapes =
-            SDL_realloc(sd->shapes, sd->shapes_cap * sizeof(attached_shape));
-    }
-    sd->shapes[sd->shapes_len] = shape;
-    sd->shapes_len++;
+    push_to_dynarr(&shape, &sd->shapes);
     return 0;
 }
 
@@ -276,14 +248,14 @@ int SPRITES_attach_triangle_to_sprite(size_t sprite_id,
 }
 
 int SPRITES_clear_attached_shapes(size_t sprite_id) {
-    if (sprite_id >= sprites_size) {
+    if (sprite_id >= sprites.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to clear shapes of sprite_id=%lu but this is "
                     "outside the buffer range",
                     sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].sprite.coords_w == 0) {
+    if (!get_sprite(sprite_id)) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to clear shapes of inexistent sprite at sprite_id=%lu",
@@ -291,26 +263,22 @@ int SPRITES_clear_attached_shapes(size_t sprite_id) {
         return 1;
     }
 
-    sprites[sprite_id].shapes_len = 0;
-    sprites[sprite_id].shapes_rect = (SDL_FRect){0};
+    clear_dynarr(&get_sprite(sprite_id)->shapes);
+    get_sprite(sprite_id)->shapes_rect = (SDL_FRect){0};
     return 0;
 }
 
 
 
 void SPRITES_start(void) {
-    sprites = SDL_calloc(SPRITES_STARTING_DYNARR_CAP, sizeof(sprite_data));
-    sprites_size = SPRITES_STARTING_DYNARR_CAP;
+    init_pool_with(&sprites, sizeof(sprite_data), SPRITES_STARTING_DYNARR_CAP);
 
     for (Uint8 i = 0; i < SPRITES_FRAMES_TOTAL; i++) {
-        frames[i] = (sprite_frame){
-            .draws =
-                SDL_calloc(SPRITES_FRAME_STARTING_CAP, sizeof(sprite_draw)),
-            .cap = SPRITES_FRAME_STARTING_CAP,
-            .shapes = SDL_calloc(SPRITES_FRAME_STARTING_SHAPES_CAP,
-                                 sizeof(attached_shape)),
-            .shapes_cap = SPRITES_FRAME_STARTING_SHAPES_CAP,
-        };
+        init_dynarr_with(
+            &frames[i].draws, sizeof(sprite_draw), SPRITES_FRAME_STARTING_CAP);
+        init_dynarr_with(&frames[i].shapes,
+                         sizeof(attached_shape),
+                         SPRITES_FRAME_STARTING_SHAPES_CAP);
     }
     back = 0;
     ready = 1;
@@ -322,28 +290,28 @@ void SPRITES_start(void) {
 
 
 int SPRITES_play_anim(size_t sprite_id, animation anim) {
-    if (sprite_id >= sprites_size || sprite_id < 0) {
+    if (sprite_id >= sprites.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to animate sprite_id=%lu but this is outside the "
                     "buffer range",
                     sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].sprite.coords_w == 0) {
+    if (!get_sprite(sprite_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to animate inexistent sprite at sprite_id=%lu",
                     sprite_id);
         return 1;
     }
 
-    sprites[sprite_id].anim = anim;
-    sprites[sprite_id].anim_playing = true;
-    sprites[sprite_id].anim_time = 0.0f;
+    get_sprite(sprite_id)->anim = anim;
+    get_sprite(sprite_id)->anim_playing = true;
+    get_sprite(sprite_id)->anim_time = 0.0f;
     return 0;
 }
 
 int SPRITES_stop_anim(size_t sprite_id) {
-    if (sprite_id >= sprites_size || sprite_id < 0) {
+    if (sprite_id >= sprites.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to stop animation in sprite_id=%lu but this is outside the "
@@ -351,7 +319,7 @@ int SPRITES_stop_anim(size_t sprite_id) {
             sprite_id);
         return 3;
     }
-    if (sprites[sprite_id].sprite.coords_w == 0) {
+    if (!get_sprite(sprite_id)) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to stop animation in inexistent sprite at sprite_id=%lu",
@@ -359,8 +327,8 @@ int SPRITES_stop_anim(size_t sprite_id) {
         return 1;
     }
 
-    sprites[sprite_id].anim_playing = false;
-    sprites[sprite_id].anim_time = 0.0f;
+    get_sprite(sprite_id)->anim_playing = false;
+    get_sprite(sprite_id)->anim_time = 0.0f;
     return 0;
 }
 
@@ -373,7 +341,7 @@ static SDL_FRect get_rect(sprite_data* sd) {
         .w = SPRITESHEET_CELL_X * sd->sprite.coords_w,
         .h = SPRITESHEET_CELL_Y * sd->sprite.coords_h,
     };
-    if (sd->shapes_len == 0) return rect;
+    if (sd->shapes.len == 0) return rect;
     SDL_FRect l = sd->shapes_rect;
     float r = SDL_max(rect.x + rect.w, l.x + l.w);
     float b = SDL_max(rect.y + rect.h, l.y + l.h);
@@ -419,26 +387,6 @@ static bool animate(sprite_data* sd) {
     return true;
 }
 
-static void push_draw(sprite_frame* f, sprite_draw d) {
-    if (f->len == f->cap) {
-        f->cap = f->cap << 1;
-        f->draws = SDL_realloc(f->draws, f->cap * sizeof(sprite_draw));
-    }
-    f->draws[f->len] = d;
-    f->len++;
-}
-
-static void push_shapes(sprite_frame* f, attached_shape* t, size_t n) {
-    if (f->shapes_len + n > f->shapes_cap) {
-        while (f->shapes_len + n > f->shapes_cap)
-            f->shapes_cap = f->shapes_cap << 1;
-        f->shapes =
-            SDL_realloc(f->shapes, f->shapes_cap * sizeof(attached_shape));
-    }
-    SDL_memcpy(&f->shapes[f->shapes_len], t, n * sizeof(*t));
-    f->shapes_len += n;
-}
-
 // Adds the sprite to `f` if it's near the camera. The margin is because the
 // camera may move until the frame gets drawn. Its rect includes its attached
 // triangles, so a sprite off screen still gets added if any of them are on it.
@@ -451,44 +399,48 @@ add_to_frame(sprite_frame* f, sprite_data* sd, SDL_FRect rect, SDL_FRect cam) {
         rect.y >= cam.y + cam.h + SPRITES_FRAME_CULL_MARGIN)
         return;
 
-    size_t shapes_start = f->shapes_len;
-    push_shapes(f, sd->shapes, sd->shapes_len);
+    size_t shapes_start = f->shapes.len;
+    if (sd->shapes.len)
+        SDL_memcpy(grow_dynarr(sd->shapes.len, &f->shapes),
+                   sd->shapes.data,
+                   sd->shapes.len * sizeof(attached_shape));
 
-    push_draw(f,
-              (sprite_draw){
-                  .rect = rect,
-                  .x = s.pos_x,
-                  .y = s.pos_y,
-                  .coords_x = s.coords_x,
-                  .coords_y = s.coords_y,
-                  .coords_w = s.coords_w,
-                  .coords_h = s.coords_h,
-                  .flip_mode = s.flip_mode,
-                  .tint = {s.tint_r, s.tint_g, s.tint_b, s.tint_a},
-                  .z_index = s.z_index,
-                  .shapes_start = shapes_start,
-                  .shapes_len = sd->shapes_len,
-              });
+    push_to_dynarr(
+        &(sprite_draw){
+            .rect = rect,
+            .x = s.pos_x,
+            .y = s.pos_y,
+            .coords_x = s.coords_x,
+            .coords_y = s.coords_y,
+            .coords_w = s.coords_w,
+            .coords_h = s.coords_h,
+            .flip_mode = s.flip_mode,
+            .tint = {s.tint_r, s.tint_g, s.tint_b, s.tint_a},
+            .z_index = s.z_index,
+            .shapes_start = shapes_start,
+            .shapes_len = sd->shapes.len,
+        },
+        &f->draws);
 }
 
 void SPRITES_update(void) {
     SDL_FRect cam = CAMERA_get_rect();
     SDL_Rect space = CAMERA_get_simulation_rect();
     sprite_frame* f = &frames[back];
-    f->len = 0;
-    f->shapes_len = 0;
+    clear_dynarr(&f->draws);
+    clear_dynarr(&f->shapes);
 
     // Animation finished functions are only called after looping through
     // sprites, so they're free to create, edit or delete sprites.
     dynarr finished = (dynarr){0};
-    init_dynarr(&finished);
+    init_dynarr(&finished, sizeof(size_t));
 
-    for (size_t id = 0; id < sprites_size; id++) {
-        sprite_data* sd = &sprites[id];
-        if (sd->sprite.coords_w == 0) continue;
+    for (size_t id = 0; id < sprites.cap; id++) {
+        sprite_data* sd = get_sprite(id);
+        if (!sd) continue;
         SDL_FRect rect = get_rect(sd);
         if (is_simulated(rect, space) && animate(sd))
-            push_to_dynarr((void*)id, &finished);
+            push_to_dynarr(&id, &finished);
         add_to_frame(f, sd, rect, cam);
     }
 
@@ -502,13 +454,14 @@ void SPRITES_update(void) {
     // Skips sprites that got deleted or had another animation played on them
     // by previous calls.
     for (size_t i = 0; i < finished.len; i++) {
-        size_t id = (size_t)finished.at[i];
-        sprite s = sprites[id].sprite;
-        if (s.coords_w == 0 || sprites[id].anim_playing) continue;
+        size_t id = *(size_t*)dynarr_at(i, &finished);
+        sprite_data* sd = get_sprite(id);
+        if (!sd || sd->anim_playing) continue;
+        sprite s = sd->sprite;
         if (s.on_anim_finished_func)
             s.on_anim_finished_func(id, s.on_anim_finished_arg);
     }
-    clear_dynarr(&finished);
+    deinit_dynarr(&finished);
 }
 
 
@@ -525,8 +478,8 @@ void SPRITES_draw(void) {
 
     SDL_FRect cam = CAMERA_get_rect();
     sprite_frame* f = &frames[front];
-    for (size_t i = 0; i < f->len; i++) {
-        sprite_draw* d = &f->draws[i];
+    for (size_t i = 0; i < f->draws.len; i++) {
+        sprite_draw* d = dynarr_at(i, &f->draws);
         float x = d->x - cam.x;
         float y = d->y - cam.y;
         float rect_x = d->rect.x - cam.x;
@@ -539,7 +492,7 @@ void SPRITES_draw(void) {
         // be drawn between them
         for (size_t j = d->shapes_start; j < d->shapes_start + d->shapes_len;
              j++) {
-            attached_shape* t = &f->shapes[j];
+            attached_shape* t = dynarr_at(j, &f->shapes);
             if (t->type == attached_shape_line)
                 RENDERER_draw_line(t->x1 - cam.x,
                                    t->y1 - cam.y,
@@ -571,17 +524,13 @@ void SPRITES_draw(void) {
 
 
 void SPRITES_stop(void) {
-    for (size_t i = 0; i < sprites_size; i++) {
-        SDL_free(sprites[i].shapes);
-    }
-    SDL_free(sprites);
-    sprites = NULL;
-    sprites_size = 0;
+    for (size_t i = 0; i < sprites.cap; i++)
+        if (get_sprite(i)) deinit_dynarr(&get_sprite(i)->shapes);
+    deinit_pool(&sprites);
 
     for (Uint8 i = 0; i < SPRITES_FRAMES_TOTAL; i++) {
-        SDL_free(frames[i].draws);
-        SDL_free(frames[i].shapes);
-        frames[i] = (sprite_frame){0};
+        deinit_dynarr(&frames[i].draws);
+        deinit_dynarr(&frames[i].shapes);
     }
     SDL_DestroyMutex(frames_mutex);
     frames_mutex = NULL;

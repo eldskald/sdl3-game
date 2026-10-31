@@ -24,35 +24,36 @@ static SDL_Mutex* ready_mutexes[4] = {0};
 void PROFILER_setup_timer(char* tag) {
     thread t = GAME_MANAGER_get_current_thread();
     Uint64 time = SDL_GetTicksNS();
-    set_on_hashmap((void*)time, tag, &start[t]);
+    set_on_hashmap(&time, tag, &start[t]);
 }
 
 void PROFILER_finish_timer(char* tag) {
     thread t = GAME_MANAGER_get_current_thread();
     Uint64 time = SDL_GetTicksNS();
-    Uint64 start_time = (Uint64)get_from_hashmap(tag, &start[t]);
-    set_on_hashmap((void*)(time - start_time), tag, &ready[t]);
+    Uint64 elapsed = time - *(Uint64*)get_from_hashmap(tag, &start[t]);
+    set_on_hashmap(&elapsed, tag, &ready[t]);
 }
 
 Uint64 PROFILER_get_timer(char* tag) {
     thread t = GAME_MANAGER_get_current_thread();
-    return (Uint64)get_from_hashmap(tag, &ready[t]);
+    Uint64* elapsed = get_from_hashmap(tag, &ready[t]);
+    return elapsed ? *elapsed : 0;
 }
 
 
 
 void PROFILER_start(void) {
     for (int i = 1; i <= 3; i++) {
-        init_hashmap(&start[i]);
-        init_hashmap(&ready[i]);
+        init_hashmap(&start[i], sizeof(Uint64));
+        init_hashmap(&ready[i], sizeof(Uint64));
         ready_mutexes[i] = SDL_CreateMutex();
     }
 }
 
 void PROFILER_stop(void) {
     for (int i = 1; i <= 3; i++) {
-        clear_hashmap(&start[i]);
-        clear_hashmap(&ready[i]);
+        deinit_hashmap(&start[i]);
+        deinit_hashmap(&ready[i]);
         SDL_DestroyMutex(ready_mutexes[i]);
     }
 }
@@ -67,13 +68,12 @@ void PROFILER_draw(SDL_Renderer* renderer) {
     if (!toggled) return;
 
     hashmap vals;
-    init_hashmap(&vals);
+    init_hashmap(&vals, sizeof(Uint64));
     SDL_LockMutex(ready_mutexes[toggled]);
-    for (size_t i = 0; i < ready[toggled].len; i++) {
-        size_t idx = ready[toggled].indexes[i];
-        set_on_hashmap(
-            ready[toggled].values[idx], ready[toggled].keys[idx], &vals);
-    }
+    for (size_t i = 0; i < ready[toggled].len; i++)
+        set_on_hashmap(hashmap_value_at(i, &ready[toggled]),
+                       hashmap_key_at(i, &ready[toggled]),
+                       &vals);
     SDL_UnlockMutex(ready_mutexes[toggled]);
 
     SDL_SetRenderDrawColor(renderer, COL_BLACK);
@@ -100,8 +100,8 @@ void PROFILER_draw(SDL_Renderer* renderer) {
                                .w = RECT_WIDTH,
                                .h = NEXT_LINE + PAD,
                            });
-        char* tag = vals.keys[vals.indexes[i]];
-        Uint64 ticks = (Uint64)vals.values[vals.indexes[i]];
+        const char* tag = hashmap_key_at(i, &vals);
+        Uint64 ticks = *(Uint64*)hashmap_value_at(i, &vals);
         total += ticks;
         SDL_SetRenderDrawColor(renderer, COL_WHITE);
         SDL_RenderDebugTextFormat(
@@ -113,5 +113,5 @@ void PROFILER_draw(SDL_Renderer* renderer) {
     SDL_RenderDebugTextFormat(
         renderer, TOTAL_X, PAD, "total: %.3fms", ((float)total) / MILI2NANO);
 
-    clear_hashmap(&vals);
+    deinit_hashmap(&vals);
 }

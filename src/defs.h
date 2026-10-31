@@ -25,10 +25,6 @@
 
 
 // Graphics
-#define GRAPHICS_BASE_VERT_SPIRV_PATH "res/shaders/base.vert.spv"
-#define GRAPHICS_BASE_VERT_DXIL_PATH "res/shaders/base.vert.dxil"
-#define GRAPHICS_BASE_FRAG_SPIRV_PATH "res/shaders/base.frag.spv"
-#define GRAPHICS_BASE_FRAG_DXIL_PATH "res/shaders/base.frag.dxil"
 #define GRAPHICS_MAX_EXTRA_SAMPLERS 3
 #define GRAPHICS_MAX_UNIFORMS_SIZE 64
 #define GRAPHICS_MAX_PIPELINES 32
@@ -36,23 +32,12 @@
 #define GRAPHICS_COMMANDS_STARTING_CAP 64
 
 // Renderer
-#define RENDERER_TONEMAP_FRAG_SPIRV_PATH "res/shaders/tonemap.frag.spv"
-#define RENDERER_TONEMAP_FRAG_DXIL_PATH "res/shaders/tonemap.frag.dxil"
-#define RENDERER_BLOOM_PREFILTER_FRAG_SPIRV_PATH                               \
-    "res/shaders/bloom-prefilter.frag.spv"
-#define RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH                                \
-    "res/shaders/bloom-prefilter.frag.dxil"
-#define RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH "res/shaders/box-sample.frag.spv"
-#define RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH "res/shaders/box-sample.frag.dxil"
-#define RENDERER_BLOOM_CSV_PATH "data/graphics/bloom.csv"
 #define RENDERER_BLOOM_MAX_ITERATIONS 8
 #define RENDERER_Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -128 to 127
-#define RENDERER_VERTICES_STARTING_CAP 1024
 #define RENDERER_PROFILER_OVERLAY_X 400
 #define RENDERER_PROFILER_OVERLAY_Y 360
 
 // Spritesheet
-#define SPRITESHEET_PATH "res/textures/spritesheet.png"
 #define SPRITESHEET_X 256
 #define SPRITESHEET_Y 256
 #define SPRITESHEET_CELL_X 8
@@ -63,18 +48,11 @@
 #define SPRITES_ANIM_MAX_KEYFRAMES 8
 #define SPRITES_FRAME_STARTING_CAP 1024
 #define SPRITES_FRAME_STARTING_SHAPES_CAP 1024
-#define SPRITES_SHAPES_STARTING_CAP 64
 #define SPRITES_FRAME_CULL_MARGIN 16
 
 
 
 // Chunks
-#define CHUNKS_PLATFORMS_CSV_PATH "data/tiles/platforms.csv"
-#define CHUNKS_TYPES_MAP_CSV_PATH "data/tiles/types-map.csv"
-#define CHUNKS_001_PATH "data/chunks/001.json"
-#define CHUNKS_002_PATH "data/chunks/002.json"
-#define CHUNKS_003_PATH "data/chunks/003.json"
-#define CHUNKS_004_PATH "data/chunks/004.json"
 #define CHUNKS_TOTAL 4
 #define CHUNKS_HELPER_TILESET_NAME "helper-tiles.tsx"
 #define CHUNKS_HELPER_TILES_TOTAL 64
@@ -82,8 +60,6 @@
 
 
 // Tilemap
-#define TILEMAP_DIRT_AUTOTILE_PATH "editor/autotiles/dirt.json"
-#define TILEMAP_STONE_AUTOTILE_PATH "editor/autotiles/stone.json"
 #define TILEMAP_SIZE_X 1024
 #define TILEMAP_SIZE_Y 1024
 #define TILEMAP_TILE_TYPES tile_dirt = 1, tile_stone, tile_wood, tile_metal,
@@ -92,13 +68,6 @@
 #define TILEMAP_PLATFORMS_Z_INDEX (-20)
 
 // Fluids
-#define FLUIDS_CSV_PATH "data/simulation/fluids.csv"
-#define FLUIDS_PARTICLES_CSV_PATH "data/simulation/fluid-particles.csv"
-#define FLUIDS_FRAG_SPIRV_PATH "res/shaders/fluids.frag.spv"
-#define FLUIDS_FRAG_DXIL_PATH "res/shaders/fluids.frag.dxil"
-#define FLUIDS_RIPPLES_FRAG_SPIRV_PATH "res/shaders/ripples.frag.spv"
-#define FLUIDS_RIPPLES_FRAG_DXIL_PATH "res/shaders/ripples.frag.dxil"
-#define FLUIDS_RIPPLES_CSV_PATH "data/graphics/ripples.csv"
 #define FLUIDS_SPLIT_X 2
 #define FLUIDS_SPLIT_Y 2
 #define FLUIDS_TYPES fluid_water, fluid_lava
@@ -116,8 +85,6 @@
 #define FLUIDS_Z_INDEX 10 // Lower z_indexes are drawn under the fluids
 
 // Reactions
-#define REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH                               \
-    "data/simulation/reactions/fluid-fluid-into-tile.csv"
 #define REACTIONS_FLUID_FLUID_INTO_TILE_VOL_THRESHOLD 0.5
 
 // Physics
@@ -128,19 +95,15 @@
 #define PHYSICS_DROP_TIMER 0.1
 #define PHYSICS_PROP_ROPE_ITERATIONS 4
 #define PHYSICS_PROP_MAX_DT 0.05
-#define PHYSICS_PROPS_CSV_PATH "data/graphics/props.csv"
 
 
 
 // Player
-#define PLAYER_BASE_CSV_PATH "data/player/core.csv"
-#define PLAYER_PRESENTATION_CSV_PATH "data/player/presentation.csv"
 #define PLAYER_HAIR_MAX_SEGMENTS 8
 #define PLAYER_CLOAK_MAX_HORIZ_SEGMENTS 8
 #define PLAYER_CLOAK_MAX_VERT_SEGMENTS 8
 
 // Camera
-#define CAMERA_CSV_PATH "data/player/camera.csv"
 
 
 
@@ -150,21 +113,3 @@
 #define PROPS_VINE_FRAME_STARTING_STRIPS_CAP 256
 #define PROPS_VINE_FRAME_CULL_MARGIN 16
 #define PROPS_VINE_Z_INDEX (-10)
-
-
-
-// Tests
-#define TESTS_CHUNKS_001_PATH "tests/mocks/chunks/001.json"
-#define TESTS_TILEMAP_DIRT_AUTOTILE_PATH                                       \
-    "tests/mocks/editor/autotiles/dirt.json"
-#define TESTS_TILEMAP_STONE_AUTOTILE_PATH                                      \
-    "tests/mocks/editor/autotiles/stone.json"
-#define TESTS_CHUNKS_PLATFORMS_CSV_PATH "tests/mocks/tiles/platforms.csv"
-#define TESTS_CHUNKS_TYPES_MAP_CSV_PATH "tests/mocks/tiles/types-map.csv"
-#define TESTS_FLUIDS_RIPPLES_CSV_PATH "tests/mocks/graphics/ripples.csv"
-#define TESTS_PHYSICS_PROPS_CSV_PATH "tests/mocks/graphics/props.csv"
-#define TESTS_FLUIDS_CSV_PATH "tests/mocks/simulation/fluids.csv"
-#define TESTS_FLUIDS_PARTICLES_CSV_PATH                                        \
-    "tests/mocks/simulation/fluid-particles.csv"
-#define TESTS_REACTIONS_FFIT_CSV_PATH                                          \
-    "tests/mocks/simulation/reactions/fluid-fluid-into-tile.csv"

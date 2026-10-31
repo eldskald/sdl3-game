@@ -989,13 +989,14 @@ void test_physics(void) {
     PHYSICS_connect_prop_points(chain_ids[0], chain_ids[1], 0.0f, 1.0f, true);
     PHYSICS_connect_prop_points(chain_ids[1], chain_ids[2], 0.0f, 1.0f, true);
     dynarr connected = (dynarr){0};
-    init_dynarr(&connected);
+    init_dynarr(&connected, sizeof(size_t));
     int conn_res = PHYSICS_get_connected_points(chain_ids[1], &connected);
     bool has_first = false;
     bool has_last = false;
     for (size_t i = 0; i < connected.len; i++) {
-        if ((size_t)connected.at[i] == chain_ids[0]) has_first = true;
-        if ((size_t)connected.at[i] == chain_ids[2]) has_last = true;
+        if (*(size_t*)dynarr_at(i, &connected) == chain_ids[0])
+            has_first = true;
+        if (*(size_t*)dynarr_at(i, &connected) == chain_ids[2]) has_last = true;
     }
     expect("Made a chain of three points, checking the points connected to "
            "the middle one...",
@@ -1007,7 +1008,7 @@ void test_physics(void) {
            3,
            (bool[]){conn_res == 0,
                     connected.len == 1,
-                    (size_t)connected.at[0] == chain_ids[1]});
+                    *(size_t*)dynarr_at(0, &connected) == chain_ids[1]});
 
     conn_res = PHYSICS_get_connected_points(lone_id, &connected);
     expect("Made a point with no connections, checking its connected "
@@ -1022,7 +1023,7 @@ void test_physics(void) {
            3,
            (bool[]){conn_res == 0,
                     connected.len == 1,
-                    (size_t)connected.at[0] == chain_ids[0]});
+                    *(size_t*)dynarr_at(0, &connected) == chain_ids[0]});
 
     int deleted_res = PHYSICS_get_connected_points(chain_ids[2], &connected);
     int range_res = PHYSICS_get_connected_points(
@@ -1034,7 +1035,7 @@ void test_physics(void) {
            3,
            (bool[]){deleted_res == 1, range_res == 3, uninit_res == 2});
 
-    clear_dynarr(&connected);
+    deinit_dynarr(&connected);
     PHYSICS_del_prop_point(chain_ids[0]);
     PHYSICS_del_prop_point(chain_ids[1]);
     PHYSICS_del_prop_point(lone_id);

@@ -56,8 +56,8 @@ typedef struct {
 //     int w;
 //     int h;
 //     tile*** map; // cast it to tile(*)[w][h]
-//     dynarr fluids; // fluid_pool* dynarr
-//     dynarr vines; // vine_spawn* dynarr
+//     dynarr fluids; // fluid_pool dynarr
+//     dynarr vines; // vine_spawn dynarr
 // }
 // ```
 typedef struct {

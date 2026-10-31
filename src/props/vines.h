@@ -35,7 +35,7 @@ void VINES_stop(void);
 
 #ifdef TEST
 // Returns a copy of the chain of the vine at index `vine_id`, a dynarr of its
-// prop point IDs from one end to the other. Free it with `clear_dynarr()`.
+// prop point IDs from one end to the other. Free it with `deinit_dynarr()`.
 #include "data-structs/dynarr.h"
 dynarr VINES_test_get_vine(size_t vine_id);
 #endif

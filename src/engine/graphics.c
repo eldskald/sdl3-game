@@ -1,5 +1,7 @@
 #include "engine/graphics.h"
+#include "data-structs/dynarr.h"
 #include "defs.h"
+#include "paths.h"
 #include <SDL3/SDL.h>
 #include <stddef.h>
 
@@ -58,12 +60,8 @@ static SDL_GPUCommandBuffer* cmd = NULL;
 static SDL_GPUTexture* swapchain = NULL;
 static Uint32 swapchain_w = 0;
 static Uint32 swapchain_h = 0;
-static graphics_vertex* vertices = NULL;
-static size_t vertices_len = 0;
-static size_t vertices_cap = 0;
-static command* commands = NULL;
-static size_t commands_len = 0;
-static size_t commands_cap = 0;
+static dynarr vertices = (dynarr){0}; // graphics_vertex dynarr
+static dynarr commands = (dynarr){0}; // command dynarr
 static graphics_texture* target = NULL;
 static bool has_target = false;
 static graphics_state state = {0};
@@ -210,6 +208,10 @@ static int create_device(void) {
 int GRAPHICS_start(void) {
     if (create_window()) return 1;
     if (create_device()) return 1;
+    init_dynarr_with(
+        &vertices, sizeof(graphics_vertex), GRAPHICS_VERTICES_STARTING_CAP);
+    init_dynarr_with(
+        &commands, sizeof(command), GRAPHICS_COMMANDS_STARTING_CAP);
 
     static const Uint8 vert_spirv[] = {
 #embed GRAPHICS_BASE_VERT_SPIRV_PATH
@@ -256,11 +258,8 @@ int GRAPHICS_start(void) {
 }
 
 void GRAPHICS_stop(void) {
-    SDL_free(vertices);
-    SDL_free(commands);
-    vertices = NULL;
-    commands = NULL;
-    vertices_len = vertices_cap = commands_len = commands_cap = 0;
+    deinit_dynarr(&vertices);
+    deinit_dynarr(&commands);
 
     if (device) {
         SDL_WaitForGPUIdle(device);
@@ -520,19 +519,13 @@ static SDL_GPUGraphicsPipeline* get_pipeline(SDL_GPUShader* shader,
 
 
 
-static command* push_command(command c) {
-    if (commands_len == commands_cap) {
-        commands_cap =
-            commands_cap ? commands_cap << 1 : GRAPHICS_COMMANDS_STARTING_CAP;
-        commands = SDL_realloc(commands, commands_cap * sizeof(command));
-    }
-    commands[commands_len] = c;
-    return &commands[commands_len++];
+static command* last_command(void) {
+    return dynarr_at(commands.len - 1, &commands);
 }
 
 void GRAPHICS_begin_frame(void) {
-    commands_len = 0;
-    vertices_len = 0;
+    clear_dynarr(&commands);
+    clear_dynarr(&vertices);
     target = NULL;
     has_target = false;
     GRAPHICS_set_state(NULL);
@@ -563,8 +556,8 @@ bool GRAPHICS_get_swapchain_size(Uint32* w, Uint32* h) {
 void GRAPHICS_end_frame(void) {
     if (!cmd) return;
 
-    if (vertices_len) {
-        Uint32 size = vertices_len * sizeof(graphics_vertex);
+    if (vertices.len) {
+        Uint32 size = vertices.len * sizeof(graphics_vertex);
         if (size > vertex_buffer_size) {
             SDL_ReleaseGPUBuffer(device, vertex_buffer);
             SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
@@ -585,7 +578,7 @@ void GRAPHICS_end_frame(void) {
                 });
         }
         void* map = SDL_MapGPUTransferBuffer(device, transfer_buffer, true);
-        SDL_memcpy(map, vertices, size);
+        SDL_memcpy(map, vertices.data, size);
         SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
 
         SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(cmd);
@@ -603,8 +596,8 @@ void GRAPHICS_end_frame(void) {
 
     SDL_GPURenderPass* pass = NULL;
     SDL_GPUGraphicsPipeline* bound = NULL;
-    for (size_t i = 0; i < commands_len; i++) {
-        command* c = &commands[i];
+    for (size_t i = 0; i < commands.len; i++) {
+        command* c = dynarr_at(i, &commands);
         if (c->type == command_pass) {
             if (pass) SDL_EndGPURenderPass(pass);
             pass = NULL;
@@ -663,15 +656,16 @@ void GRAPHICS_end_frame(void) {
 void GRAPHICS_set_target(graphics_texture* t) {
     target = t;
     has_target = true;
-    push_command((command){.type = command_pass, .pass = {.target = t}});
+    push_to_dynarr(&(command){.type = command_pass, .pass = {.target = t}},
+                   &commands);
 }
 
 // Clears through the load op of the target's pass, starting a new one when
 // something was already drawn on it.
 void GRAPHICS_clear(SDL_FColor col) {
-    if (!has_target || commands[commands_len - 1].type != command_pass)
+    if (!has_target || last_command()->type != command_pass)
         GRAPHICS_set_target(target);
-    command* c = &commands[commands_len - 1];
+    command* c = last_command();
     c->pass.clear = true;
     c->pass.clear_col = col;
 }
@@ -699,8 +693,8 @@ static void push_draw(graphics_texture* texture) {
     c.draw.num_samplers = 1 + state.num_samplers;
     SDL_memcpy(c.draw.uniforms, state.uniforms, state.uniforms_size);
     c.draw.uniforms_size = state.uniforms_size;
-    c.draw.first_vertex = vertices_len;
-    push_command(c);
+    c.draw.first_vertex = vertices.len;
+    push_to_dynarr(&c, &commands);
     state_changed = false;
 }
 
@@ -713,21 +707,13 @@ void GRAPHICS_draw_vertices(graphics_texture* texture,
     if (n == 0) return;
     if (!has_target) GRAPHICS_set_target(NULL);
 
-    command* last = &commands[commands_len - 1];
+    command* last = last_command();
     if (state_changed || last->type != command_draw ||
         last->draw.samplers[0].texture != texture->texture)
         push_draw(texture);
-    commands[commands_len - 1].draw.num_vertices += n;
+    last_command()->draw.num_vertices += n;
 
-    if (vertices_len + n > vertices_cap) {
-        while (vertices_len + n > vertices_cap)
-            vertices_cap = vertices_cap ? vertices_cap << 1
-                                        : GRAPHICS_VERTICES_STARTING_CAP;
-        vertices =
-            SDL_realloc(vertices, vertices_cap * sizeof(graphics_vertex));
-    }
-    SDL_memcpy(&vertices[vertices_len], v, n * sizeof(graphics_vertex));
-    vertices_len += n;
+    SDL_memcpy(grow_dynarr(n, &vertices), v, n * sizeof(graphics_vertex));
 }
 
 void GRAPHICS_draw_texture(graphics_texture* texture,

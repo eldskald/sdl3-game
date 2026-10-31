@@ -14,106 +14,88 @@ static Uint64 hash_key(const char* key) {
     return hash;
 }
 
-static bool insert_in_lists(void* val,
-                            char* key,
-                            void** values,
-                            char** keys,
-                            size_t* indexes,
-                            size_t len,
-                            size_t cap,
-                            void** old) {
+static void* get_slot(size_t index, const hashmap* map) {
+    return (Uint8*)map->values + index * map->data_size;
+}
+
+// Index on `keys` where `key` is, or the empty one it would be inserted at.
+static size_t find_index(const char* key, const hashmap* map) {
     // Only works when cap is a power of 2
-    size_t index = (size_t)(hash_key(key) & (Uint64)(cap - 1));
+    size_t index = (size_t)(hash_key(key) & (Uint64)(map->cap - 1));
 
     // Linear probing
-    while (keys[index] != NULL) {
-
-        // If key already exists, update it
-        if (SDL_strcmp(key, keys[index]) == 0) {
-            *old = values[index];
-            values[index] = val;
-            return false;
-        }
-
-        index++;
-        if (index >= cap) {
-            index = 0;
-        }
-    }
-
-    values[index] = val;
-    keys[index] = SDL_calloc(KEY_MAX_SIZE + 1, sizeof(char));
-    indexes[len] = index;
-    SDL_strlcpy(keys[index], key, KEY_MAX_SIZE);
-    *old = val;
-    return true;
-}
-
-
-
-void init_hashmap(hashmap* map) {
-    if (!map) return;
-    map->values = SDL_calloc(HASHMAP_INITIAL_CAP, sizeof(void*));
-    map->keys = SDL_calloc(HASHMAP_INITIAL_CAP, sizeof(char*));
-    map->indexes = SDL_calloc(HASHMAP_INITIAL_CAP, sizeof(size_t));
-    map->cap = HASHMAP_INITIAL_CAP;
-    map->len = 0;
-}
-
-void* set_on_hashmap(void* value, char* key, hashmap* map) {
-    if (!map) return NULL;
-    void* old = NULL;
-
-    // Doubles the cap if current len reaches to half cap
-    if (map->len >= map->cap >> 1) {
-        size_t new_cap = map->cap << 1;
-        void** new_values = SDL_calloc(new_cap, sizeof(void*));
-        char** new_keys = SDL_calloc(new_cap, sizeof(char*));
-        size_t* new_indexes = SDL_calloc(new_cap, sizeof(size_t));
-        for (size_t i = 0; i < map->len; i++) {
-            insert_in_lists(map->values[map->indexes[i]],
-                            map->keys[map->indexes[i]],
-                            new_values,
-                            new_keys,
-                            new_indexes,
-                            i,
-                            new_cap,
-                            &old);
-            SDL_free(map->keys[map->indexes[i]]);
-        }
-        SDL_free(map->values);
-        SDL_free(map->keys);
-        SDL_free(map->indexes);
-        map->values = new_values;
-        map->keys = new_keys;
-        map->indexes = new_indexes;
-        map->cap = map->cap << 1;
-    }
-
-    // Inserts the new value
-    bool new = insert_in_lists(value,
-                               key,
-                               map->values,
-                               map->keys,
-                               map->indexes,
-                               map->len,
-                               map->cap,
-                               &old);
-    if (new) map->len++;
-    return old;
-}
-
-void* get_from_hashmap(char* key, hashmap* map) {
-    if (!map) return NULL;
-    size_t index = (size_t)(hash_key(key) & (Uint64)(map->cap - 1));
     while (map->keys[index] && SDL_strcmp(key, map->keys[index]) != 0) {
         index++;
         if (index >= map->cap) index = 0;
     }
-    return map->keys[index] ? map->values[index] : NULL;
+    return index;
 }
 
-void clear_hashmap(hashmap* map) {
+// Doubles the cap, moving every key/value pair to its index on the new cap.
+static void double_cap(hashmap* map) {
+    hashmap old = *map;
+    map->cap = old.cap << 1;
+    map->values = SDL_calloc(map->cap, map->data_size);
+    map->keys = SDL_calloc(map->cap, sizeof(char*));
+    map->indexes = SDL_calloc(map->cap, sizeof(size_t));
+    for (size_t i = 0; i < old.len; i++) {
+        size_t old_index = old.indexes[i];
+        size_t index = find_index(old.keys[old_index], map);
+        map->keys[index] = old.keys[old_index];
+        SDL_memcpy(
+            get_slot(index, map), get_slot(old_index, &old), map->data_size);
+        map->indexes[i] = index;
+    }
+    SDL_free(old.values);
+    SDL_free(old.keys);
+    SDL_free(old.indexes);
+}
+
+
+
+void init_hashmap(hashmap* map, size_t data_size) {
+    if (!map) return;
+    map->values = SDL_calloc(HASHMAP_INITIAL_CAP, data_size);
+    map->keys = SDL_calloc(HASHMAP_INITIAL_CAP, sizeof(char*));
+    map->indexes = SDL_calloc(HASHMAP_INITIAL_CAP, sizeof(size_t));
+    map->data_size = data_size;
+    map->cap = HASHMAP_INITIAL_CAP;
+    map->len = 0;
+}
+
+void* set_on_hashmap(const void* value, const char* key, hashmap* map) {
+    if (!map) return NULL;
+
+    // Doubles the cap if current len reaches to half cap
+    if (map->len >= map->cap >> 1) double_cap(map);
+
+    size_t index = find_index(key, map);
+    if (!map->keys[index]) {
+        map->keys[index] = SDL_calloc(KEY_MAX_SIZE + 1, sizeof(char));
+        SDL_strlcpy(map->keys[index], key, KEY_MAX_SIZE);
+        map->indexes[map->len] = index;
+        map->len++;
+    }
+    void* slot = get_slot(index, map);
+    SDL_memcpy(slot, value, map->data_size);
+    return slot;
+}
+
+void* get_from_hashmap(const char* key, const hashmap* map) {
+    if (!map) return NULL;
+    size_t index = find_index(key, map);
+    return map->keys[index] ? get_slot(index, map) : NULL;
+}
+
+void* hashmap_value_at(size_t i, const hashmap* map) {
+    return get_slot(map->indexes[i], map);
+}
+
+const char* hashmap_key_at(size_t i, const hashmap* map) {
+    return map->keys[map->indexes[i]];
+}
+
+void deinit_hashmap(hashmap* map) {
     for (size_t i = 0; i < map->len; i++) {
         SDL_free(map->keys[map->indexes[i]]);
     }

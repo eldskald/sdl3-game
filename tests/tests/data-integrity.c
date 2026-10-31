@@ -4,6 +4,8 @@
 #include "defs.h"
 #include "engine/fluids.h"
 #include "engine/tilemap.h"
+// The real files are checked, not the mocks on `tests/paths.h`.
+#include "../../src/paths.h"
 #include "services/csv.h"
 #include "tests.h"
 #include <SDL3/SDL.h>
@@ -71,18 +73,9 @@ static void finish(const char* path, report* r) {
         printf(RED "    %s" RESET "\n", r->errors[i]);
 }
 
-// Hashmap values can't tell missing keys apart from types of value 0, like
-// `fluid_water`, so this looks for the key itself.
-static bool has_key(hashmap* map, const char* key) {
-    for (size_t i = 0; i < map->len; i++) {
-        if (SDL_strcmp(map->keys[map->indexes[i]], key) == 0) return true;
-    }
-    return false;
-}
-
 static bool is_val(const char* s, val_type type) {
-    if (type == val_fluid) return has_key(&fluid_names, s);
-    if (type == val_tile) return has_key(&tile_names, s);
+    if (type == val_fluid) return get_from_hashmap(s, &fluid_names);
+    if (type == val_tile) return get_from_hashmap(s, &tile_names);
 
     // `SDL_strtod()` and `SDL_strtol()` skip leading spaces, which we don't
     // want, and the whole string must be the number.
@@ -123,8 +116,8 @@ static const char* val_type_name(val_type type) {
 
 static dynarr* get_row(dynarr* parsed, const char* key) {
     for (size_t i = 0; i < parsed->len; i++) {
-        dynarr* row = parsed->at[i];
-        if (SDL_strcmp(row->at[0], key) == 0) return row;
+        dynarr* row = CSV_row(i, parsed);
+        if (SDL_strcmp(CSV_cell(0, row), key) == 0) return row;
     }
     return NULL;
 }
@@ -137,8 +130,8 @@ static void
 check_keys_csv(report* r, dynarr* parsed, const key_spec* specs, size_t n) {
     size_t counts[MAX_EXPECTATIONS] = {0};
     for (size_t i = 0; i < parsed->len; i++) {
-        dynarr* row = parsed->at[i];
-        char* key = row->at[0];
+        dynarr* row = CSV_row(i, parsed);
+        char* key = CSV_cell(0, row);
 
         size_t s = 0;
         while (s < n && SDL_strcmp(specs[s].key, key) != 0)
@@ -159,11 +152,11 @@ check_keys_csv(report* r, dynarr* parsed, const key_spec* specs, size_t n) {
               specs[s].max);
         for (size_t j = 1; j < row->len; j++)
             check(r,
-                  is_val(row->at[j], specs[s].type),
+                  is_val(CSV_cell(j, row), specs[s].type),
                   "Row %lu: \"%s\" value \"%s\" should be %s",
                   i + 1,
                   key,
-                  (char*)row->at[j],
+                  CSV_cell(j, row),
                   val_type_name(specs[s].type));
     }
     for (size_t s = 0; s < n; s++)
@@ -178,7 +171,7 @@ check_keys_csv(report* r, dynarr* parsed, const key_spec* specs, size_t n) {
 // single cell section header, or `-1` if missing.
 static int get_header(dynarr* parsed) {
     for (size_t i = 0; i < parsed->len; i++)
-        if (((dynarr*)parsed->at[i])->len >= 2) return i;
+        if (CSV_row(i, parsed)->len >= 2) return i;
     return -1;
 }
 
@@ -194,14 +187,14 @@ static void check_columns_csv(report* r,
     check(r, h >= 0, "Missing the header row");
     if (h < 0) return;
 
-    dynarr* header = parsed->at[h];
+    dynarr* header = CSV_row(h, parsed);
     size_t indexes[MAX_EXPECTATIONS] = {0};
     size_t counts[MAX_EXPECTATIONS] = {0};
     for (size_t c = 0; c < header->len; c++) {
         size_t s = 0;
-        while (s < n && SDL_strcmp(specs[s].name, header->at[c]) != 0)
+        while (s < n && SDL_strcmp(specs[s].name, CSV_cell(c, header)) != 0)
             s++;
-        check(r, s < n, "Unknown column \"%s\"", (char*)header->at[c]);
+        check(r, s < n, "Unknown column \"%s\"", CSV_cell(c, header));
         indexes[c] = s;
         if (s < n) counts[s]++;
     }
@@ -213,7 +206,7 @@ static void check_columns_csv(report* r,
               counts[s]);
 
     for (size_t i = h + 1; i < parsed->len; i++) {
-        dynarr* row = parsed->at[i];
+        dynarr* row = CSV_row(i, parsed);
         if (row->len < 2) continue;
         check(r,
               row->len == header->len,
@@ -224,11 +217,11 @@ static void check_columns_csv(report* r,
         for (size_t c = 0; c < row->len && c < header->len; c++) {
             if (indexes[c] == n) continue;
             check(r,
-                  is_val(row->at[c], specs[indexes[c]].type),
+                  is_val(CSV_cell(c, row), specs[indexes[c]].type),
                   "Row %lu: \"%s\" value \"%s\" should be %s",
                   i + 1,
                   specs[indexes[c]].name,
-                  (char*)row->at[c],
+                  CSV_cell(c, row),
                   val_type_name(specs[indexes[c]].type));
         }
     }
@@ -238,9 +231,9 @@ static void check_columns_csv(report* r,
 static int get_column(dynarr* parsed, const char* name) {
     int h = get_header(parsed);
     if (h < 0) return -1;
-    dynarr* header = parsed->at[h];
+    dynarr* header = CSV_row(h, parsed);
     for (size_t c = 0; c < header->len; c++)
-        if (SDL_strcmp(header->at[c], name) == 0) return c;
+        if (SDL_strcmp(CSV_cell(c, header), name) == 0) return c;
     return -1;
 }
 
@@ -388,8 +381,8 @@ static void check_pins(report* r,
     bool is_mapped[SPRITESHEET_X / SPRITESHEET_CELL_X]
                   [SPRITESHEET_Y / SPRITESHEET_CELL_Y] = {0};
     for (size_t i = 1; i < anim_x->len && i < anim_y->len; i++) {
-        long x = SDL_strtol((char*)anim_x->at[i], NULL, 10);
-        long y = SDL_strtol((char*)anim_y->at[i], NULL, 10);
+        long x = SDL_strtol(CSV_cell(i, anim_x), NULL, 10);
+        long y = SDL_strtol(CSV_cell(i, anim_y), NULL, 10);
         bool inside = x < SPRITESHEET_X / SPRITESHEET_CELL_X &&
                       y < SPRITESHEET_Y / SPRITESHEET_CELL_Y;
         check(r,
@@ -405,8 +398,8 @@ static void check_pins(report* r,
         dynarr* x = get_row(parsed, keys[a][0]);
         dynarr* y = get_row(parsed, keys[a][1]);
         for (size_t i = 1; x && y && i < x->len && i < y->len; i++) {
-            long cx = SDL_strtol((char*)x->at[i], NULL, 10);
-            long cy = SDL_strtol((char*)y->at[i], NULL, 10);
+            long cx = SDL_strtol(CSV_cell(i, x), NULL, 10);
+            long cy = SDL_strtol(CSV_cell(i, y), NULL, 10);
             if (cx >= SPRITESHEET_X / SPRITESHEET_CELL_X ||
                 cy >= SPRITESHEET_Y / SPRITESHEET_CELL_Y)
                 continue;
@@ -512,7 +505,7 @@ static void check_player_presentation(void) {
     for (size_t k = 0; k < SDL_arraysize(segment_keys); k++) {
         dynarr* row = get_row(&parsed, segment_keys[k]);
         if (!row || row->len < 2) continue;
-        long n = SDL_strtol((char*)row->at[1], NULL, 10);
+        long n = SDL_strtol(CSV_cell(1, row), NULL, 10);
         check(&r,
               n >= 1 && n <= segment_maxes[k],
               "\"%s\" is %ld, expected 1 to %ld",
@@ -593,14 +586,15 @@ static void check_fluids(void) {
     int col = get_column(&parsed, "fluid");
     size_t fluids = 0;
     for (size_t j = h + 1; h >= 0 && j < parsed.len; j++)
-        if (((dynarr*)parsed.at[j])->len >= 2) fluids++;
+        if (CSV_row(j, &parsed)->len >= 2) fluids++;
     for (size_t i = 0; i < fluid_names.len; i++) {
-        char* name = fluid_names.keys[fluid_names.indexes[i]];
+        const char* name = hashmap_key_at(i, &fluid_names);
         size_t count = 0;
         for (size_t j = h + 1; j < parsed.len; j++) {
-            dynarr* row = parsed.at[j];
+            dynarr* row = CSV_row(j, &parsed);
             if (row->len < 2) continue;
-            if (col < row->len && SDL_strcmp(row->at[col], name) == 0) count++;
+            if (col < row->len && SDL_strcmp(CSV_cell(col, row), name) == 0)
+                count++;
         }
         check(&r,
               count == 1,
@@ -690,6 +684,6 @@ void test_data_integrity(void) {
     check_platforms();
     check_types_map();
 
-    clear_hashmap(&fluid_names);
-    clear_hashmap(&tile_names);
+    deinit_hashmap(&fluid_names);
+    deinit_hashmap(&tile_names);
 }

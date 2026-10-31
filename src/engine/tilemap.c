@@ -4,6 +4,7 @@
 #include "defs.h"
 #include "engine/camera.h"
 #include "engine/renderer.h"
+#include "paths.h"
 #include "services/json.h"
 #include <SDL3/SDL.h>
 
@@ -40,13 +41,12 @@ static Uint8 autotile_ids[SPRITESHEET_X / SPRITESHEET_CELL_X]
 static int get_firstgid(dynarr* tilesets, const char* name) {
     size_t name_len = SDL_strlen(name);
     for (size_t i = 0; i < tilesets->len; i++) {
-        hashmap tileset = ((jsondata*)tilesets->at[i])->obj;
-        char* source = ((jsondata*)get_from_hashmap("source", &tileset))->str;
+        jsondata* tileset = JSON_at(i, tilesets);
+        char* source = JSON_get("source", tileset)->str;
         size_t source_len = SDL_strlen(source);
         if (source_len >= name_len &&
             SDL_strcmp(source + source_len - name_len, name) == 0)
-            return (int)((jsondata*)get_from_hashmap("firstgid", &tileset))
-                ->num;
+            return (int)JSON_get("firstgid", tileset)->num;
     }
     return 0;
 }
@@ -54,10 +54,10 @@ static int get_firstgid(dynarr* tilesets, const char* name) {
 static dynarr get_layer_data(dynarr* layers, const char* prefix) {
     size_t prefix_len = SDL_strlen(prefix);
     for (size_t i = 0; i < layers->len; i++) {
-        hashmap layer = ((jsondata*)layers->at[i])->obj;
-        char* name = ((jsondata*)get_from_hashmap("name", &layer))->str;
+        jsondata* layer = JSON_at(i, layers);
+        char* name = JSON_get("name", layer)->str;
         if (SDL_strncmp(name, prefix, prefix_len) == 0)
-            return ((jsondata*)get_from_hashmap("data", &layer))->arr;
+            return JSON_get("data", layer)->arr;
     }
     return (dynarr){0};
 }
@@ -67,20 +67,19 @@ static dynarr get_layer_data(dynarr* layers, const char* prefix) {
 // either occupied, empty or 0 for either way.
 static void load_autotile(const char* json) {
     jsondata* data = JSON_parse(json);
-    int w = (int)((jsondata*)get_from_hashmap("width", &data->obj))->num;
-    dynarr tilesets =
-        ((jsondata*)get_from_hashmap("tilesets", &data->obj))->arr;
+    int w = (int)JSON_get("width", data)->num;
+    dynarr tilesets = JSON_get("tilesets", data)->arr;
     int rules_gid = get_firstgid(&tilesets, "automap-tiles.tsx");
     int sheet_gid = get_firstgid(&tilesets, "spritesheet.tsx");
-    dynarr layers = ((jsondata*)get_from_hashmap("layers", &data->obj))->arr;
+    dynarr layers = JSON_get("layers", data)->arr;
     dynarr input = get_layer_data(&layers, "input_");
     dynarr output = get_layer_data(&layers, "output_");
 
-    autotile_table* table = SDL_calloc(1, sizeof(autotile_table));
     Uint8 id = autotiles.len + 1;
+    autotile_table* table = push_to_dynarr(NULL, &autotiles);
     for (size_t i = 0; i < output.len; i++) {
         // Skips empty cells and automapping tiles on the output layer
-        int out = (int)((jsondata*)output.at[i])->num;
+        int out = (int)JSON_at(i, &output)->num;
         if (out < sheet_gid) continue;
 
         Uint8 coords_x =
@@ -94,7 +93,7 @@ static void load_autotile(const char* json) {
         for (int k = 0; k < 8; k++) {
             int u = x + NEIGHBORS[k][0];
             int v = y + NEIGHBORS[k][1];
-            int in = (int)((jsondata*)input.at[u + w * v])->num;
+            int in = (int)JSON_at(u + w * v, &input)->num;
             if (in == 0)
                 either |= 1 << k;
             else if (in - rules_gid == TILEMAP_AUTOMAP_NON_EMPTY_ID)
@@ -107,7 +106,6 @@ static void load_autotile(const char* json) {
         }
         autotile_ids[coords_x][coords_y] = id;
     }
-    push_to_dynarr((void*)table, &autotiles);
 
     JSON_free(data);
 }
@@ -151,7 +149,7 @@ static int update_autotile(Uint16 x, Uint16 y, bool suppress_warnings) {
     int autotile = get_autotile((*map)[x][y]);
     if (autotile == -1) return 2;
 
-    autotile_table* table = autotiles.at[autotile];
+    autotile_table* table = dynarr_at(autotile, &autotiles);
     Uint8 val = check_adjacent_autotile(autotile, x, y);
     (*map)[x][y].coords_x = table->coords[val].x;
     (*map)[x][y].coords_y = table->coords[val].y;
@@ -161,7 +159,6 @@ static int update_autotile(Uint16 x, Uint16 y, bool suppress_warnings) {
 
 
 void TILEMAP_start(void) {
-#ifndef TEST
     char dirt_json[] = {
 #embed TILEMAP_DIRT_AUTOTILE_PATH suffix(, '\0')
     };
@@ -169,17 +166,8 @@ void TILEMAP_start(void) {
     char stone_json[] = {
 #embed TILEMAP_STONE_AUTOTILE_PATH suffix(, '\0')
     };
-#else
-    char dirt_json[] = {
-#embed TESTS_TILEMAP_DIRT_AUTOTILE_PATH suffix(, '\0')
-    };
 
-    char stone_json[] = {
-#embed TESTS_TILEMAP_STONE_AUTOTILE_PATH suffix(, '\0')
-    };
-#endif
-
-    init_dynarr(&autotiles);
+    init_dynarr(&autotiles, sizeof(autotile_table));
     load_autotile(dirt_json);
     load_autotile(stone_json);
 
@@ -189,9 +177,7 @@ void TILEMAP_start(void) {
 
 void TILEMAP_stop(void) {
     TILEMAP_clear();
-    for (size_t i = 0; i < autotiles.len; i++)
-        SDL_free(autotiles.at[i]);
-    clear_dynarr(&autotiles);
+    deinit_dynarr(&autotiles);
     SDL_memset(autotile_ids, 0, sizeof(autotile_ids));
 }
 
@@ -276,10 +262,10 @@ void TILEMAP_draw(void) {
 
 hashmap TILEMAP_get_string_tile_types_map(void) {
     hashmap map;
-    init_hashmap(&map);
-    set_on_hashmap((void*)tile_dirt, "dirt", &map);
-    set_on_hashmap((void*)tile_stone, "stone", &map);
-    set_on_hashmap((void*)tile_wood, "wood", &map);
-    set_on_hashmap((void*)tile_metal, "metal", &map);
+    init_hashmap(&map, sizeof(tile_type));
+    set_on_hashmap(&(tile_type){tile_dirt}, "dirt", &map);
+    set_on_hashmap(&(tile_type){tile_stone}, "stone", &map);
+    set_on_hashmap(&(tile_type){tile_wood}, "wood", &map);
+    set_on_hashmap(&(tile_type){tile_metal}, "metal", &map);
     return map;
 }

@@ -1,23 +1,19 @@
 #include "engine/renderer.h"
+#include "data-structs/dynarr.h"
 #include "defs.h"
 #include "engine/fluids.h"
 #include "engine/graphics.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
+#include "paths.h"
 #include "props/vines.h"
 #include "services/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
 #ifdef DEV
 #include "dev/profiler.h"
 #endif
-
-// The vertices queued on a z_index, in the order they were queued, all drawn
-// with the spritesheet.
-typedef struct {
-    graphics_vertex* vertices;
-    size_t len, cap;
-} draw_queue;
 
 // Matches the uniforms on `src/gpu/bloom-prefilter.frag.hlsl`.
 typedef struct {
@@ -60,7 +56,9 @@ static float bloom_intensities[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
 
 // Each z_index is mapped to z_index + RENDERER_Z_INDEX_TOTAL / 2, so they all
 // fit in the array.
-static draw_queue queues[RENDERER_Z_INDEX_TOTAL] = {0};
+// The `graphics_vertex` dynarrs of the vertices queued on each z_index, in the
+// order they were queued, all drawn with the spritesheet.
+static dynarr queues[RENDERER_Z_INDEX_TOTAL] = {0};
 
 static const SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
 static const SDL_FColor black = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -170,28 +168,20 @@ static void load_bloom_data_from_csv(void) {
     for (int i = 0; i < RENDERER_BLOOM_MAX_ITERATIONS; i++)
         bloom_intensities[i] = 1.0f;
 
+    parsing_field fields[] = {
+        {"threshold", parsing_float, &bloom_threshold},
+        {"soft_threshold", parsing_float, &bloom_soft_threshold},
+        {"intensities",
+         parsing_float,
+         bloom_intensities,
+         .count = RENDERER_BLOOM_MAX_ITERATIONS},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "threshold") == 0)
-            bloom_threshold = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "soft_threshold") == 0)
-            bloom_soft_threshold = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "intensities") == 0) {
-            dynarr* row = (dynarr*)parsed.at[i];
-            bloom_iterations = row->len - 1;
-            for (int j = 1; j < row->len && j <= RENDERER_BLOOM_MAX_ITERATIONS;
-                 j++)
-                bloom_intensities[j - 1] = SDL_strtod((char*)row->at[j], NULL);
-        }
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    bloom_iterations = SDL_clamp(PARSING_count_values(&parsed, "intensities"),
+                                 1,
+                                 RENDERER_BLOOM_MAX_ITERATIONS);
     CSV_free(&parsed);
-
-    bloom_iterations =
-        SDL_clamp(bloom_iterations, 1, RENDERER_BLOOM_MAX_ITERATIONS);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Bloom data loaded successfully.");
@@ -296,16 +286,7 @@ static int get_queue_index(Sint8 z_index) {
 // Makes room for `n` vertices at the end of the `z_index` queue and returns
 // them, for the caller to write.
 static graphics_vertex* queue_vertices(Sint8 z_index, size_t n) {
-    draw_queue* q = &queues[get_queue_index(z_index)];
-    if (q->len + n > q->cap) {
-        while (q->len + n > q->cap)
-            q->cap = q->cap ? q->cap << 1 : RENDERER_VERTICES_STARTING_CAP;
-        q->vertices =
-            SDL_realloc(q->vertices, q->cap * sizeof(graphics_vertex));
-    }
-    graphics_vertex* v = &q->vertices[q->len];
-    q->len += n;
-    return v;
+    return grow_dynarr(n, &queues[get_queue_index(z_index)]);
 }
 
 static void queue_pixel(int x, int y, SDL_FColor col, Sint8 z_index) {
@@ -413,8 +394,8 @@ void RENDERER_draw_line(
 static void flush_queues(int from, int to) {
     GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_blend});
     for (int i = from; i < to; i++) {
-        GRAPHICS_draw_vertices(spritesheet, queues[i].vertices, queues[i].len);
-        queues[i].len = 0;
+        GRAPHICS_draw_vertices(spritesheet, queues[i].data, queues[i].len);
+        clear_dynarr(&queues[i]);
     }
     GRAPHICS_set_state(NULL);
 }
@@ -534,6 +515,9 @@ static void render_final_screen(void) {
 
 
 int RENDERER_start(void) {
+    // Most z_indexes are never drawn on, so their queues start empty.
+    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++)
+        init_dynarr_with(&queues[i], sizeof(graphics_vertex), 0);
     load_bloom_data_from_csv();
     if (GRAPHICS_start()) return 1;
     if (create_textures()) return 1;
@@ -544,10 +528,8 @@ int RENDERER_start(void) {
 
 
 void RENDERER_stop(void) {
-    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++) {
-        SDL_free(queues[i].vertices);
-        queues[i] = (draw_queue){0};
-    }
+    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++)
+        deinit_dynarr(&queues[i]);
 
 #ifdef DEV
     GRAPHICS_destroy_texture(profiler_texture);

@@ -4,8 +4,10 @@
 #include "engine/fluids.h"
 #include "engine/physics.h"
 #include "engine/sprites.h"
+#include "paths.h"
 #include "player/player-core.h"
 #include "services/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
 #define HAIR_BASE_WIDTH 3
@@ -488,47 +490,70 @@ static void update_states_machine(player_state player, body player_body) {
 
 
 
-static dynarr* get_row(dynarr* parsed, const char* key) {
-    for (size_t i = 0; i < parsed->len; i++) {
-        dynarr* row = (dynarr*)parsed->at[i];
-        if (SDL_strcmp((char*)row->at[0], key) == 0) return row;
-    }
-    return NULL;
-}
+#define PINS_MAX                                                               \
+    (SPRITESHEET_X / SPRITESHEET_CELL_X * SPRITESHEET_Y / SPRITESHEET_CELL_Y)
 
-static int get_int(dynarr* row, size_t i) {
-    return SDL_strtol((char*)row->at[i], NULL, 10);
-}
+// Fields of the frames of `anim`, on the rows `<name>_anim_x`, `<name>_anim_y`
+// and `<name>_anim_dur`, each column a frame.
+#define ANIM_FIELDS(name, anim)                                                \
+    {name "_anim_x",                                                           \
+     parsing_uint8,                                                            \
+     &(anim).frames[0].coords_x,                                               \
+     .count = SPRITES_ANIM_MAX_KEYFRAMES,                                      \
+     .stride = sizeof(keyframe)},                                              \
+        {name "_anim_y",                                                       \
+         parsing_uint8,                                                        \
+         &(anim).frames[0].coords_y,                                           \
+         .count = SPRITES_ANIM_MAX_KEYFRAMES,                                  \
+         .stride = sizeof(keyframe)},                                          \
+    {                                                                          \
+        name "_anim_dur", parsing_double, &(anim).frames[0].duration,          \
+            .count = SPRITES_ANIM_MAX_KEYFRAMES, .stride = sizeof(keyframe)    \
+    }
+
+// Field of the list on row `key`, written on `field` of each element of the
+// array `arr`.
+#define PINS_FIELD(key, type, arr, field)                                      \
+    {key, type, &(arr)[0].field, .count = PINS_MAX, .stride = sizeof((arr)[0])}
 
 // Each column of the hair's pin rows maps a frame of the sprite to its pin.
 static void load_hair_pins(dynarr* parsed) {
-    dynarr* anim_x = get_row(parsed, "hair_anim_x");
-    dynarr* anim_y = get_row(parsed, "hair_anim_y");
-    dynarr* x = get_row(parsed, "hair_pin_x");
-    dynarr* y = get_row(parsed, "hair_pin_y");
-    for (size_t i = 1; i < anim_x->len; i++) {
-        data.hair_pins[get_int(anim_x, i)][get_int(anim_y, i)] = (hair_pin){
-            .mapped = true,
-            .pin = {get_int(x, i), get_int(y, i)},
-        };
-    }
+    static struct {
+        Uint8 anim_x, anim_y;
+        SDL_Point pin;
+    } pins[PINS_MAX];
+    parsing_field fields[] = {
+        PINS_FIELD("hair_anim_x", parsing_uint8, pins, anim_x),
+        PINS_FIELD("hair_anim_y", parsing_uint8, pins, anim_y),
+        PINS_FIELD("hair_pin_x", parsing_int, pins, pin.x),
+        PINS_FIELD("hair_pin_y", parsing_int, pins, pin.y),
+    };
+    PARSING_read_keys(parsed, fields, SDL_arraysize(fields));
+    size_t n = PARSING_count_values(parsed, "hair_anim_x");
+    for (size_t i = 0; i < n; i++)
+        data.hair_pins[pins[i].anim_x][pins[i].anim_y] =
+            (hair_pin){.mapped = true, .pin = pins[i].pin};
 }
 
 // Each column of the cloak's pin rows maps a frame of the sprite to its pins.
 static void load_cloak_pins(dynarr* parsed) {
-    dynarr* anim_x = get_row(parsed, "cloak_anim_x");
-    dynarr* anim_y = get_row(parsed, "cloak_anim_y");
-    dynarr* l_x = get_row(parsed, "cloak_pin_l_x");
-    dynarr* l_y = get_row(parsed, "cloak_pin_l_y");
-    dynarr* r_x = get_row(parsed, "cloak_pin_r_x");
-    dynarr* r_y = get_row(parsed, "cloak_pin_r_y");
-    for (size_t i = 1; i < anim_x->len; i++) {
-        data.cloak_pins[get_int(anim_x, i)][get_int(anim_y, i)] = (cloak_pins){
-            .mapped = true,
-            .l = {get_int(l_x, i), get_int(l_y, i)},
-            .r = {get_int(r_x, i), get_int(r_y, i)},
-        };
-    }
+    static struct {
+        Uint8 anim_x, anim_y;
+        SDL_Point l, r;
+    } pins[PINS_MAX];
+    parsing_field fields[] = {
+        PINS_FIELD("cloak_anim_x", parsing_uint8, pins, anim_x),
+        PINS_FIELD("cloak_anim_y", parsing_uint8, pins, anim_y),
+        PINS_FIELD("cloak_pin_l_x", parsing_int, pins, l.x),
+        PINS_FIELD("cloak_pin_l_y", parsing_int, pins, l.y),
+        PINS_FIELD("cloak_pin_r_x", parsing_int, pins, r.x),
+        PINS_FIELD("cloak_pin_r_y", parsing_int, pins, r.y),
+    };
+    PARSING_read_keys(parsed, fields, SDL_arraysize(fields));
+    size_t n = PARSING_count_values(parsed, "cloak_anim_x");
+    for (size_t i = 0; i < n; i++)
+        data.cloak_pins[pins[i].anim_x][pins[i].anim_y] =
+            (cloak_pins){.mapped = true, .l = pins[i].l, .r = pins[i].r};
 }
 
 void PLAYER_PRESENTATION_start(void) {
@@ -536,256 +561,61 @@ void PLAYER_PRESENTATION_start(void) {
 #embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
     };
 
+    sprite_data* d = &data;
+    parsing_field fields[] = {
+        {"coords", parsing_uint8, &d->coords_x},
+        {"coords", parsing_uint8, &d->coords_y, .at = 1},
+        {"coords", parsing_uint8, &d->coords_w, .at = 2},
+        {"coords", parsing_uint8, &d->coords_h, .at = 3},
+        {"offset", parsing_sint8, &d->offset_x},
+        {"offset", parsing_sint8, &d->offset_y, .at = 1},
+        {"hair_col", parsing_color, &d->hair_col},
+        {"hair_gravity", parsing_double, &d->hair_gravity},
+        {"hair_fluid_gravity", parsing_double, &d->hair_fluid_gravity},
+        {"hair_damping", parsing_double, &d->hair_damping},
+        {"hair_fluid_damping", parsing_double, &d->hair_fluid_damping},
+        {"hair_segments", parsing_uint8, &d->hair_segments},
+        {"hair_segments_length", parsing_double, &d->hair_segments_length},
+        {"hair_segments_two_ways", parsing_bool, &d->hair_segments_two_ways},
+        {"cloak_in_col", parsing_color, &d->cloak_in},
+        {"cloak_out_col", parsing_color, &d->cloak_out},
+        {"cloak_horiz_segments", parsing_uint8, &d->cloak_horiz_segments},
+        {"cloak_vert_segments", parsing_uint8, &d->cloak_vert_segments},
+        {"cloak_horiz_segment_length",
+         parsing_double,
+         &d->cloak_horiz_segment_length},
+        {"cloak_vert_segment_length",
+         parsing_double,
+         &d->cloak_vert_segment_length},
+        {"cloak_horiz_segment_two_ways",
+         parsing_bool,
+         &d->cloak_horiz_segment_two_ways},
+        {"cloak_vert_segment_two_ways",
+         parsing_bool,
+         &d->cloak_vert_segment_two_ways},
+        {"cloak_damping", parsing_double, &d->cloak_damping},
+        {"cloak_gravity", parsing_double, &d->cloak_gravity},
+        {"cloak_fluid_gravity", parsing_double, &d->cloak_fluid_gravity},
+        {"cloak_fluid_damping", parsing_double, &d->cloak_fluid_damping},
+        ANIM_FIELDS("idle", d->idle_anim),
+        ANIM_FIELDS("moving", d->moving_anim),
+        ANIM_FIELDS("airborne", d->airborne_anim),
+        ANIM_FIELDS("crouch_idle", d->crouch_idle_anim),
+        ANIM_FIELDS("crouch_moving", d->crouch_moving_anim),
+        ANIM_FIELDS("swimming", d->swimming_anim),
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        if (SDL_strcmp(key, "coords") == 0) {
-            char* x = (char*)((dynarr*)parsed.at[i])->at[1];
-            char* y = (char*)((dynarr*)parsed.at[i])->at[2];
-            char* w = (char*)((dynarr*)parsed.at[i])->at[3];
-            char* h = (char*)((dynarr*)parsed.at[i])->at[4];
-            data.coords_x = SDL_strtol(x, NULL, 10);
-            data.coords_y = SDL_strtol(y, NULL, 10);
-            data.coords_w = SDL_strtol(w, NULL, 10);
-            data.coords_h = SDL_strtol(h, NULL, 10);
-        }
-        if (SDL_strcmp(key, "offset") == 0) {
-            char* x = (char*)((dynarr*)parsed.at[i])->at[1];
-            char* y = (char*)((dynarr*)parsed.at[i])->at[2];
-            data.offset_x = SDL_strtol(x, NULL, 10);
-            data.offset_y = SDL_strtol(y, NULL, 10);
-        }
-        if (SDL_strcmp(key, "hair_col") == 0) {
-            dynarr* row = (dynarr*)parsed.at[i];
-            data.hair_col.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
-            data.hair_col.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
-            data.hair_col.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
-            data.hair_col.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
-        }
-        if (SDL_strcmp(key, "hair_gravity") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.hair_gravity = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "hair_fluid_gravity") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.hair_fluid_gravity = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "hair_damping") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.hair_damping = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "hair_fluid_damping") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.hair_fluid_damping = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "hair_segments") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.hair_segments = SDL_strtol(val, NULL, 10);
-        }
-        if (SDL_strcmp(key, "hair_segments_length") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.hair_segments_length = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "hair_segments_two_ways") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.hair_segments_two_ways = SDL_strtol(val, NULL, 10);
-        }
-        if (SDL_strcmp(key, "cloak_in_col") == 0) {
-            dynarr* row = (dynarr*)parsed.at[i];
-            data.cloak_in.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
-            data.cloak_in.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
-            data.cloak_in.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
-            data.cloak_in.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
-        }
-        if (SDL_strcmp(key, "cloak_out_col") == 0) {
-            dynarr* row = (dynarr*)parsed.at[i];
-            data.cloak_out.r = SDL_strtod((char*)row->at[1], NULL) / 255.0f;
-            data.cloak_out.g = SDL_strtod((char*)row->at[2], NULL) / 255.0f;
-            data.cloak_out.b = SDL_strtod((char*)row->at[3], NULL) / 255.0f;
-            data.cloak_out.a = SDL_strtod((char*)row->at[4], NULL) / 255.0f;
-        }
-        if (SDL_strcmp(key, "cloak_horiz_segments") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_horiz_segments = SDL_strtol(val, NULL, 10);
-        }
-        if (SDL_strcmp(key, "cloak_vert_segments") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_vert_segments = SDL_strtol(val, NULL, 10);
-        }
-        if (SDL_strcmp(key, "cloak_horiz_segment_length") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_horiz_segment_length = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "cloak_vert_segment_length") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_vert_segment_length = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "cloak_horiz_segment_two_ways") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_horiz_segment_two_ways = SDL_strtol(val, NULL, 10);
-        }
-        if (SDL_strcmp(key, "cloak_vert_segment_two_ways") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_vert_segment_two_ways = SDL_strtol(val, NULL, 10);
-        }
-        if (SDL_strcmp(key, "cloak_damping") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_damping = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "cloak_gravity") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_gravity = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "cloak_fluid_gravity") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_fluid_gravity = SDL_strtod(val, NULL);
-        }
-        if (SDL_strcmp(key, "cloak_fluid_damping") == 0) {
-            char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-            data.cloak_fluid_damping = SDL_strtod(val, NULL);
-        }
-
-        // Idle animation
-        data.idle_anim.looped = true;
-        if (SDL_strcmp(key, "idle_anim_x") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.idle_anim.frames[j].coords_x = SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "idle_anim_y") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.idle_anim.frames[j].coords_y = SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "idle_anim_dur") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.idle_anim.frames[j].duration = SDL_strtod(val, NULL);
-            }
-        }
-
-        // Moving animation
-        data.moving_anim.looped = true;
-        if (SDL_strcmp(key, "moving_anim_x") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.moving_anim.frames[j].coords_x = SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "moving_anim_y") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.moving_anim.frames[j].coords_y = SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "moving_anim_dur") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.moving_anim.frames[j].duration = SDL_strtod(val, NULL);
-            }
-        }
-
-        // Airborne animation
-        data.airborne_anim.looped = true;
-        if (SDL_strcmp(key, "airborne_anim_x") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.airborne_anim.frames[j].coords_x =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "airborne_anim_y") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.airborne_anim.frames[j].coords_y =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "airborne_anim_dur") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.airborne_anim.frames[j].duration = SDL_strtod(val, NULL);
-            }
-        }
-
-        // Crouch idle animation
-        data.crouch_idle_anim.looped = true;
-        if (SDL_strcmp(key, "crouch_idle_anim_x") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.crouch_idle_anim.frames[j].coords_x =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "crouch_idle_anim_y") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.crouch_idle_anim.frames[j].coords_y =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "crouch_idle_anim_dur") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.crouch_idle_anim.frames[j].duration =
-                    SDL_strtod(val, NULL);
-            }
-        }
-
-        // Crouch moving animation
-        data.crouch_moving_anim.looped = true;
-        if (SDL_strcmp(key, "crouch_moving_anim_x") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.crouch_moving_anim.frames[j].coords_x =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "crouch_moving_anim_y") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.crouch_moving_anim.frames[j].coords_y =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "crouch_moving_anim_dur") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.crouch_moving_anim.frames[j].duration =
-                    SDL_strtod(val, NULL);
-            }
-        }
-
-        // Swimming animation
-        data.swimming_anim.looped = true;
-        if (SDL_strcmp(key, "swimming_anim_x") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.swimming_anim.frames[j].coords_x =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "swimming_anim_y") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.swimming_anim.frames[j].coords_y =
-                    SDL_strtol(val, NULL, 10);
-            }
-        }
-        if (SDL_strcmp(key, "swimming_anim_dur") == 0) {
-            for (int j = 0; j < ((dynarr*)parsed.at[i])->len - 1; j++) {
-                char* val = (char*)((dynarr*)parsed.at[i])->at[j + 1];
-                data.swimming_anim.frames[j].duration = SDL_strtod(val, NULL);
-            }
-        }
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
     load_hair_pins(&parsed);
     load_cloak_pins(&parsed);
     CSV_free(&parsed);
+
+    d->idle_anim.looped = true;
+    d->moving_anim.looped = true;
+    d->airborne_anim.looped = true;
+    d->crouch_idle_anim.looped = true;
+    d->crouch_moving_anim.looped = true;
+    d->swimming_anim.looped = true;
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Player sprite data loaded successfully.");

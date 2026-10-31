@@ -1,13 +1,15 @@
 #include "engine/physics.h"
 #include "data-structs/dynarr.h"
+#include "data-structs/pool.h"
 #include "defs.h"
 #include "engine/camera.h"
 #include "engine/fluids.h"
 #include "engine/game-manager.h"
 #include "engine/tilemap.h"
+#include "paths.h"
 #include "services/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_log.h>
 
 #ifdef DEV
 #include "dev/profiler.h"
@@ -48,16 +50,14 @@ typedef struct {
 // Prop points are wrapped with their previous position so we don't expose it on
 // `prop_point`, as well as acceleration. `simulated` is set at the start of
 // each tick, so points pushed out of the simulation space mid-tick still finish
-// it with the rest. The `used` prop is so we know an empty index, bodies have
-// `w` and `h` to tell us, connections have `point_a` and `point_b` but points
-// have nothing.
+// it with the rest. `connections` is a `size_t` dynarr of the ids of its
+// connections.
 typedef struct {
     prop_point point;
     double prev_x, prev_y;
     double prev_dt;
     double acc_x, acc_y;
     bool simulated;
-    bool used;
     dynarr connections;
 } prop_point_data;
 
@@ -71,16 +71,12 @@ typedef struct {
 
 
 
-static body_data* bodies = NULL;
-static size_t bodies_cap = 0;
+static pool bodies = (pool){0};
 static dynarr nbsearch[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = {0};
 static SDL_Rect sim = (SDL_Rect){0};
 
-static prop_point_data* points = NULL;
-static size_t points_cap = 0;
-
-static prop_connection_data* connections = NULL;
-static size_t connections_cap = 0;
+static pool points = (pool){0};
+static pool connections = (pool){0};
 
 static double ripples_max_speed = 0.0f;
 static double ripples_strength = 0.0f;
@@ -89,32 +85,21 @@ static Uint32 ripples_size = 0;
 static double prop_global_damping = 0.0f;
 static double prop_body_collision_pad = 0.0f;
 
-static void double_bodies_dynarr(void) {
-    body_data* new_bodies = SDL_calloc(bodies_cap << 1, sizeof(body_data));
-    SDL_memcpy(new_bodies, bodies, bodies_cap * sizeof(body_data));
-    SDL_free(bodies);
-    bodies_cap = bodies_cap << 1;
-    bodies = new_bodies;
+static body_data* get_body(size_t id) {
+    return pool_at(id, &bodies);
 }
 
-static void double_points_dynarr(void) {
-    prop_point_data* new_points =
-        SDL_calloc(points_cap << 1, sizeof(prop_point_data));
-    SDL_memcpy(new_points, points, points_cap * sizeof(prop_point_data));
-    SDL_free(points);
-    points_cap = points_cap << 1;
-    points = new_points;
+static prop_point_data* get_point(size_t id) {
+    return pool_at(id, &points);
 }
 
-static void double_connections_dynarr(void) {
-    prop_connection_data* new_connections =
-        SDL_calloc(connections_cap << 1, sizeof(prop_connection_data));
-    SDL_memcpy(new_connections,
-               connections,
-               connections_cap * sizeof(prop_connection_data));
-    SDL_free(connections);
-    connections_cap = connections_cap << 1;
-    connections = new_connections;
+static prop_connection_data* get_connection(size_t id) {
+    return pool_at(id, &connections);
+}
+
+// Id at `n` on `ids`, a `size_t` dynarr.
+static size_t id_at(size_t n, const dynarr* ids) {
+    return *(size_t*)dynarr_at(n, ids);
 }
 
 
@@ -180,7 +165,7 @@ static bool is_point_fixed(prop_point_data* p) {
 static void add_to_nbsearch(nbcoords c, size_t idx) {
     for (Uint16 x = c.tl.x; x <= c.br.x; x++) {
         for (Uint16 y = c.tl.y; y <= c.br.y; y++) {
-            push_to_dynarr((void*)idx, &nbsearch[x][y]);
+            push_to_dynarr(&idx, &nbsearch[x][y]);
         }
     }
 }
@@ -188,7 +173,7 @@ static void add_to_nbsearch(nbcoords c, size_t idx) {
 static void remove_from_nbsearch(nbcoords c, size_t idx) {
     for (Uint16 x = c.tl.x; x <= c.br.x; x++) {
         for (Uint16 y = c.tl.y; y <= c.br.y; y++) {
-            remove_val_from_dynarr((void*)idx, &nbsearch[x][y]);
+            remove_val_from_dynarr(&idx, &nbsearch[x][y]);
         }
     }
 }
@@ -374,9 +359,9 @@ static void move_body_vertically(body_data* b, double d) {
 // actually used to move them.
 static void prepare_prop_points(void) {
     tile data = (tile){0};
-    for (size_t idx = 0; idx < points_cap; idx++) {
-        prop_point_data* p = &points[idx];
-        if (!p->used) continue;
+    for (size_t idx = 0; idx < points.cap; idx++) {
+        prop_point_data* p = get_point(idx);
+        if (!p) continue;
         p->simulated = is_point_simulated(p->point);
         if (!p->simulated) continue;
         TILEMAP_get_at(
@@ -392,15 +377,15 @@ static void prepare_prop_points(void) {
 }
 
 static void apply_connections(bool springs) {
-    for (size_t idx = 0; idx < connections_cap; idx++) {
-        prop_connection_data* c = &connections[idx];
-        if (c->point_a == c->point_b) continue;
+    for (size_t idx = 0; idx < connections.cap; idx++) {
+        prop_connection_data* c = get_connection(idx);
+        if (!c) continue;
         if ((c->elasticity > 0.0f && !springs) ||
             (c->elasticity == 0.0f && springs))
             continue;
 
-        prop_point_data* p_a = &points[c->point_a];
-        prop_point_data* p_b = &points[c->point_b];
+        prop_point_data* p_a = get_point(c->point_a);
+        prop_point_data* p_b = get_point(c->point_b);
         bool fixed_a = is_point_fixed(p_a);
         bool fixed_b = is_point_fixed(p_b);
         if (fixed_a && fixed_b) continue;
@@ -451,9 +436,9 @@ static double get_prop_dt(void) {
 // would divide by a zero `prev_dt`.
 static void move_points(void) {
     if (get_prop_dt() <= 0.0f) return;
-    for (size_t idx = 0; idx < points_cap; idx++) {
-        prop_point_data* p = &points[idx];
-        if (!p->used) continue;
+    for (size_t idx = 0; idx < points.cap; idx++) {
+        prop_point_data* p = get_point(idx);
+        if (!p) continue;
         if (is_point_fixed(p)) continue;
 
         // Verlet integration
@@ -604,9 +589,9 @@ static void move_and_collide(double x0,
 }
 
 static void collide_points(void) {
-    for (size_t idx = 0; idx < points_cap; idx++) {
-        prop_point_data* p = &points[idx];
-        if (!p->used) continue;
+    for (size_t idx = 0; idx < points.cap; idx++) {
+        prop_point_data* p = get_point(idx);
+        if (!p) continue;
         if (is_point_fixed(p)) continue;
 
         // Extrude from bodies
@@ -615,7 +600,7 @@ static void collide_points(void) {
             Uint16 tile_y = pos_to_tile_y(p->point.y);
             dynarr* nb = &nbsearch[tile_x][tile_y];
             for (size_t i = 0; i < nb->len; i++) {
-                body* b = &(bodies[(size_t)nb->at[i]].body);
+                body* b = &(get_body(id_at(i, nb))->body);
                 if (b->x - prop_body_collision_pad <= p->point.x &&
                     p->point.x <= b->x + b->w + prop_body_collision_pad &&
                     b->y - prop_body_collision_pad <= p->point.y &&
@@ -773,9 +758,9 @@ static void splash_fluids(body_data* b, double x0, double y0, double vel_y) {
 
 static void move_bodies(void) {
     double dt = GAME_MANAGER_get_current_dt();
-    for (size_t idx = 0; idx < bodies_cap; idx++) {
-        body_data* b = &bodies[idx];
-        if (b->body.w == 0 || b->body.h == 0) continue;
+    for (size_t idx = 0; idx < bodies.cap; idx++) {
+        body_data* b = get_body(idx);
+        if (!b) continue;
         if (!is_body_simulated(b->body)) continue;
         b->splash_cooldown -= dt;
         b->drop_timer -= dt;
@@ -826,139 +811,128 @@ int PHYSICS_new_body(body data, size_t* body_id) {
             data.h);
         return 2;
     }
-    for (size_t idx = 0; idx < bodies_cap; idx++) {
-        if (bodies[idx].body.w == 0) {
-            bodies[idx] = (body_data){.body = data};
-            add_to_nbsearch(get_body_nbcoords(data), idx);
-            *body_id = idx;
-            return 0;
-        }
-    }
-    double_bodies_dynarr();
-    size_t index = bodies_cap >> 1;
-    bodies[index] = (body_data){.body = data};
-    add_to_nbsearch(get_body_nbcoords(data), index);
-    *body_id = index;
+    *body_id = add_to_pool(&(body_data){.body = data}, &bodies);
+    add_to_nbsearch(get_body_nbcoords(data), *body_id);
     return 0;
 }
 
 int PHYSICS_del_body(size_t body_id) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to delete body_id=%lu but this is outside the buffer range",
             body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to delete inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    remove_from_nbsearch(get_body_nbcoords(bodies[body_id].body), body_id);
-    bodies[body_id] = (body_data){0};
+    remove_from_nbsearch(get_body_nbcoords(get_body(body_id)->body), body_id);
+    remove_from_pool(body_id, &bodies);
     return 0;
 }
 
 int PHYSICS_get_body(size_t body_id, body* data) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to get body_id=%lu but this is outside the buffer range",
             body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    *data = bodies[body_id].body;
+    *data = get_body(body_id)->body;
     return 0;
 }
 
 int PHYSICS_add_body_velocity(size_t body_id, double vel_x, double vel_y) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to add velocity to body_id=%lu but this is outside "
                     "the buffer range",
                     body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to add velocity to inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    bodies[body_id].body.vel_x += vel_x;
-    bodies[body_id].body.vel_y += vel_y;
+    get_body(body_id)->body.vel_x += vel_x;
+    get_body(body_id)->body.vel_y += vel_y;
     return 0;
 }
 
 int PHYSICS_set_body_velocity(size_t body_id, double vel_x, double vel_y) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set velocity to body_id=%lu but this is outside "
                     "the buffer range",
                     body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set velocity to inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    bodies[body_id].body.vel_x = vel_x;
-    bodies[body_id].body.vel_y = vel_y;
+    get_body(body_id)->body.vel_x = vel_x;
+    get_body(body_id)->body.vel_y = vel_y;
     return 0;
 }
 
 int PHYSICS_drop_down_body(size_t body_id) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to drop down body_id=%lu but this is outside the "
                     "buffer range",
                     body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to drop down inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    bodies[body_id].drop_timer = PHYSICS_DROP_TIMER;
+    get_body(body_id)->drop_timer = PHYSICS_DROP_TIMER;
     return 0;
 }
 
 int PHYSICS_set_body_position(size_t body_id, double x, double y) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set position to body_id=%lu but this is outside "
                     "the buffer range",
                     body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set position to inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    nbcoords nbc0 = get_body_nbcoords(bodies[body_id].body);
-    bodies[body_id].body.x = x;
-    bodies[body_id].body.y = y;
-    nbcoords nbc = get_body_nbcoords(bodies[body_id].body);
+    nbcoords nbc0 = get_body_nbcoords(get_body(body_id)->body);
+    get_body(body_id)->body.x = x;
+    get_body(body_id)->body.y = y;
+    nbcoords nbc = get_body_nbcoords(get_body(body_id)->body);
     update_nbsearch(nbc0, nbc, body_id);
     return 0;
 }
 
 int PHYSICS_edit_body(size_t body_id, body data) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to edit body_id=%lu but this is outside the buffer range",
@@ -975,14 +949,14 @@ int PHYSICS_edit_body(size_t body_id, body data) {
                     data.h);
         return 2;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to edit inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    nbcoords nbc0 = get_body_nbcoords(bodies[body_id].body);
-    bodies[body_id].body = data;
+    nbcoords nbc0 = get_body_nbcoords(get_body(body_id)->body);
+    get_body(body_id)->body = data;
     update_nbsearch(nbc0, get_body_nbcoords(data), body_id);
     return 0;
 }
@@ -998,62 +972,46 @@ int PHYSICS_new_prop_point(prop_point data, size_t* point_id) {
                     data.y);
         return 2;
     }
-    for (size_t idx = 0; idx < points_cap; idx++) {
-        if (!points[idx].used) {
-            points[idx] = (prop_point_data){
-                .used = true,
-                .point = data,
-                .prev_x = data.x,
-                .prev_y = data.y,
-            };
-            init_dynarr(&points[idx].connections);
-            *point_id = idx;
-            return 0;
-        }
-    }
-    double_points_dynarr();
-    size_t index = points_cap >> 1;
-    points[index] = (prop_point_data){
-        .used = true,
+    prop_point_data p = (prop_point_data){
         .point = data,
         .prev_x = data.x,
         .prev_y = data.y,
     };
-    init_dynarr(&points[index].connections);
-    *point_id = index;
+    init_dynarr(&p.connections, sizeof(size_t));
+    *point_id = add_to_pool(&p, &points);
     return 0;
 }
 
 int PHYSICS_del_prop_point(size_t point_id) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to delete point_id=%lu but this is outside the buffer range",
             point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to delete inexistent prop point at point_id=%lu",
                     point_id);
         return 1;
     }
-    for (size_t i = 0; i < points[point_id].connections.len; i++) {
-        prop_connection_data* conn =
-            &connections[(size_t)points[point_id].connections.at[i]];
+    prop_point_data* p = get_point(point_id);
+    for (size_t i = 0; i < p->connections.len; i++) {
+        size_t* conn_id = dynarr_at(i, &p->connections);
+        prop_connection_data* conn = get_connection(*conn_id);
         if (conn->point_a != point_id)
-            remove_val_from_dynarr(points[point_id].connections.at[i],
-                                   &points[conn->point_a].connections);
+            remove_val_from_dynarr(conn_id,
+                                   &get_point(conn->point_a)->connections);
         if (conn->point_b != point_id)
-            remove_val_from_dynarr(points[point_id].connections.at[i],
-                                   &points[conn->point_b].connections);
-        *conn = (prop_connection_data){0};
+            remove_val_from_dynarr(conn_id,
+                                   &get_point(conn->point_b)->connections);
+        remove_from_pool(*conn_id, &connections);
     }
-    void (*on_delete_func)(size_t, size_t) =
-        points[point_id].point.on_delete_func;
-    size_t on_delete_arg = points[point_id].point.on_delete_arg;
-    clear_dynarr(&points[point_id].connections);
-    points[point_id] = (prop_point_data){0};
+    void (*on_delete_func)(size_t, size_t) = p->point.on_delete_func;
+    size_t on_delete_arg = p->point.on_delete_arg;
+    deinit_dynarr(&p->connections);
+    remove_from_pool(point_id, &points);
 
     // Called last so the prop sees the point and its connections already gone
     if (on_delete_func) on_delete_func(point_id, on_delete_arg);
@@ -1061,25 +1019,25 @@ int PHYSICS_del_prop_point(size_t point_id) {
 }
 
 int PHYSICS_get_prop_point(size_t point_id, prop_point* data) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to get point_id=%lu but this is outside the buffer range",
             point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get inexistent prop point at point_id=%lu",
                     point_id);
         return 1;
     }
-    *data = points[point_id].point;
+    *data = get_point(point_id)->point;
     return 0;
 }
 
 int PHYSICS_edit_prop_point(size_t point_id, prop_point data) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to edit point_id=%lu but this is outside the buffer range",
@@ -1095,56 +1053,56 @@ int PHYSICS_edit_prop_point(size_t point_id, prop_point data) {
                     data.y);
         return 2;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to edit inexistent prop point at point_id=%lu",
                     point_id);
         return 1;
     }
-    points[point_id].point = data;
-    points[point_id].prev_x = data.x;
-    points[point_id].prev_y = data.y;
+    get_point(point_id)->point = data;
+    get_point(point_id)->prev_x = data.x;
+    get_point(point_id)->prev_y = data.y;
     return 0;
 }
 
 int PHYSICS_set_prop_point_acceleration(size_t point_id,
                                         double acc_x,
                                         double acc_y) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set acceleration of point_id=%lu but this is "
                     "outside the buffer range",
                     point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set acceleration of inexistent prop point at "
                     "point_id=%lu",
                     point_id);
         return 1;
     }
-    points[point_id].point.acc_x = acc_x;
-    points[point_id].point.acc_y = acc_y;
+    get_point(point_id)->point.acc_x = acc_x;
+    get_point(point_id)->point.acc_y = acc_y;
     return 0;
 }
 
 int PHYSICS_set_prop_point_damping(size_t point_id, double damping) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set damping of point_id=%lu but this is outside "
                     "the buffer range",
                     point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set damping of inexistent prop point at "
                     "point_id=%lu",
                     point_id);
         return 1;
     }
-    points[point_id].point.damping = damping;
+    get_point(point_id)->point.damping = damping;
     return 0;
 }
 
@@ -1153,21 +1111,21 @@ int PHYSICS_set_prop_point_damping(size_t point_id, double damping) {
 int PHYSICS_set_prop_point_velocity(size_t point_id,
                                     double vel_x,
                                     double vel_y) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set velocity of point_id=%lu but this is outside "
                     "the buffer range",
                     point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set velocity of inexistent prop point at "
                     "point_id=%lu",
                     point_id);
         return 1;
     }
-    prop_point_data* p = &points[point_id];
+    prop_point_data* p = get_point(point_id);
     double prev_dt = p->prev_dt > 0.0f ? p->prev_dt : get_prop_dt();
     p->prev_x = p->point.x - vel_x * prev_dt;
     p->prev_y = p->point.y - vel_y * prev_dt;
@@ -1177,14 +1135,14 @@ int PHYSICS_set_prop_point_velocity(size_t point_id,
 int PHYSICS_get_prop_point_velocity(size_t point_id,
                                     double* vel_x,
                                     double* vel_y) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get velocity of point_id=%lu but this is outside "
                     "the buffer range",
                     point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get velocity of inexistent prop point at "
                     "point_id=%lu",
@@ -1192,7 +1150,7 @@ int PHYSICS_get_prop_point_velocity(size_t point_id,
         return 1;
     }
     // Points that never moved have no `prev_dt` and are standing still
-    prop_point_data* p = &points[point_id];
+    prop_point_data* p = get_point(point_id);
     *vel_x = p->prev_dt > 0.0f ? (p->point.x - p->prev_x) / p->prev_dt : 0.0f;
     *vel_y = p->prev_dt > 0.0f ? (p->point.y - p->prev_y) / p->prev_dt : 0.0f;
     return 0;
@@ -1200,7 +1158,7 @@ int PHYSICS_get_prop_point_velocity(size_t point_id,
 
 int PHYSICS_connect_prop_points(
     size_t id_a, size_t id_b, double elasticity, double length, bool two_ways) {
-    if (id_a >= points_cap || id_a < 0 || id_b >= points_cap || id_b < 0) {
+    if (id_a >= points.cap || id_b >= points.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to connect id_a=%lu and id_b=%lu but one or both "
                     "are outside the buffer range",
@@ -1218,7 +1176,7 @@ int PHYSICS_connect_prop_points(
                     id_b);
         return 2;
     }
-    if (!points[id_a].used || !points[id_b].used) {
+    if (!get_point(id_a) || !get_point(id_b)) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to connect inexistent prop points at id_a=%lu and id_b=%lu",
@@ -1226,9 +1184,9 @@ int PHYSICS_connect_prop_points(
             id_b);
         return 1;
     }
-    for (size_t i = 0; i < points[id_a].connections.len; i++) {
+    for (size_t i = 0; i < get_point(id_a)->connections.len; i++) {
         prop_connection_data* conn =
-            &connections[(size_t)points[id_a].connections.at[i]];
+            get_connection(id_at(i, &get_point(id_a)->connections));
         if (conn->point_a == id_b || conn->point_b == id_b) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Tried to connect already connected points id_a=%lu "
@@ -1238,84 +1196,70 @@ int PHYSICS_connect_prop_points(
             return 4;
         }
     }
-    for (size_t idx = 0; idx < connections_cap; idx++) {
-        if (connections[idx].point_a == connections[idx].point_b) {
-            connections[idx] = (prop_connection_data){
-                .point_a = id_a,
-                .point_b = id_b,
-                .elasticity = elasticity,
-                .length = length,
-                .two_ways = two_ways,
-            };
-            push_to_dynarr((void*)idx, &points[id_a].connections);
-            push_to_dynarr((void*)idx, &points[id_b].connections);
-            return 0;
-        }
-    }
-    double_connections_dynarr();
-    size_t index = connections_cap >> 1;
-    connections[index] = (prop_connection_data){
-        .point_a = id_a,
-        .point_b = id_b,
-        .elasticity = elasticity,
-        .length = length,
-        .two_ways = two_ways,
-    };
-    push_to_dynarr((void*)index, &points[id_a].connections);
-    push_to_dynarr((void*)index, &points[id_b].connections);
+    size_t id = add_to_pool(
+        &(prop_connection_data){
+            .point_a = id_a,
+            .point_b = id_b,
+            .elasticity = elasticity,
+            .length = length,
+            .two_ways = two_ways,
+        },
+        &connections);
+    push_to_dynarr(&id, &get_point(id_a)->connections);
+    push_to_dynarr(&id, &get_point(id_b)->connections);
     return 0;
 }
 
 int PHYSICS_set_prop_point_on_delete(size_t point_id,
                                      void (*func)(size_t point_id, size_t arg),
                                      size_t arg) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to set on delete of point_id=%lu but this is "
                     "outside the buffer range",
                     point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to set on delete of inexistent prop point at point_id=%lu",
             point_id);
         return 1;
     }
-    points[point_id].point.on_delete_func = func;
-    points[point_id].point.on_delete_arg = arg;
+    get_point(point_id)->point.on_delete_func = func;
+    get_point(point_id)->point.on_delete_arg = arg;
     return 0;
 }
 
 int PHYSICS_get_connected_points(size_t point_id, dynarr* arr) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get points connected to point_id=%lu but this is "
                     "outside the buffer range",
                     point_id);
         return 3;
     }
-    if (!arr || !arr->at) {
+    if (!arr || !arr->data_size) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get connected points into an uninitialized "
                     "dynarr");
         return 2;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get points connected to inexistent prop point at "
                     "point_id=%lu",
                     point_id);
         return 1;
     }
-    arr->len = 0;
-    for (size_t i = 0; i < points[point_id].connections.len; i++) {
+    clear_dynarr(arr);
+    for (size_t i = 0; i < get_point(point_id)->connections.len; i++) {
         prop_connection_data* conn =
-            &connections[(size_t)points[point_id].connections.at[i]];
+            get_connection(id_at(i, &get_point(point_id)->connections));
         size_t other =
             conn->point_a == point_id ? conn->point_b : conn->point_a;
-        push_to_dynarr((void*)other, arr);
+        push_to_dynarr(&other, arr);
     }
     return 0;
 }
@@ -1327,7 +1271,8 @@ void PHYSICS_test_get_connection(size_t connection_id,
                                  double* elasticity,
                                  double* length,
                                  bool* two_ways) {
-    prop_connection_data* conn = &connections[connection_id];
+    prop_connection_data* found = get_connection(connection_id);
+    prop_connection_data* conn = found ? found : &(prop_connection_data){0};
     *point_a = conn->point_a;
     *point_b = conn->point_b;
     *elasticity = conn->elasticity;
@@ -1339,19 +1284,13 @@ void PHYSICS_test_get_connection(size_t connection_id,
 
 
 static void load_ripples_data(const char* csv) {
+    parsing_field fields[] = {
+        {"body_max_speed", parsing_double, &ripples_max_speed},
+        {"body_ripple_strength", parsing_double, &ripples_strength},
+        {"new_body_ripple_pix_size", parsing_uint32, &ripples_size},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "body_max_speed") == 0)
-            ripples_max_speed = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "body_ripple_strength") == 0)
-            ripples_strength = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "new_body_ripple_pix_size") == 0)
-            ripples_size = SDL_strtol(val, NULL, 10);
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -1359,17 +1298,12 @@ static void load_ripples_data(const char* csv) {
 }
 
 static void load_props_data(const char* csv) {
+    parsing_field fields[] = {
+        {"prop_global_damping", parsing_double, &prop_global_damping},
+        {"prop_body_collision_pad", parsing_double, &prop_body_collision_pad},
+    };
     dynarr parsed = CSV_parse(csv);
-
-    for (int i = 0; i < parsed.len; i++) {
-        char* key = (char*)((dynarr*)parsed.at[i])->at[0];
-        char* val = (char*)((dynarr*)parsed.at[i])->at[1];
-        if (SDL_strcmp(key, "prop_global_damping") == 0)
-            prop_global_damping = SDL_strtod(val, NULL);
-        else if (SDL_strcmp(key, "prop_body_collision_pad") == 0)
-            prop_body_collision_pad = SDL_strtod(val, NULL);
-    }
-
+    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -1377,58 +1311,41 @@ static void load_props_data(const char* csv) {
 }
 
 void PHYSICS_start(void) {
-#ifndef TEST
     char ripples_csv[] = {
 #embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
     };
     char props_csv[] = {
 #embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
     };
-#else
-    char ripples_csv[] = {
-#embed TESTS_FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
-    };
-    char props_csv[] = {
-#embed TESTS_PHYSICS_PROPS_CSV_PATH suffix(, '\0')
-    };
-#endif
 
     load_ripples_data(ripples_csv);
     load_props_data(props_csv);
 
-    bodies = SDL_calloc(PHYSICS_STARTING_BODIES_DYNARR_CAP, sizeof(body_data));
-    bodies_cap = PHYSICS_STARTING_BODIES_DYNARR_CAP;
-
-    points = SDL_calloc(PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP,
-                        sizeof(prop_point_data));
-    points_cap = PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP;
-
-    connections = SDL_calloc(PHYSICS_STARTING_PROP_CONNECTIONS_DYNARR_CAP,
-                             sizeof(prop_connection_data));
-    connections_cap = PHYSICS_STARTING_PROP_CONNECTIONS_DYNARR_CAP;
+    init_pool_with(
+        &bodies, sizeof(body_data), PHYSICS_STARTING_BODIES_DYNARR_CAP);
+    for (Uint16 x = 0; x < TILEMAP_SIZE_X; x++)
+        for (Uint16 y = 0; y < TILEMAP_SIZE_Y; y++)
+            init_dynarr_with(&nbsearch[x][y], sizeof(size_t), 0);
+    init_pool_with(&points,
+                   sizeof(prop_point_data),
+                   PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP);
+    init_pool_with(&connections,
+                   sizeof(prop_connection_data),
+                   PHYSICS_STARTING_PROP_CONNECTIONS_DYNARR_CAP);
 
     sim = CAMERA_get_simulation_rect();
 }
 
 void PHYSICS_stop(void) {
-    SDL_free(bodies);
-    bodies = NULL;
-    bodies_cap = 0;
-    for (Uint16 x = 0; x < TILEMAP_SIZE_X; x++) {
-        for (Uint16 y = 0; y < TILEMAP_SIZE_Y; y++) {
-            clear_dynarr(&nbsearch[x][y]);
-        }
-    }
+    deinit_pool(&bodies);
+    for (Uint16 x = 0; x < TILEMAP_SIZE_X; x++)
+        for (Uint16 y = 0; y < TILEMAP_SIZE_Y; y++)
+            deinit_dynarr(&nbsearch[x][y]);
 
-    for (size_t idx = 0; idx < points_cap; idx++)
-        clear_dynarr(&points[idx].connections);
-    SDL_free(points);
-    points = NULL;
-    points_cap = 0;
-
-    SDL_free(connections);
-    connections = NULL;
-    connections_cap = 0;
+    for (size_t idx = 0; idx < points.cap; idx++)
+        if (get_point(idx)) deinit_dynarr(&get_point(idx)->connections);
+    deinit_pool(&points);
+    deinit_pool(&connections);
 }
 
 
@@ -1473,21 +1390,21 @@ int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr) {
                     rect.h);
         return 1;
     }
-    if (!arr || !arr->at) {
+    if (!arr || !arr->data_size) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to get intersecting bodies into an uninitialized "
                     "dynarr");
         return 2;
     }
-    arr->len = 0;
+    clear_dynarr(arr);
     if (rect.w <= 0 || rect.h <= 0) return 0;
 
     nbcoords nbc = get_rect_nbcoords(rect.x, rect.y, rect.w, rect.h);
     for (Uint16 x = nbc.tl.x; x <= nbc.br.x; x++) {
         for (Uint16 y = nbc.tl.y; y <= nbc.br.y; y++) {
             for (size_t i = 0; i < nbsearch[x][y].len; i++) {
-                size_t id = (size_t)nbsearch[x][y].at[i];
-                body b = bodies[id].body;
+                size_t id = id_at(i, &nbsearch[x][y]);
+                body b = get_body(id)->body;
 
                 // A body spanning many cells is only checked on the first
                 // cell both it and rect share, to avoid duplicates
@@ -1498,7 +1415,7 @@ int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr) {
 
                 if (are_intersecting(
                         b.x, b.y, b.w, b.h, rect.x, rect.y, rect.w, rect.h))
-                    push_to_dynarr((void*)id, arr);
+                    push_to_dynarr(&id, arr);
             }
         }
     }
@@ -1506,20 +1423,20 @@ int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr) {
 }
 
 int PHYSICS_is_body_on_floor(size_t body_id, bool* check) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to check body_id=%lu but this is outside the buffer range",
             body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    body b = bodies[body_id].body;
+    body b = get_body(body_id)->body;
     double by = SDL_round(b.y + b.h);
     if ((int)by % SPRITESHEET_CELL_Y != 0) {
         *check = false;
@@ -1535,7 +1452,7 @@ int PHYSICS_is_body_on_floor(size_t body_id, bool* check) {
         int r = TILEMAP_get_at(i, ytile, &data);
 
         // Dropping bodies go through platforms, so they aren't floor
-        if (data.platform && bodies[body_id].drop_timer > 0.0f) continue;
+        if (data.platform && get_body(body_id)->drop_timer > 0.0f) continue;
         if (r == 1 || data.type) {
             *check = true;
             return 0;
@@ -1546,24 +1463,24 @@ int PHYSICS_is_body_on_floor(size_t body_id, bool* check) {
 }
 
 int PHYSICS_is_body_on_platform(size_t body_id, bool* check) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to check body_id=%lu but this is outside the buffer range",
             body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    if (bodies[body_id].drop_timer > 0.0f) {
+    if (get_body(body_id)->drop_timer > 0.0f) {
         *check = false;
         return 0;
     }
-    body b = bodies[body_id].body;
+    body b = get_body(body_id)->body;
     double by = SDL_round(b.y + b.h);
     if ((int)by % SPRITESHEET_CELL_Y != 0) {
         *check = false;
@@ -1589,20 +1506,20 @@ int PHYSICS_is_body_on_platform(size_t body_id, bool* check) {
 }
 
 int PHYSICS_is_body_on_ceiling(size_t body_id, bool* check) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to check body_id=%lu but this is outside the buffer range",
             body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    body b = bodies[body_id].body;
+    body b = get_body(body_id)->body;
     double by = SDL_round(b.y);
     if (by == 0.0f) {
         *check = true;
@@ -1630,37 +1547,37 @@ int PHYSICS_is_body_on_ceiling(size_t body_id, bool* check) {
 }
 
 int PHYSICS_is_body_within_the_simulation(size_t body_id, bool* check) {
-    if (body_id >= bodies_cap || body_id < 0) {
+    if (body_id >= bodies.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to check body_id=%lu but this is outside the buffer range",
             body_id);
         return 3;
     }
-    if (bodies[body_id].body.w == 0) {
+    if (!get_body(body_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check inexistent body at body_id=%lu",
                     body_id);
         return 1;
     }
-    *check = is_body_simulated(bodies[body_id].body);
+    *check = is_body_simulated(get_body(body_id)->body);
     return 0;
 }
 
 int PHYSICS_is_prop_point_within_the_simulation(size_t point_id, bool* check) {
-    if (point_id >= points_cap || point_id < 0) {
+    if (point_id >= points.cap) {
         SDL_LogWarn(
             SDL_LOG_CATEGORY_APPLICATION,
             "Tried to check point_id=%lu but this is outside the buffer range",
             point_id);
         return 3;
     }
-    if (!points[point_id].used) {
+    if (!get_point(point_id)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to check inexistent prop point at point_id=%lu",
                     point_id);
         return 1;
     }
-    *check = is_point_simulated(points[point_id].point);
+    *check = is_point_simulated(get_point(point_id)->point);
     return 0;
 }
