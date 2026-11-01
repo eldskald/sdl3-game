@@ -17,6 +17,47 @@
 #define SIMULATION_SPACE_X 120
 #define SIMULATION_SPACE_Y 66
 
+// Localization
+// The languages the game can be in, by their ISO 639-1 code, with Chinese also
+// by script or region, since each has its own font with its own glyph shapes.
+// `STARTING_LANGUAGE` is the one it starts in, set it with `make GAME_LANG=pt`,
+// see the Makefile. Changing it while running is `TEXT_set_language()`.
+typedef enum {
+    language_en,      // English
+    language_pt,      // Portuguese
+    language_es,      // Spanish
+    language_fr,      // French
+    language_de,      // German
+    language_it,      // Italian
+    language_nl,      // Dutch
+    language_sv,      // Swedish
+    language_da,      // Danish
+    language_nb,      // Norwegian Bokmål
+    language_fi,      // Finnish
+    language_pl,      // Polish
+    language_cs,      // Czech
+    language_hu,      // Hungarian
+    language_ro,      // Romanian
+    language_tr,      // Turkish
+    language_id,      // Indonesian
+    language_ms,      // Malay
+    language_tl,      // Tagalog, Filipino
+    language_el,      // Greek
+    language_ru,      // Russian
+    language_uk,      // Ukrainian
+    language_vi,      // Vietnamese
+    language_ja,      // Japanese
+    language_ko,      // Korean
+    language_zh_hans, // Chinese, Simplified
+    language_zh_hant, // Chinese, Traditional
+    language_zh_hk,   // Chinese, Traditional, Hong Kong
+    language_zh_tw,   // Chinese, Traditional, Taiwan
+} language;
+#define LANGUAGES_TOTAL 29
+#ifndef STARTING_LANGUAGE
+#define STARTING_LANGUAGE language_en
+#endif
+
 // Helpers
 #define EPSILON 0.0001f
 #define COL_BLACK 0, 0, 0, 255
@@ -42,9 +83,16 @@
 #define SPRITESHEET_CELL_Y 8
 
 // Text
-#define TEXT_FONT_TYPES font_unifont, font_able_5
+// `font_main` is drawn with a font depending on the language, see `text.c`.
+// Unifont is only for debugging, it's too big for the game's resolution.
+#if DEV
+#define TEXT_FONT_TYPES font_main, font_unifont
 #define TEXT_FONTS_TOTAL 2
-#define TEXT_ATLAS_X 256 // Its height is however much the glyphs need
+#else
+#define TEXT_FONT_TYPES font_main
+#define TEXT_FONTS_TOTAL 1
+#endif
+#define TEXT_ATLAS_X 2048 // Its height is however much the glyphs need
 #define TEXT_FALLBACK_CODEPOINT 0xFFFD // Replacement character, '�'
 
 // Sprites

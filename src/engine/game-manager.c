@@ -223,6 +223,8 @@ int GAME_MANAGER_events(SDL_Event* event) {
 void GAME_MANAGER_update(void) {
     // Main thread loop
 
+    TEXT_update();
+
 #if DEV && !TEST
     PROFILER_setup_timer("renderer");
 #endif

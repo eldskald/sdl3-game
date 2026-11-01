@@ -24,8 +24,15 @@
 #define SPRITESHEET_PATH "res/textures/spritesheet.png"
 
 // Text
-#define TEXT_UNIFONT_PATH "res/fonts/unifont-18.0.01.hex"
+#define TEXT_UNIFONT_PATH "res/fonts/unifont.hex"
 #define TEXT_ABLE_5_PATH "res/fonts/able-5.hex"
+#define TEXT_GALMURI_9_PATH "res/fonts/galmuri9.hex"
+#define TEXT_FUSION_JA_PATH "res/fonts/fusion-pixel-10px-ja.hex"
+#define TEXT_FUSION_KO_PATH "res/fonts/fusion-pixel-10px-ko.hex"
+#define TEXT_FUSION_ZH_HANS_PATH "res/fonts/fusion-pixel-10px-zh-hans.hex"
+#define TEXT_FUSION_ZH_HANT_PATH "res/fonts/fusion-pixel-10px-zh-hant.hex"
+#define TEXT_FUSION_ZH_HK_PATH "res/fonts/fusion-pixel-10px-zh-hk.hex"
+#define TEXT_FUSION_ZH_TW_PATH "res/fonts/fusion-pixel-10px-zh-tw.hex"
 
 // Chunks
 #define CHUNKS_PLATFORMS_CSV_PATH "data/tiles/platforms.csv"
