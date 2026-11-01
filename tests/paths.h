@@ -17,6 +17,7 @@
 #undef FLUIDS_RIPPLES_CSV_PATH
 #undef REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH
 #undef PHYSICS_PROPS_CSV_PATH
+#undef TEXT_ABLE_5_PATH
 
 // Chunks
 #define CHUNKS_PLATFORMS_CSV_PATH "tests/mocks/tiles/platforms.csv"
@@ -42,3 +43,8 @@
 
 // Physics
 #define PHYSICS_PROPS_CSV_PATH "tests/mocks/graphics/props.csv"
+
+// Text
+// Able 5's glyphs are replaced by a mock font 4 pixels tall, with glyphs
+// drawing to the left of where they're drawn and past their width.
+#define TEXT_ABLE_5_PATH "tests/mocks/fonts/mock.hex"

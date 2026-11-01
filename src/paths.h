@@ -23,6 +23,10 @@
 // Spritesheet
 #define SPRITESHEET_PATH "res/textures/spritesheet.png"
 
+// Text
+#define TEXT_UNIFONT_PATH "res/fonts/unifont-18.0.01.hex"
+#define TEXT_ABLE_5_PATH "res/fonts/able-5.hex"
+
 // Chunks
 #define CHUNKS_PLATFORMS_CSV_PATH "data/tiles/platforms.csv"
 #define CHUNKS_TYPES_MAP_CSV_PATH "data/tiles/types-map.csv"

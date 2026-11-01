@@ -1,15 +1,20 @@
 #include "dev/profiler.h"
 #include "data-structs/hashmap.h"
-#include "defs.h"
 #include "engine/game-manager.h"
+#include "engine/graphics.h"
+#include "engine/text.h"
 #include <SDL3/SDL.h>
 
 #define PAD 8.0f
 #define SEPARATOR 6.0f
-#define NEXT_LINE 12.0f
+#define FONT font_unifont
 #define TOTAL_X 200.0f
 #define RECT_WIDTH 400.0f
+#define LINE_MAX 128
 #define MILI2NANO 1000000
+
+static const SDL_FColor black = {0.0f, 0.0f, 0.0f, 1.0f};
+static const SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
 
 static char* thread_names[4] = {NULL, "main", "fixed", "fluids"};
 
@@ -64,8 +69,10 @@ void PROFILER_toggle_stats(thread t) {
     toggled = toggled == t ? 0 : t;
 }
 
-void PROFILER_draw(SDL_Renderer* renderer) {
+void PROFILER_draw(void) {
     if (!toggled) return;
+
+    float font_height = (float)TEXT_get_font_height(FONT);
 
     hashmap vals;
     init_hashmap(&vals, sizeof(Uint64));
@@ -76,42 +83,33 @@ void PROFILER_draw(SDL_Renderer* renderer) {
                        &vals);
     SDL_UnlockMutex(ready_mutexes[toggled]);
 
-    SDL_SetRenderDrawColor(renderer, COL_BLACK);
-    SDL_RenderFillRect(renderer,
-                       &(SDL_FRect){
-                           .x = 0.0f,
-                           .y = 0.0f,
-                           .w = RECT_WIDTH,
-                           .h = NEXT_LINE + PAD + SEPARATOR,
-                       });
+    GRAPHICS_fill_rect(
+        (SDL_FRect){
+            .x = 0.0f,
+            .y = 0.0f,
+            .w = RECT_WIDTH,
+            .h = PAD + font_height + SEPARATOR + vals.len * font_height + PAD,
+        },
+        black);
 
-    SDL_SetRenderDrawColor(renderer, COL_WHITE);
-    SDL_RenderDebugTextFormat(
-        renderer, PAD, PAD, "%s thread", thread_names[toggled]);
+    char line[LINE_MAX];
+    SDL_snprintf(line, LINE_MAX, "%s thread", thread_names[toggled]);
+    TEXT_draw_now(PAD, PAD, line, FONT, 0, white);
 
-    float y = PAD + NEXT_LINE + SEPARATOR;
+    float y = PAD + font_height + SEPARATOR;
     Uint64 total = 0;
     for (size_t i = 0; i < vals.len; i++) {
-        SDL_SetRenderDrawColor(renderer, COL_BLACK);
-        SDL_RenderFillRect(renderer,
-                           &(SDL_FRect){
-                               .x = 0.0f,
-                               .y = y,
-                               .w = RECT_WIDTH,
-                               .h = NEXT_LINE + PAD,
-                           });
         const char* tag = hashmap_key_at(i, &vals);
         Uint64 ticks = *(Uint64*)hashmap_value_at(i, &vals);
         total += ticks;
-        SDL_SetRenderDrawColor(renderer, COL_WHITE);
-        SDL_RenderDebugTextFormat(
-            renderer, PAD, y, "%s: %.3fms", tag, ((float)ticks) / MILI2NANO);
-        y += NEXT_LINE;
+        SDL_snprintf(
+            line, LINE_MAX, "%s: %.3fms", tag, ((float)ticks) / MILI2NANO);
+        TEXT_draw_now(PAD, y, line, FONT, 0, white);
+        y += font_height;
     }
 
-    SDL_SetRenderDrawColor(renderer, COL_WHITE);
-    SDL_RenderDebugTextFormat(
-        renderer, TOTAL_X, PAD, "total: %.3fms", ((float)total) / MILI2NANO);
+    SDL_snprintf(line, LINE_MAX, "total: %.3fms", ((float)total) / MILI2NANO);
+    TEXT_draw_now(TOTAL_X, PAD, line, FONT, 0, white);
 
     deinit_hashmap(&vals);
 }

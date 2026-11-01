@@ -1,4 +1,5 @@
 #pragma once
+#include "engine/graphics.h"
 #include <SDL3/SDL.h>
 
 // Loads textures, shaders, etc. Returns 0 when successful, 1 otherwise.
@@ -19,6 +20,19 @@ void RENDERER_update(void);
 // which refract them, and the rest are drawn over them. Positions are in screen
 // pixels, so the camera must already be applied. Call them on the `..._draw()`
 // functions called by the renderer, on the main thread.
+
+// Queues drawing the `src` rect of `texture` on the `dst` rect, both in pixels,
+// flipped by `flip_mode`. Its color is multiplied by `tint`, which should be
+// `1.0` to draw it as is and can go beyond `1.0` to make it bloom. Consecutive
+// calls drawing the same texture are batched, so interleaving textures on a
+// z_index splits its draws.
+void RENDERER_draw_from_texture(graphics_texture* texture,
+                                SDL_FRect src,
+                                SDL_FRect dst,
+                                SDL_FlipMode flip_mode,
+                                SDL_FColor tint,
+                                Sint8 z_index);
+
 // Queues drawing the `coords_w,coords_h` cells of the spritesheet starting at
 // cell `coords_x,coords_y` at `(x,y)`, flipped by `flip_mode`. Its color is
 // multiplied by `tint`, which should be `1.0` to draw it as is and can go

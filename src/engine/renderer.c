@@ -29,7 +29,7 @@ typedef struct {
 
 // The spritesheet has an extra row of pixels at its bottom, with a white pixel
 // on its first one, at `white_u,white_v`. Lines and triangles are drawn with
-// it, so everything queued is drawn with the spritesheet.
+// it, so they batch with the sprites.
 static graphics_texture* spritesheet = NULL;
 static float white_u = 0.0f;
 static float white_v = 0.0f;
@@ -40,25 +40,28 @@ static graphics_texture* pre_fluids_texture = NULL;
 static SDL_GPUShader* tonemap_shader = NULL;
 static SDL_GPUShader* bloom_prefilter_shader = NULL;
 static SDL_GPUShader* box_sample_shader = NULL;
-#ifdef DEV
-// The profiler draws with SDL's debug text, so it's drawn by a software
-// renderer onto profiler_surface, which is uploaded to profiler_texture and
-// drawn over the window.
-static SDL_Surface* profiler_surface = NULL;
-static SDL_Renderer* profiler_renderer = NULL;
-static graphics_texture* profiler_texture = NULL;
-#endif
 static fluids_canvas fluids = (fluids_canvas){0};
 static float bloom_threshold = 1.0f;
 static float bloom_soft_threshold = 0.5f;
 static int bloom_iterations = 4;
 static float bloom_intensities[RENDERER_BLOOM_MAX_ITERATIONS] = {0};
 
+// Consecutive vertices queued on a z_index drawing the same texture.
+typedef struct {
+    graphics_texture* texture;
+    size_t len;
+} queue_run;
+
+// The vertices queued on a z_index, a `graphics_vertex` dynarr in the order
+// they were queued, split in the `queue_run` dynarr `runs` by texture.
+typedef struct {
+    dynarr vertices;
+    dynarr runs;
+} queue;
+
 // Each z_index is mapped to z_index + RENDERER_Z_INDEX_TOTAL / 2, so they all
 // fit in the array.
-// The `graphics_vertex` dynarrs of the vertices queued on each z_index, in the
-// order they were queued, all drawn with the spritesheet.
-static dynarr queues[RENDERER_Z_INDEX_TOTAL] = {0};
+static queue queues[RENDERER_Z_INDEX_TOTAL] = {0};
 
 static const SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
 static const SDL_FColor black = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -136,26 +139,6 @@ static int create_textures(void) {
                               SDL_GPU_FILTER_NEAREST);
         if (!fluids.ripples[i]) return 1;
     }
-
-#ifdef DEV
-    profiler_surface = SDL_CreateSurface(RENDERER_PROFILER_OVERLAY_X,
-                                         RENDERER_PROFILER_OVERLAY_Y,
-                                         SDL_PIXELFORMAT_RGBA32);
-    profiler_renderer = SDL_CreateSoftwareRenderer(profiler_surface);
-    if (!profiler_renderer) {
-        SDL_LogError(SDL_LOG_CATEGORY_GPU,
-                     "Couldn't create profiler renderer: %s",
-                     SDL_GetError());
-        return 1;
-    }
-    profiler_texture =
-        GRAPHICS_create_texture("profiler_texture",
-                                SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                                RENDERER_PROFILER_OVERLAY_X,
-                                RENDERER_PROFILER_OVERLAY_Y,
-                                SDL_GPU_FILTER_NEAREST);
-    if (!profiler_texture) return 1;
-#endif
 
     return 0;
 }
@@ -283,17 +266,35 @@ static int get_queue_index(Sint8 z_index) {
     return z_index + (RENDERER_Z_INDEX_TOTAL >> 1);
 }
 
-// Makes room for `n` vertices at the end of the `z_index` queue and returns
-// them, for the caller to write.
-static graphics_vertex* queue_vertices(Sint8 z_index, size_t n) {
-    return grow_dynarr(n, &queues[get_queue_index(z_index)]);
+// Makes room for `n` vertices drawing `texture` at the end of the `z_index`
+// queue and returns them, for the caller to write.
+static graphics_vertex*
+queue_vertices(graphics_texture* texture, Sint8 z_index, size_t n) {
+    queue* q = &queues[get_queue_index(z_index)];
+    queue_run* run = q->runs.len ? dynarr_at(q->runs.len - 1, &q->runs) : NULL;
+    if (!run || run->texture != texture)
+        run = push_to_dynarr(&(queue_run){texture, 0}, &q->runs);
+    run->len += n;
+    return grow_dynarr(n, &q->vertices);
 }
 
 static void queue_pixel(int x, int y, SDL_FColor col, Sint8 z_index) {
-    GRAPHICS_quad(queue_vertices(z_index, 6),
+    GRAPHICS_quad(queue_vertices(spritesheet, z_index, 6),
                   (SDL_FRect){x, y, 1.0f, 1.0f},
                   (SDL_FRect){white_u, white_v, 0.0f, 0.0f},
                   col);
+}
+
+void RENDERER_draw_from_texture(graphics_texture* texture,
+                                SDL_FRect src,
+                                SDL_FRect dst,
+                                SDL_FlipMode flip_mode,
+                                SDL_FColor tint,
+                                Sint8 z_index) {
+    GRAPHICS_quad(queue_vertices(texture, z_index, 6),
+                  dst,
+                  GRAPHICS_uv(texture, src, flip_mode),
+                  tint);
 }
 
 void RENDERER_draw_from_spritesheet(float x,
@@ -311,10 +312,12 @@ void RENDERER_draw_from_spritesheet(float x,
         .w = SPRITESHEET_CELL_X * coords_w,
         .h = SPRITESHEET_CELL_Y * coords_h,
     };
-    GRAPHICS_quad(queue_vertices(z_index, 6),
-                  (SDL_FRect){x, y, src.w, src.h},
-                  GRAPHICS_uv(spritesheet, src, flip_mode),
-                  tint);
+    RENDERER_draw_from_texture(spritesheet,
+                               src,
+                               (SDL_FRect){x, y, src.w, src.h},
+                               flip_mode,
+                               tint,
+                               z_index);
 }
 
 void RENDERER_draw_triangle(float x1,
@@ -325,7 +328,7 @@ void RENDERER_draw_triangle(float x1,
                             float y3,
                             SDL_FColor col,
                             Sint8 z_index) {
-    graphics_vertex* v = queue_vertices(z_index, 3);
+    graphics_vertex* v = queue_vertices(spritesheet, z_index, 3);
     v[0] = (graphics_vertex){x1, y1, white_u, white_v, col};
     v[1] = (graphics_vertex){x2, y2, white_u, white_v, col};
     v[2] = (graphics_vertex){x3, y3, white_u, white_v, col};
@@ -389,13 +392,19 @@ void RENDERER_draw_line(
 }
 
 // Draws and empties the queues from index `from` up to but not including `to`,
-// blended by alpha. Everything is drawn with the spritesheet and the same
-// state, so it's all a single draw.
+// blended by alpha. Everything is drawn with the same state, so consecutive
+// runs of the same texture, even across z_indexes, are a single draw.
 static void flush_queues(int from, int to) {
     GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_blend});
     for (int i = from; i < to; i++) {
-        GRAPHICS_draw_vertices(spritesheet, queues[i].data, queues[i].len);
-        clear_dynarr(&queues[i]);
+        graphics_vertex* v = queues[i].vertices.data;
+        for (size_t r = 0; r < queues[i].runs.len; r++) {
+            queue_run* run = dynarr_at(r, &queues[i].runs);
+            GRAPHICS_draw_vertices(run->texture, v, run->len);
+            v += run->len;
+        }
+        clear_dynarr(&queues[i].vertices);
+        clear_dynarr(&queues[i].runs);
     }
     GRAPHICS_set_state(NULL);
 }
@@ -494,20 +503,9 @@ static void render_final_screen(void) {
     GRAPHICS_set_state(NULL);
 
 #ifdef DEV
-    SDL_SetRenderDrawColor(profiler_renderer, 0, 0, 0, 0);
-    SDL_RenderClear(profiler_renderer);
-    PROFILER_draw(profiler_renderer);
-    SDL_FlushRenderer(profiler_renderer);
-    GRAPHICS_upload_surface(profiler_texture, profiler_surface);
+    // Drawn over the window in its pixels, after post processing.
     GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_blend});
-    GRAPHICS_draw_texture(profiler_texture,
-                          NULL,
-                          &(SDL_FRect){0.0f,
-                                       0.0f,
-                                       RENDERER_PROFILER_OVERLAY_X,
-                                       RENDERER_PROFILER_OVERLAY_Y},
-                          SDL_FLIP_NONE,
-                          white);
+    PROFILER_draw();
     GRAPHICS_set_state(NULL);
 #endif
 }
@@ -516,8 +514,10 @@ static void render_final_screen(void) {
 
 int RENDERER_start(void) {
     // Most z_indexes are never drawn on, so their queues start empty.
-    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++)
-        init_dynarr_with(&queues[i], sizeof(graphics_vertex), 0);
+    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++) {
+        init_dynarr_with(&queues[i].vertices, sizeof(graphics_vertex), 0);
+        init_dynarr_with(&queues[i].runs, sizeof(queue_run), 0);
+    }
     load_bloom_data_from_csv();
     if (GRAPHICS_start()) return 1;
     if (create_textures()) return 1;
@@ -528,14 +528,11 @@ int RENDERER_start(void) {
 
 
 void RENDERER_stop(void) {
-    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++)
-        deinit_dynarr(&queues[i]);
+    for (int i = 0; i < RENDERER_Z_INDEX_TOTAL; i++) {
+        deinit_dynarr(&queues[i].vertices);
+        deinit_dynarr(&queues[i].runs);
+    }
 
-#ifdef DEV
-    GRAPHICS_destroy_texture(profiler_texture);
-    SDL_DestroyRenderer(profiler_renderer);
-    SDL_DestroySurface(profiler_surface);
-#endif
     GRAPHICS_release_shader(box_sample_shader);
     GRAPHICS_release_shader(bloom_prefilter_shader);
     GRAPHICS_release_shader(tonemap_shader);

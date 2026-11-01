@@ -12,6 +12,7 @@
 #include "tests/physics.h"
 #include "tests/pool.h"
 #include "tests/reactions.h"
+#include "tests/text.h"
 #include "tests/tilemap.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -40,6 +41,7 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "reactions") == 0) test_reactions();
     if (argc == 1 || SDL_strcmp(argv[1], "chunks") == 0) test_chunks();
     if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
+    if (argc == 1 || SDL_strcmp(argv[1], "text") == 0) test_text();
     if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();
     if (argc == 1 || SDL_strcmp(argv[1], "data-integrity") == 0)
         test_data_integrity();
