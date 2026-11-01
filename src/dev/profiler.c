@@ -72,7 +72,8 @@ void PROFILER_toggle_stats(thread t) {
 void PROFILER_draw(void) {
     if (!toggled) return;
 
-    float font_height = (float)TEXT_get_font_height(FONT);
+    text_font_metrics m = TEXT_get_font_metrics(FONT);
+    float font_height = (float)(m.ascent + m.descent + m.line_gap);
 
     hashmap vals;
     init_hashmap(&vals, sizeof(Uint64));

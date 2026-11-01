@@ -10,10 +10,15 @@ endif
 # File/directory names
 GAME_NAME	?= game
 SRC_FILES	= $(shell find src -type f -name '*.c')
+RELEASE_SRC_FILES = $(shell find src -type f -name '*.c' -not -path 'src/dev/*')
 TEST_STUBBED_FILES = $(shell find tests/stubbed -type f -name '*.c')
 TEST_EXCLUDED_FILES = main.c $(notdir $(TEST_STUBBED_FILES))
 TEST_SRC_FILES  = $(shell find src -type f -name '*.c' $(foreach f,$(TEST_EXCLUDED_FILES),-not -name '$(f)'))
 TEST_FILES = $(shell find tests -type f -name '*.c' -not -path 'tests/stubbed/*')
+
+# Language the game starts in
+GAME_LANG ?=
+LANG_FLAGS = $(if $(GAME_LANG),-DSTARTING_LANGUAGE=language_$(subst -,_,$(GAME_LANG)))
 
 # Compilers
 LINUX_CC := gcc
@@ -49,17 +54,17 @@ clean:
 	rm -rf windows.zip linux.zip $(GAME_NAME)$(EXT)
 
 dev:
-	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o $(GAME_NAME)$(EXT)
+	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(LANG_FLAGS) $(DEV_LINK_FLAGS) -o $(GAME_NAME)$(EXT)
 
 test:
 	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_STUBBED_FILES) $(TEST_FILES) -Itests $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o test -DTEST -fsanitize=address
 
 windows:
-	$(WIN_CC) $(SRC_FILES) $(WIN_COMP_FLAGS) -O2 $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
+	$(WIN_CC) $(RELEASE_SRC_FILES) $(WIN_COMP_FLAGS) -O2 $(LANG_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
 	zip -r -q windows.zip $(GAME_NAME).exe SDL3.dll
 	rm $(GAME_NAME).exe
 
 linux:
-	$(LINUX_CC) $(SRC_FILES) $(LINUX_COMP_FLAGS) -O2 $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
+	$(LINUX_CC) $(RELEASE_SRC_FILES) $(LINUX_COMP_FLAGS) -O2 $(LANG_FLAGS) $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
 	zip -r -q linux.zip $(GAME_NAME).x86_64
 	rm $(GAME_NAME).x86_64

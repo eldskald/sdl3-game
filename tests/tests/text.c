@@ -29,6 +29,15 @@ static bool rect_eq(SDL_FRect a, SDL_FRect b) {
     return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
 }
 
+static bool irect_eq(SDL_Rect a, SDL_Rect b) {
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+static bool metrics_eq(text_font_metrics a, text_font_metrics b) {
+    return a.ascent == b.ascent && a.descent == b.descent &&
+           a.line_gap == b.line_gap && a.above == b.above && a.below == b.below;
+}
+
 void test_text(void) {
     printf(YELLOW "\nTesting text...\n" RESET);
 
@@ -37,11 +46,13 @@ void test_text(void) {
     clear_stubbed_calls();
 
     int w, h;
-    int uh = TEXT_get_font_height(font_unifont);
-    int mh = TEXT_get_font_height(font_able_5);
-    expect("Checking the heights of Unifont and the mock font...",
+    text_font_metrics um = TEXT_get_font_metrics(font_unifont);
+    text_font_metrics mm = TEXT_get_font_metrics(font_main);
+    expect("Checking the metrics of Unifont and the mock font...",
            2,
-           (bool[]){uh == 16, mh == 4});
+           (bool[]){metrics_eq(um, (text_font_metrics){14, 2, 0, 14, 2}),
+                    metrics_eq(mm, (text_font_metrics){3, 1, 1, 4, 2})});
+    int uh = um.ascent + um.descent;
 
     TEXT_measure("", font_unifont, 0, &w, &h);
     expect("Measuring an empty string...", 2, (bool[]){w == 0, h == 0});
@@ -64,16 +75,42 @@ void test_text(void) {
            "character...",
            2,
            (bool[]){w == 24, h == uh});
-    TEXT_measure("A\xc3\xa7j~", font_able_5, 0, &w, &h);
+    TEXT_measure("A\xc3\xa7j~", font_main, 0, &w, &h);
     expect("Measuring Açj~ with the mock font, of varying widths, not counting "
-           "pixels drawn past them...",
+           "pixels drawn past them or past its ascent and descent...",
            2,
-           (bool[]){w == 9, h == mh});
-    TEXT_measure("AB", font_able_5, 0, &w, &h);
+           (bool[]){w == 9, h == 4});
+    TEXT_measure("AB", font_main, 0, &w, &h);
     expect("Measuring AB with the mock font, which has no B, falling back to "
            "its replacement character...",
            2,
-           (bool[]){w == 7, h == mh});
+           (bool[]){w == 7, h == 4});
+    TEXT_measure("A\nA", font_main, 2, &w, &h);
+    expect("Measuring A\\nA with the mock font and 2 pixels of line spacing, "
+           "on top of its line gap...",
+           2,
+           (bool[]){w == 3, h == 4 + 1 + 2 + 4});
+
+    expect("Measuring the ink of an empty string and of spaces...",
+           2,
+           (bool[]){
+               irect_eq(TEXT_measure_ink("", font_main, 0), (SDL_Rect){0}),
+               irect_eq(TEXT_measure_ink("  ", font_main, 0), (SDL_Rect){0}),
+           });
+    expect("Measuring the ink of \xc3\xa3\xc3\xa7 with the mock font, its "
+           "tilde above the ascent and its cedilla below the descent...",
+           1,
+           (bool[]){irect_eq(TEXT_measure_ink("\xc3\xa3\xc3\xa7", font_main, 0),
+                             (SDL_Rect){0, -1, 6, 6})});
+    expect("Measuring the ink of ~ with the mock font, past its width...",
+           1,
+           (bool[]){irect_eq(TEXT_measure_ink("~", font_main, 0),
+                             (SDL_Rect){0, 0, 4, 1})});
+    expect("Measuring the ink of j\\n \xc3\xa3 with the mock font, j drawing "
+           "to the left of where it's drawn...",
+           1,
+           (bool[]){irect_eq(TEXT_measure_ink("j\n \xc3\xa3", font_main, 0),
+                             (SDL_Rect){-1, 0, 6, 8})});
 
     SDL_FColor white = {1.0f, 1.0f, 1.0f, 1.0f};
     TEXT_draw(10.0f,
@@ -92,47 +129,79 @@ void test_text(void) {
     drawn_glyph a1 = read_glyph(&v[12], texture);
     drawn_glyph emoji = read_glyph(&v[18], texture);
     drawn_glyph unloaded = read_glyph(&v[24], texture);
-    expect("Drew Aç\\nA😀あ with Unifont, checking the glyphs' rects...",
+    expect("Drew Aç\\nA😀あ with Unifont, its bitmaps trimmed to their set "
+           "pixels, checking the glyphs' rects...",
            11,
            (bool[]){
                len == 30,
                texture->w == TEXT_ATLAS_X,
-               rect_eq(a0.dst, (SDL_FRect){10, 20, 8, uh}),
-               rect_eq(cedilla.dst, (SDL_FRect){18, 20, 8, uh}),
-               rect_eq(a1.dst, (SDL_FRect){10, 36, 8, uh}),
-               rect_eq(emoji.dst, (SDL_FRect){18, 36, 8, uh}),
-               rect_eq(unloaded.dst, (SDL_FRect){26, 36, 8, uh}),
-               a0.src.w == 8 && a0.src.h == uh,
+               rect_eq(a0.dst, (SDL_FRect){11, 24, 6, 10}),
+               rect_eq(cedilla.dst, (SDL_FRect){19, 26, 6, 10}),
+               rect_eq(a1.dst, (SDL_FRect){11, 24 + uh, 6, 10}),
+               rect_eq(emoji.dst, (SDL_FRect){19, 23 + uh, 6, 11}),
+               rect_eq(unloaded.dst, (SDL_FRect){27, 23 + uh, 6, 11}),
+               a0.src.w == 6 && a0.src.h == 10,
                rect_eq(a0.src, a1.src),
                rect_eq(emoji.src, unloaded.src),
                !rect_eq(a0.src, cedilla.src) && !rect_eq(a0.src, emoji.src),
            });
     clear_stubbed_calls();
 
-    TEXT_draw(10.0f, 20.0f, "Aj~\n A", font_able_5, 2, white, 0);
+    TEXT_draw(10.0f, 20.0f, "Aj~\n A", font_main, 2, white, 0);
     RENDERER_update();
     len = get_GRAPHICS_vertices(&v, &texture);
     a0 = read_glyph(&v[0], texture);
     drawn_glyph j = read_glyph(&v[6], texture);
     drawn_glyph tilde = read_glyph(&v[12], texture);
-    drawn_glyph space = read_glyph(&v[18], texture);
-    a1 = read_glyph(&v[24], texture);
+    a1 = read_glyph(&v[18], texture);
     expect("Drew Aj~\\n A with the mock font and 2 pixels of line spacing, j "
-           "drawn a pixel to the left and ~ past its width, checking the "
-           "glyphs' rects...",
-           9,
+           "drawn a pixel to the left, ~ past its width and the space not "
+           "drawn, having no pixels, checking the glyphs' rects and the "
+           "atlas, all in a row as tall as its tallest bitmap, ç's...",
+           8,
            (bool[]){
-               len == 30,
-               rect_eq(a0.dst, (SDL_FRect){10, 20, 3, mh}),
-               rect_eq(j.dst, (SDL_FRect){12, 20, 3, mh}),
-               rect_eq(tilde.dst, (SDL_FRect){15, 20, 4, mh}),
-               rect_eq(space.dst, (SDL_FRect){10, 26, 2, mh}),
-               rect_eq(a1.dst, (SDL_FRect){12, 26, 3, mh}),
+               len == 24,
+               texture->h == 5,
+               rect_eq(a0.dst, (SDL_FRect){10, 20, 3, 4}),
+               rect_eq(j.dst, (SDL_FRect){12, 20, 3, 4}),
+               rect_eq(tilde.dst, (SDL_FRect){15, 20, 4, 1}),
+               rect_eq(a1.dst, (SDL_FRect){12, 27, 3, 4}),
                a0.src.w == 3 && j.src.w == 3 && tilde.src.w == 4,
-               a0.src.h == mh && j.src.h == mh && tilde.src.h == mh,
                rect_eq(a0.src, a1.src),
            });
     clear_stubbed_calls();
+
+    TEXT_set_language(language_ja);
+    bool requested = TEXT_get_language() == language_ja;
+    bool kept = metrics_eq(TEXT_get_font_metrics(font_main), mm);
+    TEXT_update();
+    TEXT_measure("\xe3\x81\x82"
+                 "A",
+                 font_main,
+                 0,
+                 &w,
+                 &h);
+    expect("Setting the language to Japanese, the main font only changing to "
+           "Fusion Pixel on the update, measuring あA with it...",
+           4,
+           (bool[]){
+               requested,
+               kept,
+               metrics_eq(TEXT_get_font_metrics(font_main),
+                          (text_font_metrics){11, 3, 0, 13, 5}),
+               w == 10 + 6 && h == 11 + 3,
+           });
+    TEXT_measure("\xe2\x82\xac", font_main, 0, &w, &h);
+    expect("Measuring \xe2\x82\xac in Japanese, which Fusion Pixel lacks, "
+           "falling back to Galmuri9's, 7 pixels wide, instead of the "
+           "replacement character...",
+           1,
+           (bool[]){w == 7});
+    TEXT_set_language(language_en);
+    TEXT_update();
+    expect("Setting the language back to English, back to the mock font...",
+           1,
+           (bool[]){metrics_eq(TEXT_get_font_metrics(font_main), mm)});
 
     TEXT_stop();
     RENDERER_stop();
