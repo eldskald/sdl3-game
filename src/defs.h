@@ -34,14 +34,18 @@
 // Renderer
 #define RENDERER_BLOOM_MAX_ITERATIONS 8
 #define RENDERER_Z_INDEX_TOTAL 256 // z_index is Sint8, varies from -128 to 127
-#define RENDERER_PROFILER_OVERLAY_X 400
-#define RENDERER_PROFILER_OVERLAY_Y 360
 
 // Spritesheet
 #define SPRITESHEET_X 256
 #define SPRITESHEET_Y 256
 #define SPRITESHEET_CELL_X 8
 #define SPRITESHEET_CELL_Y 8
+
+// Text
+#define TEXT_FONT_TYPES font_unifont, font_able_5
+#define TEXT_FONTS_TOTAL 2
+#define TEXT_ATLAS_X 256 // Its height is however much the glyphs need
+#define TEXT_FALLBACK_CODEPOINT 0xFFFD // Replacement character, '�'
 
 // Sprites
 #define SPRITES_STARTING_DYNARR_CAP 1024

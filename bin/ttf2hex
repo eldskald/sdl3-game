@@ -1,0 +1,169 @@
+#!/bin/bash
+
+# Converts a pixel art TTF font into a HEX file at `res/fonts/$2`, for the game
+# to load with `src/engine/text.c`. Needs `ttx`, from fonttools, and
+# `xmlstarlet`.
+#
+# Usage: bin/ttf2hex FONT.ttf NAME.hex [PIXELS_PER_EM]
+#
+# The font is assumed to be drawn in square pixels, so every coordinate is a
+# multiple of a pixel's size in font units, give or take rounding. That size is
+# deduced from the smallest coordinate or advance width that isn't zero, or from
+# PIXELS_PER_EM when given, then every glyph's outline is rasterized at it,
+# setting the pixels whose centers are inside the outline by the nonzero
+# winding rule. Outlines must be made of straight lines only, which pixel fonts
+# are. Composite glyphs aren't supported.
+#
+# Each line of the HEX file is a glyph, as `CODEPOINT:WIDTH:XOFFSET:BITMAP`,
+# all in uppercase hex, sorted by codepoint:
+# - CODEPOINT is at least 4 digits long.
+# - WIDTH is the glyph's advance width in pixels, 2 digits long.
+# - XOFFSET is where the bitmap's left edge is from where the glyph is drawn, in
+#   pixels, 2 digits long, signed in two's complement, so `FF` is -1. It's never
+#   positive, it's only negative for glyphs drawing to the left of where they're
+#   drawn, like combining marks and letters overhanging the previous one.
+# - BITMAP is its rows from top to bottom, each row's bits its pixels from left
+#   to right, 1 for set. Each row is as many bytes as it takes to fit WIDTH
+#   minus XOFFSET pixels, 2 digits per byte, and the bitmap is as wide as that,
+#   so pixels past WIDTH fit in the padding. Every glyph has the same number of
+#   rows, the font's ascent plus its descent, and the baseline is under the
+#   ascent's rows. Glyphs with WIDTH minus XOFFSET of zero have no bitmap.
+# Glyphs drawing outside of their bitmap, past its padding or the font's ascent
+# and descent, are clipped, and listed in a warning.
+
+set -e
+
+if [ -z "$1" ] || [ -z "$2" ]; then
+    echo "Usage: bin/ttf2hex FONT.ttf NAME.hex [PIXELS_PER_EM]" >&2
+    exit 1
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+ttx -q -t head -t hhea -t hmtx -t cmap -t glyf -o "$tmp/font.ttx" "$1"
+
+upem=$(xmlstarlet sel -t -v "//head/unitsPerEm/@value" "$tmp/font.ttx")
+ascent=$(xmlstarlet sel -t -v "//hhea/ascent/@value" "$tmp/font.ttx")
+descent=$(xmlstarlet sel -t -v "//hhea/descent/@value" "$tmp/font.ttx")
+
+if xmlstarlet sel -t -c "//glyf//component" "$tmp/font.ttx" | grep -q .; then
+    echo "Composite glyphs aren't supported." >&2
+    exit 1
+fi
+
+# Flattens everything needed into lines the awk script below reads:
+# - `W NAME WIDTH`, a glyph's advance width.
+# - `M CODEPOINT NAME`, which glyph a codepoint is drawn with.
+# - `G NAME`, starting a glyph's outline, then `C` starting each of its contours
+#   and `P X Y` for each of their points.
+{
+    xmlstarlet sel -t -m "//hmtx/mtx" \
+        -v "concat('W ', @name, ' ', @width)" -n "$tmp/font.ttx"
+    xmlstarlet sel -t -m "//cmap/*/map" \
+        -v "concat('M ', @code, ' ', @name)" -n "$tmp/font.ttx"
+    xmlstarlet sel -t -m "//glyf/TTGlyph" \
+        -v "concat('G ', @name)" -n \
+        -m "contour" -o "C" -n \
+        -m "pt" -v "concat('P ', @x, ' ', @y)" -n "$tmp/font.ttx"
+} >"$tmp/font.txt"
+
+mkdir -p res/fonts
+awk -v upem="$upem" -v ascent="$ascent" -v descent="$descent" \
+    -v ppem="$3" -v out="res/fonts/$2" '
+function round(v) {
+    return v < 0 ? -int(-v + 0.5) : int(v + 0.5)
+}
+
+function abs(v) {
+    return v < 0 ? -v : v
+}
+
+function smallest(v) {
+    v = abs(v)
+    if (v > 0 && (unit == 0 || v < unit)) unit = v
+}
+
+$1 == "W" { width[$2] = $3; smallest($3) }
+$1 == "M" { glyph_of[strtonum($2)] = $3 }
+$1 == "G" { name = $2; contours[name] = 0 }
+$1 == "C" { c = ++contours[name]; points[name, c] = 0 }
+$1 == "P" {
+    p = ++points[name, c]
+    px[name, c, p] = $2
+    py[name, c, p] = $3
+    smallest($2)
+    smallest($3)
+}
+
+END {
+    if (ppem == "") ppem = round(upem / unit)
+    size = upem / ppem
+    top = round(ascent / size)
+    rows = top - round(descent / size)
+    printf "%d pixels per em, %d font units per pixel, %d pixels tall.\n", \
+        ppem, size, rows
+
+    for (code in glyph_of) {
+        name = glyph_of[code]
+        w = round(width[name] / size)
+        xoff = 0
+        for (c = 1; c <= contours[name]; c++)
+            for (p = 1; p <= points[name, c]; p++) {
+                x = round(px[name, c, p] / size)
+                if (x < xoff) xoff = x
+            }
+        bytes = int((w - xoff + 7) / 8)
+        cols = bytes * 8
+        digits = bytes * 2
+
+        # Pixel centers are at half pixels, so with every point on whole
+        # pixels, no center is ever on an edge. Rays go from each center to the
+        # right, crossing vertical edges only, since outlines are made of
+        # straight lines on whole pixels.
+        delete set
+        for (c = 1; c <= contours[name]; c++) {
+            n = points[name, c]
+            for (p = 1; p <= n; p++) {
+                q = p % n + 1
+                x0 = round(px[name, c, p] / size)
+                y0 = round(py[name, c, p] / size)
+                x1 = round(px[name, c, q] / size)
+                y1 = round(py[name, c, q] / size)
+                if (x0 > xoff + cols || y0 > top || y0 < top - rows)
+                    clipped[name] = 1
+                if (x0 != x1 || y0 == y1) continue
+                dir = y1 > y0 ? 1 : -1
+                ymin = y0 < y1 ? y0 : y1
+                ymax = y0 < y1 ? y1 : y0
+                for (y = ymin; y < ymax; y++)
+                    for (x = xoff; x < x0 && x < xoff + cols; x++)
+                        set[x, y] += dir
+            }
+        }
+
+        bitmap = ""
+        for (r = 0; r < rows; r++) {
+            y = top - r - 1
+            for (d = 0; d < digits; d++) {
+                nibble = 0
+                for (b = 0; b < 4; b++) {
+                    if (set[xoff + d * 4 + b, y]) nibble += 2 ^ (3 - b)
+                }
+                bitmap = bitmap sprintf("%X", nibble)
+            }
+        }
+        printf "%d\t%04X:%02X:%02X:%s\n", code, code, w, (xoff + 256) % 256, \
+            bitmap > (out ".unsorted")
+    }
+
+    for (name in clipped)
+        list = list (list ? ", " : "") name
+    if (list)
+        print "Warning: clipped glyphs drawing outside their bitmap: " list \
+            > "/dev/stderr"
+}' "$tmp/font.txt"
+
+sort -n "res/fonts/$2.unsorted" | cut -f2 >"res/fonts/$2"
+rm "res/fonts/$2.unsorted"
+echo "Wrote $(wc -l <"res/fonts/$2") glyphs to res/fonts/$2."

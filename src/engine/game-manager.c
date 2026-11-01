@@ -8,6 +8,7 @@
 #include "engine/reactions.h"
 #include "engine/renderer.h"
 #include "engine/sprites.h"
+#include "engine/text.h"
 #include "engine/tilemap.h"
 #include "player/player-core.h"
 #include "props/vines.h"
@@ -156,6 +157,7 @@ int GAME_MANAGER_start(void) {
 
     if (INPUTS_start()) return 1;
     if (RENDERER_start()) return 1;
+    if (TEXT_start()) return 1;
     SPRITES_start();
     TILEMAP_start();
     CHUNKS_start();
@@ -184,6 +186,7 @@ void GAME_MANAGER_stop(void) {
     SDL_WaitThread(fluids_t, NULL);
 
     INPUTS_stop();
+    TEXT_stop();
     RENDERER_stop();
     SPRITES_stop();
     CHUNKS_stop();
