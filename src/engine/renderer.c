@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "defs.h"
 #include "engine/fluids.h"
+#include "engine/game-manager.h"
 #include "engine/graphics.h"
 #include "engine/particles.h"
 #include "engine/sprites.h"
@@ -13,6 +14,7 @@
 #include <SDL3/SDL.h>
 
 #ifdef DEV
+#include "dev/dev.h"
 #include "dev/profiler.h"
 #include "utils/logger.h"
 #endif
@@ -276,9 +278,14 @@ static int get_queue_index(Sint8 z_index) {
 }
 
 // Makes room for `n` vertices drawing `texture` at the end of the `z_index`
-// queue and returns them, for the caller to write.
+// queue and returns them, for the caller to write. Every draw call queues
+// through it, and the queues aren't synchronized, so on dev and test builds it
+// asserts it's on the main thread.
 static graphics_vertex*
 queue_vertices(graphics_texture* texture, Sint8 z_index, size_t n) {
+#ifdef DEV
+    SDL_assert(GAME_MANAGER_get_current_thread() == thread_main);
+#endif
     queue* q = &queues[get_queue_index(z_index)];
     queue_run* run = q->runs.len ? dynarr_at(q->runs.len - 1, &q->runs) : NULL;
     if (!run || run->texture != texture)
@@ -427,6 +434,9 @@ static void render_base_screen(void) {
     TILEMAP_draw();
     VINES_draw();
     SPRITES_draw();
+#if DEV && !TEST
+    DEV_draw();
+#endif
     FLUIDS_prepare(&fluids);
 
     GRAPHICS_set_target(pre_fluids_texture);

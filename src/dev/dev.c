@@ -22,7 +22,10 @@ void DEV_update(void) {
         PARTICLES_emit(
             particle_firework, 80.0f, 72.0f, 90.0f, -20.0f, 0.0f, 10.0f, 1);
     }
+}
 
+// Called by the renderer on the main thread, like the other `..._draw()`.
+void DEV_draw(void) {
     TEXT_draw(8.0f,
               160.0f,
               "Testando oi som, ação coé",

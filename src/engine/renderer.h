@@ -19,7 +19,8 @@ void RENDERER_update(void);
 // with a `z_index` lower than `FLUIDS_Z_INDEX` are drawn under the fluids,
 // which refract them, and the rest are drawn over them. Positions are in screen
 // pixels, so the camera must already be applied. Call them on the `..._draw()`
-// functions called by the renderer, on the main thread.
+// functions called by the renderer, on the main thread, which is asserted on
+// dev and test builds.
 
 // Queues drawing the `src` rect of `texture` on the `dst` rect, both in pixels,
 // flipped by `flip_mode`. Its color is multiplied by `tint`, which should be
