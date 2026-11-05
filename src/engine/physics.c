@@ -1290,7 +1290,7 @@ static void load_ripples_data(const char* csv) {
         {"new_body_ripple_pix_size", parsing_uint32, &ripples_size},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -1303,7 +1303,7 @@ static void load_props_data(const char* csv) {
         {"prop_body_collision_pad", parsing_double, &prop_body_collision_pad},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

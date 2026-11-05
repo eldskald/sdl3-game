@@ -528,8 +528,8 @@ static void load_hair_pins(dynarr* parsed) {
         PINS_FIELD("hair_pin_x", parsing_int, pins, pin.x),
         PINS_FIELD("hair_pin_y", parsing_int, pins, pin.y),
     };
-    PARSING_read_keys(parsed, fields, SDL_arraysize(fields));
-    size_t n = PARSING_count_values(parsed, "hair_anim_x");
+    read_csv_keys(parsed, fields, SDL_arraysize(fields));
+    size_t n = count_csv_values(parsed, "hair_anim_x");
     for (size_t i = 0; i < n; i++)
         data.hair_pins[pins[i].anim_x][pins[i].anim_y] =
             (hair_pin){.mapped = true, .pin = pins[i].pin};
@@ -549,8 +549,8 @@ static void load_cloak_pins(dynarr* parsed) {
         PINS_FIELD("cloak_pin_r_x", parsing_int, pins, r.x),
         PINS_FIELD("cloak_pin_r_y", parsing_int, pins, r.y),
     };
-    PARSING_read_keys(parsed, fields, SDL_arraysize(fields));
-    size_t n = PARSING_count_values(parsed, "cloak_anim_x");
+    read_csv_keys(parsed, fields, SDL_arraysize(fields));
+    size_t n = count_csv_values(parsed, "cloak_anim_x");
     for (size_t i = 0; i < n; i++)
         data.cloak_pins[pins[i].anim_x][pins[i].anim_y] =
             (cloak_pins){.mapped = true, .l = pins[i].l, .r = pins[i].r};
@@ -605,7 +605,7 @@ void PLAYER_PRESENTATION_start(void) {
         ANIM_FIELDS("swimming", d->swimming_anim),
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     load_hair_pins(&parsed);
     load_cloak_pins(&parsed);
     CSV_free(&parsed);

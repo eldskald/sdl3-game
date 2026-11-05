@@ -224,7 +224,7 @@ static void load_base_data_from_csv(void) {
         {"swimming_swim_speed", parsing_double, &data.swimming_swim_speed},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

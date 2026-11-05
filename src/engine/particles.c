@@ -1,0 +1,647 @@
+#include "engine/particles.h"
+#include "data-structs/dynarr.h"
+#include "data-structs/hashmap.h"
+#include "defs.h"
+#include "engine/camera.h"
+#include "engine/fluids.h"
+#include "engine/game-manager.h"
+#include "engine/graphics.h"
+#include "paths.h"
+#include "services/csv.h"
+#include "utils/logger.h"
+#include "utils/parsing.h"
+#include <SDL3/SDL.h>
+#include <stddef.h>
+
+// Matches `ParticleType` on `src/gpu/includes/particles-common.hlsli`.
+typedef struct {
+    SDL_FColor col;
+    SDL_FColor col_jitter;
+    float src[4];
+    float acc[2];
+    int pad0[2];
+
+    float lifetime;
+    float lifetime_jitter;
+    float fade_time;
+    Uint32 ignore_fluids;
+
+    Uint32 face_vel;
+    float damping;
+    float slither_freq;
+    float slither_amp;
+
+    Uint32 bounce_count;
+    float bounce;
+    float bounce_until;
+
+    float col_str;
+
+    Uint32 death_particles;
+    Uint32 death_count;
+    float death_speed;
+    float death_spread;
+    float death_speed_jitter;
+
+    Uint32 trail_particles;
+    float trail_freq;
+    float trail_speed;
+    float trail_spread;
+    float trail_speed_jitter;
+
+    Uint32 group;
+    int pad1;
+} gpu_type;
+
+ASSERT_SIZE_16(gpu_type);
+ASSERT_OFFSETOF(gpu_type, col, 0);
+ASSERT_OFFSETOF(gpu_type, col_jitter, 16);
+ASSERT_OFFSETOF(gpu_type, src, 32);
+ASSERT_OFFSETOF(gpu_type, acc, 48);
+ASSERT_OFFSETOF(gpu_type, lifetime, 64);
+ASSERT_OFFSETOF(gpu_type, lifetime_jitter, 68);
+ASSERT_OFFSETOF(gpu_type, fade_time, 72);
+ASSERT_OFFSETOF(gpu_type, ignore_fluids, 76);
+ASSERT_OFFSETOF(gpu_type, face_vel, 80);
+ASSERT_OFFSETOF(gpu_type, damping, 84);
+ASSERT_OFFSETOF(gpu_type, slither_freq, 88);
+ASSERT_OFFSETOF(gpu_type, slither_amp, 92);
+ASSERT_OFFSETOF(gpu_type, bounce_count, 96);
+ASSERT_OFFSETOF(gpu_type, bounce, 100);
+ASSERT_OFFSETOF(gpu_type, bounce_until, 104);
+ASSERT_OFFSETOF(gpu_type, col_str, 108);
+ASSERT_OFFSETOF(gpu_type, death_particles, 112);
+ASSERT_OFFSETOF(gpu_type, death_count, 116);
+ASSERT_OFFSETOF(gpu_type, death_speed, 120);
+ASSERT_OFFSETOF(gpu_type, death_spread, 124);
+ASSERT_OFFSETOF(gpu_type, death_speed_jitter, 128);
+ASSERT_OFFSETOF(gpu_type, trail_particles, 132);
+ASSERT_OFFSETOF(gpu_type, trail_freq, 136);
+ASSERT_OFFSETOF(gpu_type, trail_speed, 140);
+ASSERT_OFFSETOF(gpu_type, trail_spread, 144);
+ASSERT_OFFSETOF(gpu_type, trail_speed_jitter, 148);
+ASSERT_OFFSETOF(gpu_type, group, 152);
+
+// Matches `Request` on `src/gpu/includes/particles-common.hlsli`.
+typedef struct {
+    float pos[2];
+    float vel[2];
+    float speed_jitter;
+    float spread;
+    Uint32 type;
+    Uint32 count;
+    Uint32 seed;
+    int pad0;
+    int pad1;
+    int pad2;
+} request;
+ASSERT_SIZE_16(request);
+ASSERT_OFFSETOF(request, pos, 0);
+ASSERT_OFFSETOF(request, vel, 8);
+ASSERT_OFFSETOF(request, speed_jitter, 16);
+ASSERT_OFFSETOF(request, spread, 20);
+ASSERT_OFFSETOF(request, type, 24);
+ASSERT_OFFSETOF(request, count, 28);
+ASSERT_OFFSETOF(request, seed, 32);
+
+// Matches `DrawArgs` on `src/gpu/includes/particles-common.hlsli`.
+static_assert(sizeof(SDL_GPUIndirectDrawCommand) == 16);
+ASSERT_OFFSETOF(SDL_GPUIndirectDrawCommand, num_instances, 4);
+
+// Size of `Particle` on `src/gpu/includes/particles-common.hlsli`. The CPU
+// never reads or writes particles, so it has no struct for them.
+#define PARTICLE_SIZE 48
+
+// Matches `src/gpu/includes/particles-uniforms.hlsli`.
+typedef struct {
+    int fluid_sim_rect[4];
+    float fluid_cell_size[2];
+    int pad0[2];
+    float dt;
+    Uint32 particle_buffer_cap;
+    Uint32 max_requests;
+    int pad1;
+} compute_uniforms;
+ASSERT_SIZE_16(compute_uniforms);
+ASSERT_OFFSETOF(compute_uniforms, fluid_sim_rect, 0);
+ASSERT_OFFSETOF(compute_uniforms, fluid_cell_size, 16);
+ASSERT_OFFSETOF(compute_uniforms, dt, 32);
+ASSERT_OFFSETOF(compute_uniforms, particle_buffer_cap, 36);
+ASSERT_OFFSETOF(compute_uniforms, max_requests, 40);
+
+// Matches the second uniform buffer of `src/gpu/particles.vert.hlsl`.
+typedef struct {
+    float cam_pos[2];
+    float texture_size[2];
+    Uint32 group;
+    Uint32 particle_buffer_cap;
+    int pad0[2];
+} vertex_uniforms;
+ASSERT_SIZE_16(vertex_uniforms);
+ASSERT_OFFSETOF(vertex_uniforms, cam_pos, 0);
+ASSERT_OFFSETOF(vertex_uniforms, texture_size, 8);
+ASSERT_OFFSETOF(vertex_uniforms, group, 16);
+ASSERT_OFFSETOF(vertex_uniforms, particle_buffer_cap, 20);
+
+// A row of `PARTICLES_CSV_PATH`. Sprites are in particle cells, spritesheet
+// cells split by `PARTICLES_SPLIT_X` and `PARTICLES_SPLIT_Y`.
+typedef struct {
+    particle_type type;
+    particle_shader shader;
+
+    Uint8 sprite_x, sprite_y, sprite_w, sprite_h;
+
+    float lifetime;
+    float lifetime_jitter;
+    float fade_time;
+    bool ignore_fluids;
+
+    bool face_vel;
+    float acc_x, acc_y;
+    float damping;
+    float slither_amp;
+    float slither_freq;
+
+    Uint8 bounce_count;
+    float bounce;
+    float bounce_until;
+
+    Uint8 col_r, col_g, col_b, col_a;
+    float col_str;
+    Uint8 col_jitter_r, col_jitter_g, col_jitter_b, col_jitter_a;
+
+    particle_type death_particles;
+    Uint32 death_count;
+    float death_speed;
+    float death_spread;
+    float death_speed_jitter;
+
+    particle_type trail_particles;
+    float trail_freq;
+    float trail_speed;
+    float trail_spread;
+    float trail_speed_jitter;
+} type_data;
+
+// Fluid cells on the simulated rect.
+#define GRID_CELLS                                                             \
+    (SIMULATION_SPACE_X * FLUIDS_SPLIT_X * SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y)
+
+// The grid is read as uints on the GPU, so its size is rounded up to them.
+#define GRID_SIZE ((GRID_CELLS + 3) / 4 * 4)
+
+static_assert((PARTICLES_CAPACITY & (PARTICLES_CAPACITY - 1)) == 0,
+              "PARTICLES_CAPACITY must be a power of 2");
+
+static gpu_type types[PARTICLES_TOTAL] = {0};
+static Uint8 grid[GRID_SIZE] = {0};
+
+static dynarr requests = (dynarr){0}; // request dynarr
+static SDL_Mutex* requests_mutex = NULL;
+
+static SDL_GPUBuffer* types_buffer = NULL;
+static SDL_GPUBuffer* grid_buffer = NULL;
+static SDL_GPUBuffer* particles_buffer = NULL;
+static SDL_GPUBuffer* requests_buffer = NULL;
+static SDL_GPUBuffer* counters_buffer = NULL;
+static SDL_GPUBuffer* alive_buffer = NULL;
+static SDL_GPUBuffer* draw_args_buffer = NULL;
+static SDL_GPUComputePipeline* simulate_pipeline = NULL;
+static SDL_GPUComputePipeline* spawn_pipeline = NULL;
+static SDL_GPUComputePipeline* compact_pipeline = NULL;
+static SDL_GPUShader* vert_shader = NULL;
+static SDL_GPUShader* frag_shaders[particle_shaders_total] = {0};
+
+// What each group's draw arguments are reset to every frame, before the
+// compaction pass counts its instances: quads of 6 vertices, none of them yet.
+static SDL_GPUIndirectDrawCommand draw_args[particle_shaders_total] = {0};
+
+
+
+static void load_types(void) {
+    char csv[] = {
+#embed PARTICLES_CSV_PATH suffix(, '\0')
+    };
+
+    dynarr parsed = CSV_parse(csv);
+    type_data* rows = SDL_calloc(count_csv_entries(&parsed), sizeof(type_data));
+    parsing_field fields[] = {
+        {"particle", parsing_particle, &rows->type},
+        {"shader", parsing_particle_shader, &rows->shader},
+
+        {"sprite_x", parsing_uint8, &rows->sprite_x},
+        {"sprite_y", parsing_uint8, &rows->sprite_y},
+        {"sprite_w", parsing_uint8, &rows->sprite_w},
+        {"sprite_h", parsing_uint8, &rows->sprite_h},
+
+        {"lifetime", parsing_float, &rows->lifetime},
+        {"lifetime_jitter", parsing_float, &rows->lifetime_jitter},
+        {"fade_time", parsing_float, &rows->fade_time},
+        {"ignore_fluids", parsing_bool, &rows->ignore_fluids},
+
+        {"face_vel", parsing_bool, &rows->face_vel},
+        {"acc_x", parsing_float, &rows->acc_x},
+        {"acc_y", parsing_float, &rows->acc_y},
+        {"damping", parsing_float, &rows->damping},
+        {"slither_amp", parsing_float, &rows->slither_amp},
+        {"slither_freq", parsing_float, &rows->slither_freq},
+
+        {"bounce_count", parsing_uint8, &rows->bounce_count},
+        {"bounce", parsing_float, &rows->bounce},
+        {"bounce_until", parsing_float, &rows->bounce_until},
+
+        {"col_r", parsing_uint8, &rows->col_r},
+        {"col_g", parsing_uint8, &rows->col_g},
+        {"col_b", parsing_uint8, &rows->col_b},
+        {"col_a", parsing_uint8, &rows->col_a},
+        {"col_str", parsing_float, &rows->col_str},
+        {"col_jitter_r", parsing_uint8, &rows->col_jitter_r},
+        {"col_jitter_g", parsing_uint8, &rows->col_jitter_g},
+        {"col_jitter_b", parsing_uint8, &rows->col_jitter_b},
+        {"col_jitter_a", parsing_uint8, &rows->col_jitter_a},
+
+        {"death_particles", parsing_particle, &rows->death_particles},
+        {"death_count", parsing_uint32, &rows->death_count},
+        {"death_speed", parsing_float, &rows->death_speed},
+        {"death_spread", parsing_float, &rows->death_spread},
+        {"death_speed_jitter", parsing_float, &rows->death_speed_jitter},
+
+        {"trail_particles", parsing_particle, &rows->trail_particles},
+        {"trail_freq", parsing_float, &rows->trail_freq},
+        {"trail_speed", parsing_float, &rows->trail_speed},
+        {"trail_spread", parsing_float, &rows->trail_spread},
+        {"trail_speed_jitter", parsing_float, &rows->trail_speed_jitter},
+    };
+    size_t n = read_csv_table(
+        &parsed, fields, SDL_arraysize(fields), sizeof(type_data));
+    CSV_free(&parsed);
+
+    for (size_t i = 0; i < n; i++) {
+        type_data* d = &rows[i];
+        types[d->type] = (gpu_type){
+            .group = d->shader,
+            .col = GRAPHICS_fcolor(
+                (SDL_Color){d->col_r, d->col_g, d->col_b, d->col_a}),
+            .col_str = d->col_str,
+            .col_jitter = GRAPHICS_fcolor((SDL_Color){d->col_jitter_r,
+                                                      d->col_jitter_g,
+                                                      d->col_jitter_b,
+                                                      d->col_jitter_a}),
+
+
+            .src = {d->sprite_x * PARTICLES_CELL_W,
+                    d->sprite_y * PARTICLES_CELL_H,
+                    d->sprite_w * PARTICLES_CELL_W,
+                    d->sprite_h * PARTICLES_CELL_H},
+            .acc = {d->acc_x, d->acc_y},
+            .damping = d->damping,
+            .face_vel = d->face_vel,
+            .slither_freq = d->slither_freq,
+            .slither_amp = d->slither_amp,
+            .bounce_count = d->bounce_count,
+            .bounce = d->bounce,
+            .bounce_until = d->bounce_until,
+
+            .lifetime = d->lifetime,
+            .lifetime_jitter = d->lifetime_jitter,
+            .fade_time = d->fade_time,
+            .ignore_fluids = d->ignore_fluids,
+
+            .death_particles = d->death_particles,
+            .death_count = d->death_count,
+            .death_speed = d->death_speed,
+            .death_spread = d->death_spread,
+            .death_speed_jitter = d->death_speed_jitter,
+
+            .trail_particles = d->trail_particles,
+            .trail_freq = d->trail_freq,
+            .trail_speed = d->trail_speed,
+            .trail_spread = d->trail_spread,
+            .trail_speed_jitter = d->trail_speed_jitter,
+
+        };
+    }
+    SDL_free(rows);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Particles data loaded successfully.");
+}
+
+// The types are read by both the compute and vertex shaders. The grid is only
+// read by the simulation, and the requests and counters are written by it, so
+// they're read-write on the compute shaders even where they're only read. The
+// compaction pass writes the alive indices and draw arguments, which the draws
+// then read. Each group has `PARTICLES_CAPACITY` alive indices, so any of them
+// can have every particle.
+static int create_buffers(void) {
+    for (int i = 0; i < particle_shaders_total; i++)
+        draw_args[i] = (SDL_GPUIndirectDrawCommand){.num_vertices = 6};
+    types_buffer =
+        GRAPHICS_create_buffer("particle_types",
+                               SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                                   SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
+                               sizeof(types));
+    grid_buffer = GRAPHICS_create_buffer(
+        "particles_grid", SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ, GRID_SIZE);
+    particles_buffer =
+        GRAPHICS_create_buffer("particles",
+                               SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                                   SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                                   SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
+                               PARTICLES_CAPACITY * PARTICLE_SIZE);
+    requests_buffer =
+        GRAPHICS_create_buffer("particle_requests",
+                               SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                                   SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE,
+                               PARTICLES_MAX_REQUESTS * sizeof(request));
+    counters_buffer =
+        GRAPHICS_create_buffer("particle_counters",
+                               SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                                   SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE,
+                               2 * sizeof(Uint32));
+    alive_buffer = GRAPHICS_create_buffer(
+        "particles_alive",
+        SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+            SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+            SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
+        particle_shaders_total * PARTICLES_CAPACITY * sizeof(Uint32));
+    draw_args_buffer =
+        GRAPHICS_create_buffer("particles_draw_args",
+                               SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                                   SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                                   SDL_GPU_BUFFERUSAGE_INDIRECT,
+                               sizeof(draw_args));
+    if (!types_buffer || !grid_buffer || !particles_buffer ||
+        !requests_buffer || !counters_buffer || !alive_buffer ||
+        !draw_args_buffer)
+        return 1;
+    GRAPHICS_upload_buffer(types_buffer, 0, types, sizeof(types));
+    return 0;
+}
+
+static int load_shaders(void) {
+    static const Uint8 simulate_spirv[] = {
+#embed PARTICLES_SIMULATE_COMP_SPIRV_PATH
+    };
+    static const Uint8 simulate_dxil[] = {
+#embed PARTICLES_SIMULATE_COMP_DXIL_PATH
+    };
+    simulate_pipeline = GRAPHICS_load_compute_pipeline(
+        "particles_simulate",
+        GRAPHICS_SHADER_CODE(simulate_spirv, simulate_dxil),
+        2,
+        3,
+        1,
+        PARTICLES_THREADS);
+    if (!simulate_pipeline) return 1;
+
+    static const Uint8 spawn_spirv[] = {
+#embed PARTICLES_SPAWN_COMP_SPIRV_PATH
+    };
+    static const Uint8 spawn_dxil[] = {
+#embed PARTICLES_SPAWN_COMP_DXIL_PATH
+    };
+    spawn_pipeline = GRAPHICS_load_compute_pipeline(
+        "particles_spawn",
+        GRAPHICS_SHADER_CODE(spawn_spirv, spawn_dxil),
+        1,
+        3,
+        1,
+        PARTICLES_THREADS);
+    if (!spawn_pipeline) return 1;
+
+    static const Uint8 compact_spirv[] = {
+#embed PARTICLES_COMPACT_COMP_SPIRV_PATH
+    };
+    static const Uint8 compact_dxil[] = {
+#embed PARTICLES_COMPACT_COMP_DXIL_PATH
+    };
+    compact_pipeline = GRAPHICS_load_compute_pipeline(
+        "particles_compact",
+        GRAPHICS_SHADER_CODE(compact_spirv, compact_dxil),
+        2,
+        2,
+        1,
+        PARTICLES_THREADS);
+    if (!compact_pipeline) return 1;
+
+    static const Uint8 vert_spirv[] = {
+#embed PARTICLES_VERT_SPIRV_PATH
+    };
+    static const Uint8 vert_dxil[] = {
+#embed PARTICLES_VERT_DXIL_PATH
+    };
+    vert_shader = GRAPHICS_load_vertex_shader(
+        "particles_vert", GRAPHICS_SHADER_CODE(vert_spirv, vert_dxil), 3, 2);
+    if (!vert_shader) return 1;
+
+    static const Uint8 frag_spirv[] = {
+#embed PARTICLES_FRAG_SPIRV_PATH
+    };
+    static const Uint8 frag_dxil[] = {
+#embed PARTICLES_FRAG_DXIL_PATH
+    };
+    frag_shaders[particle_shader_base] = GRAPHICS_load_fragment_shader(
+        "particles_base_frag",
+        GRAPHICS_SHADER_CODE(frag_spirv, frag_dxil),
+        1,
+        0);
+
+    static const Uint8 glow_shader_spirv[] = {
+#embed PARTICLES_SHADER_GLOW_SPIRV_PATH
+    };
+    static const Uint8 glow_shader_dxil[] = {
+#embed PARTICLES_SHADER_GLOW_DXIL_PATH
+    };
+    frag_shaders[particle_shader_glow] = GRAPHICS_load_fragment_shader(
+        "particles_shader_glow",
+        GRAPHICS_SHADER_CODE(glow_shader_spirv, glow_shader_dxil),
+        1,
+        0);
+
+    for (int i = 0; i < particle_shaders_total; i++)
+        if (!frag_shaders[i]) return 1;
+    return 0;
+}
+
+int PARTICLES_start(void) {
+    init_dynarr_with(
+        &requests, sizeof(request), PARTICLES_STARTING_REQUESTS_DYNARR_CAP);
+    requests_mutex = SDL_CreateMutex();
+    if (!log_creation(SDL_LOG_CATEGORY_APPLICATION,
+                      requests_mutex,
+                      "particles' requests mutex"))
+        return 1;
+    load_types();
+    if (create_buffers()) return 1;
+    if (load_shaders()) return 1;
+    return 0;
+}
+
+void PARTICLES_stop(void) {
+    GRAPHICS_release_shader(vert_shader);
+    for (int i = 0; i < particle_shaders_total; i++) {
+        GRAPHICS_release_shader(frag_shaders[i]);
+        frag_shaders[i] = NULL;
+    }
+    GRAPHICS_release_compute_pipeline(compact_pipeline);
+    GRAPHICS_release_compute_pipeline(spawn_pipeline);
+    GRAPHICS_release_compute_pipeline(simulate_pipeline);
+    GRAPHICS_destroy_buffer(draw_args_buffer);
+    GRAPHICS_destroy_buffer(alive_buffer);
+    GRAPHICS_destroy_buffer(counters_buffer);
+    GRAPHICS_destroy_buffer(requests_buffer);
+    GRAPHICS_destroy_buffer(particles_buffer);
+    GRAPHICS_destroy_buffer(grid_buffer);
+    GRAPHICS_destroy_buffer(types_buffer);
+    vert_shader = NULL;
+    compact_pipeline = spawn_pipeline = simulate_pipeline = NULL;
+    draw_args_buffer = alive_buffer = NULL;
+    counters_buffer = requests_buffer = particles_buffer = NULL;
+    grid_buffer = types_buffer = NULL;
+
+    deinit_dynarr(&requests);
+    SDL_DestroyMutex(requests_mutex);
+    requests_mutex = NULL;
+    SDL_memset(types, 0, sizeof(types));
+}
+
+
+
+void PARTICLES_emit(particle_type type,
+                    float x,
+                    float y,
+                    float vel_x,
+                    float vel_y,
+                    float speed_jitter,
+                    float spread,
+                    Uint32 count) {
+    request r = {
+        .pos = {x, y},
+        .vel = {vel_x, vel_y},
+        .speed_jitter = speed_jitter,
+        .spread = spread,
+        .type = type,
+        .count = count,
+        .seed = SDL_rand_bits(),
+    };
+    SDL_LockMutex(requests_mutex);
+    push_to_dynarr(&r, &requests);
+    SDL_UnlockMutex(requests_mutex);
+}
+
+// Uploads the queued requests and sets the request counter to how many there
+// are, which also discards the ones the simulation appended last frame.
+static void upload_requests(void) {
+    SDL_LockMutex(requests_mutex);
+    Uint32 n = SDL_min(requests.len, PARTICLES_MAX_REQUESTS);
+    if (requests.len > PARTICLES_MAX_REQUESTS)
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Dropped %zu particle requests, increase "
+                    "PARTICLES_MAX_REQUESTS.",
+                    requests.len - PARTICLES_MAX_REQUESTS);
+    if (n)
+        GRAPHICS_upload_buffer(
+            requests_buffer, 0, requests.data, n * sizeof(request));
+    clear_dynarr(&requests);
+    SDL_UnlockMutex(requests_mutex);
+
+    GRAPHICS_upload_buffer(counters_buffer, 0, &n, sizeof(n));
+}
+
+void PARTICLES_draw(graphics_texture* spritesheet) {
+    if (!particles_buffer) return;
+
+    upload_requests();
+    GRAPHICS_upload_buffer(draw_args_buffer, 0, draw_args, sizeof(draw_args));
+    SDL_Rect rect = FLUIDS_get_codes(grid);
+    GRAPHICS_upload_buffer(grid_buffer, 0, grid, GRID_SIZE);
+
+    compute_uniforms uniforms = {
+        .dt = GAME_MANAGER_get_main_dt(),
+        .max_requests = PARTICLES_MAX_REQUESTS,
+        .particle_buffer_cap = PARTICLES_CAPACITY,
+        .fluid_sim_rect = {rect.x, rect.y, rect.w, rect.h},
+        .fluid_cell_size = {FLUIDS_CELL_W, FLUIDS_CELL_H},
+    };
+    GRAPHICS_dispatch(&(graphics_dispatch){
+        .pipeline = simulate_pipeline,
+        .readonly_buffers = {types_buffer, grid_buffer},
+        .num_readonly_buffers = 2,
+        .readwrite_buffers = {particles_buffer,
+                              requests_buffer,
+                              counters_buffer},
+        .num_readwrite_buffers = 3,
+        .uniforms = &uniforms,
+        .uniforms_size = sizeof(uniforms),
+        .groups = PARTICLES_CAPACITY / PARTICLES_THREADS,
+    });
+    GRAPHICS_dispatch(&(graphics_dispatch){
+        .pipeline = spawn_pipeline,
+        .readonly_buffers = {types_buffer},
+        .num_readonly_buffers = 1,
+        .readwrite_buffers = {particles_buffer,
+                              requests_buffer,
+                              counters_buffer},
+        .num_readwrite_buffers = 3,
+        .uniforms = &uniforms,
+        .uniforms_size = sizeof(uniforms),
+        .groups = (PARTICLES_MAX_REQUESTS + PARTICLES_THREADS - 1) /
+                  PARTICLES_THREADS,
+    });
+    GRAPHICS_dispatch(&(graphics_dispatch){
+        .pipeline = compact_pipeline,
+        .readonly_buffers = {types_buffer, particles_buffer},
+        .num_readonly_buffers = 2,
+        .readwrite_buffers = {alive_buffer, draw_args_buffer},
+        .num_readwrite_buffers = 2,
+        .uniforms = &uniforms,
+        .uniforms_size = sizeof(uniforms),
+        .groups = PARTICLES_CAPACITY / PARTICLES_THREADS,
+    });
+
+    // One draw per group, each drawing only its live particles, as many as the
+    // compaction pass counted on its draw arguments.
+    SDL_FRect cam = CAMERA_get_rect();
+    for (Uint32 g = 0; g < particle_shaders_total; g++) {
+        vertex_uniforms v_uniforms = {
+            .cam_pos = {cam.x, cam.y},
+            .texture_size = {spritesheet->w, spritesheet->h},
+            .group = g,
+            .particle_buffer_cap = PARTICLES_CAPACITY,
+        };
+        GRAPHICS_set_state(&(graphics_state){
+            .vertex = vert_shader,
+            .storage_buffers = {particles_buffer, types_buffer, alive_buffer},
+            .num_storage_buffers = 3,
+            .vertex_uniforms = &v_uniforms,
+            .vertex_uniforms_size = sizeof(v_uniforms),
+            .fragment = frag_shaders[g],
+            .blend = graphics_blend_blend,
+        });
+        GRAPHICS_draw_instances(
+            spritesheet,
+            &(graphics_instances){
+                .indirect_buffer = draw_args_buffer,
+                .indirect_offset = g * sizeof(SDL_GPUIndirectDrawCommand),
+            });
+    }
+    GRAPHICS_set_state(NULL);
+}
+
+
+
+hashmap PARTICLES_get_string_particle_types_map(void) {
+    hashmap map;
+    init_hashmap(&map, sizeof(particle_type));
+    set_on_hashmap(&(particle_type){particle_firework}, "firework", &map);
+    set_on_hashmap(&(particle_type){particle_spark}, "spark", &map);
+    return map;
+}
+
+hashmap PARTICLES_get_string_particle_shaders_map(void) {
+    hashmap map;
+    init_hashmap(&map, sizeof(particle_shader));
+    set_on_hashmap(&(particle_shader){particle_shader_base}, "base", &map);
+    set_on_hashmap(&(particle_shader){particle_shader_glow}, "glow", &map);
+    return map;
+}

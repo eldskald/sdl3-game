@@ -55,6 +55,25 @@
 #define FLUIDS_RIPPLES_FRAG_DXIL_PATH "res/shaders/ripples.frag.dxil"
 #define FLUIDS_RIPPLES_CSV_PATH "data/graphics/ripples.csv"
 
+// Particles
+#define PARTICLES_CSV_PATH "data/graphics/particles.csv"
+#define PARTICLES_SIMULATE_COMP_SPIRV_PATH                                     \
+    "res/shaders/particles-simulate.comp.spv"
+#define PARTICLES_SIMULATE_COMP_DXIL_PATH                                      \
+    "res/shaders/particles-simulate.comp.dxil"
+#define PARTICLES_SPAWN_COMP_SPIRV_PATH "res/shaders/particles-spawn.comp.spv"
+#define PARTICLES_SPAWN_COMP_DXIL_PATH "res/shaders/particles-spawn.comp.dxil"
+#define PARTICLES_COMPACT_COMP_SPIRV_PATH                                      \
+    "res/shaders/particles-compact.comp.spv"
+#define PARTICLES_COMPACT_COMP_DXIL_PATH                                       \
+    "res/shaders/particles-compact.comp.dxil"
+#define PARTICLES_VERT_SPIRV_PATH "res/shaders/particles.vert.spv"
+#define PARTICLES_VERT_DXIL_PATH "res/shaders/particles.vert.dxil"
+#define PARTICLES_FRAG_SPIRV_PATH "res/shaders/particles.frag.spv"
+#define PARTICLES_FRAG_DXIL_PATH "res/shaders/particles.frag.dxil"
+#define PARTICLES_SHADER_GLOW_SPIRV_PATH "res/shaders/particles-glow.frag.spv"
+#define PARTICLES_SHADER_GLOW_DXIL_PATH "res/shaders/particles-glow.frag.dxil"
+
 // Reactions
 #define REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH                               \
     "data/simulation/reactions/fluid-fluid-into-tile.csv"

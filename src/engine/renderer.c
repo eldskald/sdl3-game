@@ -3,6 +3,7 @@
 #include "defs.h"
 #include "engine/fluids.h"
 #include "engine/graphics.h"
+#include "engine/particles.h"
 #include "engine/sprites.h"
 #include "engine/tilemap.h"
 #include "paths.h"
@@ -13,6 +14,7 @@
 
 #ifdef DEV
 #include "dev/profiler.h"
+#include "utils/logger.h"
 #endif
 
 // Matches the uniforms on `src/gpu/bloom-prefilter.frag.hlsl`.
@@ -160,8 +162,8 @@ static void load_bloom_data_from_csv(void) {
          .count = RENDERER_BLOOM_MAX_ITERATIONS},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
-    bloom_iterations = SDL_clamp(PARSING_count_values(&parsed, "intensities"),
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
+    bloom_iterations = SDL_clamp(count_csv_values(&parsed, "intensities"),
                                  1,
                                  RENDERER_BLOOM_MAX_ITERATIONS);
     CSV_free(&parsed);
@@ -176,8 +178,15 @@ static int load_spritesheet(void) {
     };
     SDL_IOStream* stream = SDL_IOFromConstMem(mem, sizeof(mem));
     SDL_Surface* png = SDL_LoadPNG_IO(stream, true);
+    if (!log_creation(SDL_LOG_CATEGORY_APPLICATION, png, "spritesheet png"))
+        return 1;
     SDL_Surface* surface =
         SDL_CreateSurface(png->w, png->h + 1, SDL_PIXELFORMAT_RGBA32);
+    if (!log_creation(
+            SDL_LOG_CATEGORY_APPLICATION, surface, "spritesheet surface")) {
+        SDL_DestroySurface(png);
+        return 1;
+    }
     SDL_SetSurfaceBlendMode(png, SDL_BLENDMODE_NONE);
     SDL_BlitSurface(png, NULL, surface, NULL);
     SDL_FillSurfaceRect(surface, &(SDL_Rect){0, png->h, 1, 1}, 0xFFFFFFFF);
@@ -412,8 +421,8 @@ static void flush_queues(int from, int to) {
 // Everything queues its draw calls and the fluids are prepared on their own
 // textures first. Then the draw calls under the fluids are drawn on
 // pre_fluids_texture for the fluids to refract, and the rest are drawn over the
-// fluids on base_screen. The fluids cover all of base_screen, so it isn't
-// cleared.
+// fluids on base_screen, with the particles drawn before the ones on
+// PARTICLES_Z_INDEX. The fluids cover all of base_screen, so it isn't cleared.
 static void render_base_screen(void) {
     TILEMAP_draw();
     VINES_draw();
@@ -426,7 +435,10 @@ static void render_base_screen(void) {
 
     GRAPHICS_set_target(base_screen);
     FLUIDS_draw(&fluids);
-    flush_queues(get_queue_index(FLUIDS_Z_INDEX), RENDERER_Z_INDEX_TOTAL);
+    flush_queues(get_queue_index(FLUIDS_Z_INDEX),
+                 get_queue_index(PARTICLES_Z_INDEX));
+    PARTICLES_draw(spritesheet);
+    flush_queues(get_queue_index(PARTICLES_Z_INDEX), RENDERER_Z_INDEX_TOTAL);
 }
 
 
@@ -438,17 +450,17 @@ static void render_base_screen(void) {
 static void render_post_processing(void) {
     GRAPHICS_set_target(bloom_prefilter);
     GRAPHICS_set_state(&(graphics_state){
-        .shader = bloom_prefilter_shader,
-        .uniforms =
+        .fragment = bloom_prefilter_shader,
+        .fragment_uniforms =
             &(bloom_prefilter_uniforms){bloom_threshold, bloom_soft_threshold},
-        .uniforms_size = sizeof(bloom_prefilter_uniforms),
+        .fragment_uniforms_size = sizeof(bloom_prefilter_uniforms),
     });
     GRAPHICS_draw_texture(base_screen, NULL, NULL, SDL_FLIP_NONE, white);
 
     GRAPHICS_set_state(&(graphics_state){
-        .shader = box_sample_shader,
-        .uniforms = &(box_sample_uniforms){1.0f, 1.0f},
-        .uniforms_size = sizeof(box_sample_uniforms),
+        .fragment = box_sample_shader,
+        .fragment_uniforms = &(box_sample_uniforms){1.0f, 1.0f},
+        .fragment_uniforms_size = sizeof(box_sample_uniforms),
     });
     graphics_texture* source = bloom_prefilter;
     for (int i = 0; i < bloom_iterations; i++) {
@@ -460,10 +472,11 @@ static void render_post_processing(void) {
     for (int i = bloom_iterations - 1; i >= 0; i--) {
         GRAPHICS_set_target(i > 0 ? bloom_chain[i - 1] : base_screen);
         GRAPHICS_set_state(&(graphics_state){
-            .shader = box_sample_shader,
+            .fragment = box_sample_shader,
             .blend = graphics_blend_add,
-            .uniforms = &(box_sample_uniforms){0.5f, bloom_intensities[i]},
-            .uniforms_size = sizeof(box_sample_uniforms),
+            .fragment_uniforms =
+                &(box_sample_uniforms){0.5f, bloom_intensities[i]},
+            .fragment_uniforms_size = sizeof(box_sample_uniforms),
         });
         GRAPHICS_draw_texture(bloom_chain[i], NULL, NULL, SDL_FLIP_NONE, white);
     }
@@ -497,7 +510,7 @@ static void render_final_screen(void) {
         y = (window_h - h) / 2;
     }
 
-    GRAPHICS_set_state(&(graphics_state){.shader = tonemap_shader});
+    GRAPHICS_set_state(&(graphics_state){.fragment = tonemap_shader});
     GRAPHICS_draw_texture(
         base_screen, NULL, &(SDL_FRect){x, y, w, h}, SDL_FLIP_NONE, white);
     GRAPHICS_set_state(NULL);
@@ -523,6 +536,7 @@ int RENDERER_start(void) {
     if (create_textures()) return 1;
     if (load_spritesheet()) return 1;
     if (load_shaders()) return 1;
+    if (PARTICLES_start()) return 1;
     return 0;
 }
 
@@ -533,6 +547,7 @@ void RENDERER_stop(void) {
         deinit_dynarr(&queues[i].runs);
     }
 
+    PARTICLES_stop();
     GRAPHICS_release_shader(box_sample_shader);
     GRAPHICS_release_shader(bloom_prefilter_shader);
     GRAPHICS_release_shader(tonemap_shader);

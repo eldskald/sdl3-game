@@ -3,6 +3,7 @@
 #include "data-structs/hashmap.h"
 #include "defs.h"
 #include "engine/fluids.h"
+#include "engine/particles.h"
 #include "engine/tilemap.h"
 // The real files are checked, not the mocks on `tests/paths.h`.
 #include "../../src/paths.h"
@@ -23,6 +24,8 @@ typedef enum {
     val_bool,
     val_fluid,
     val_tile,
+    val_particle,
+    val_particle_shader,
 } val_type;
 
 // Row of a key/value CSV, a key followed by `min` up to `max` values.
@@ -50,6 +53,8 @@ typedef struct {
 
 static hashmap fluid_names = (hashmap){0};
 static hashmap tile_names = (hashmap){0};
+static hashmap particle_names = (hashmap){0};
+static hashmap particle_shader_names = (hashmap){0};
 
 static void check(report* r, bool ok, const char* fmt, ...) {
     // Past `MAX_EXPECTATIONS`, failures go on the last check so they still fail
@@ -76,6 +81,11 @@ static void finish(const char* path, report* r) {
 static bool is_val(const char* s, val_type type) {
     if (type == val_fluid) return get_from_hashmap(s, &fluid_names);
     if (type == val_tile) return get_from_hashmap(s, &tile_names);
+    // Empty ones are `particle_none` and `particle_shader_base`.
+    if (type == val_particle)
+        return !s[0] || get_from_hashmap(s, &particle_names);
+    if (type == val_particle_shader)
+        return !s[0] || get_from_hashmap(s, &particle_shader_names);
 
     // `SDL_strtod()` and `SDL_strtol()` skip leading spaces, which we don't
     // want, and the whole string must be the number.
@@ -110,6 +120,10 @@ static const char* val_type_name(val_type type) {
         return "a fluid type";
     case val_tile:
         return "a tile type";
+    case val_particle:
+        return "a particle type or empty";
+    case val_particle_shader:
+        return "a particle shader or empty";
     }
     return "";
 }
@@ -178,7 +192,9 @@ static int get_header(dynarr* parsed) {
 // Checks a CSV whose first row is a header naming its columns, and each row
 // after it has a value under every column. Every column on `specs` must be on
 // the header exactly once, with no other columns. Single cell rows are section
-// headers and are skipped, like their loaders do.
+// headers and are skipped, like their loaders do. `CSV_parse()` drops the
+// empty cells at the end of a row, so rows can be shorter than the header, and
+// the cells past their end are checked as empty, like their loaders read them.
 static void check_columns_csv(report* r,
                               dynarr* parsed,
                               const column_spec* specs,
@@ -209,19 +225,20 @@ static void check_columns_csv(report* r,
         dynarr* row = CSV_row(i, parsed);
         if (row->len < 2) continue;
         check(r,
-              row->len == header->len,
-              "Row %lu has %lu values, expected %lu",
+              row->len <= header->len,
+              "Row %lu has %lu values, expected up to %lu",
               i + 1,
               row->len,
               header->len);
-        for (size_t c = 0; c < row->len && c < header->len; c++) {
+        for (size_t c = 0; c < header->len; c++) {
             if (indexes[c] == n) continue;
+            const char* cell = c < row->len ? CSV_cell(c, row) : "";
             check(r,
-                  is_val(CSV_cell(c, row), specs[indexes[c]].type),
+                  is_val(cell, specs[indexes[c]].type),
                   "Row %lu: \"%s\" value \"%s\" should be %s",
                   i + 1,
                   specs[indexes[c]].name,
-                  CSV_cell(c, row),
+                  cell,
                   val_type_name(specs[indexes[c]].type));
         }
     }
@@ -665,12 +682,94 @@ static void check_types_map(void) {
 }
 
 
+static void check_particles(void) {
+    char csv[] = {
+#embed PARTICLES_CSV_PATH suffix(, '\0')
+    };
+    const column_spec specs[] = {
+        {"particle", val_particle},
+        {"shader", val_particle_shader},
+        {"sprite_x", val_uint8},
+        {"sprite_y", val_uint8},
+        {"sprite_w", val_uint8},
+        {"sprite_h", val_uint8},
+        {"lifetime", val_double},
+        {"lifetime_jitter", val_double},
+        {"fade_time", val_double},
+        {"ignore_fluids", val_bool},
+        {"face_vel", val_bool},
+        {"acc_x", val_double},
+        {"acc_y", val_double},
+        {"damping", val_double},
+        {"slither_amp", val_double},
+        {"slither_freq", val_double},
+        {"bounce_count", val_uint8},
+        {"bounce", val_double},
+        {"bounce_until", val_double},
+        {"col_r", val_uint8},
+        {"col_g", val_uint8},
+        {"col_b", val_uint8},
+        {"col_a", val_uint8},
+        {"col_str", val_double},
+        {"col_jitter_r", val_uint8},
+        {"col_jitter_g", val_uint8},
+        {"col_jitter_b", val_uint8},
+        {"col_jitter_a", val_uint8},
+        {"death_particles", val_particle},
+        {"death_count", val_int},
+        {"death_speed", val_double},
+        {"death_spread", val_double},
+        {"death_speed_jitter", val_double},
+        {"trail_particles", val_particle},
+        {"trail_freq", val_double},
+        {"trail_speed", val_double},
+        {"trail_spread", val_double},
+        {"trail_speed_jitter", val_double},
+    };
+    report r = (report){0};
+    dynarr parsed = CSV_parse(csv);
+    check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
+
+    // The loader reads exactly one row for each particle type, `particle_none`
+    // having none, so none of them can be empty either.
+    int h = get_header(&parsed);
+    int col = get_column(&parsed, "particle");
+    size_t particles = 0;
+    for (size_t j = h + 1; h >= 0 && j < parsed.len; j++)
+        if (CSV_row(j, &parsed)->len >= 2) particles++;
+    for (size_t i = 0; i < particle_names.len; i++) {
+        const char* name = hashmap_key_at(i, &particle_names);
+        size_t count = 0;
+        for (size_t j = h + 1; j < parsed.len; j++) {
+            dynarr* row = CSV_row(j, &parsed);
+            if (row->len < 2) continue;
+            if (col < row->len && SDL_strcmp(CSV_cell(col, row), name) == 0)
+                count++;
+        }
+        check(&r,
+              count == 1,
+              "Particle \"%s\" found %lu times, expected once",
+              name,
+              count);
+    }
+    check(&r,
+          particles == PARTICLES_TOTAL - 1,
+          "Has %lu particles, expected %d",
+          particles,
+          PARTICLES_TOTAL - 1);
+    CSV_free(&parsed);
+    finish(PARTICLES_CSV_PATH, &r);
+}
+
+
 
 void test_data_integrity(void) {
     printf(YELLOW "\nTesting data integrity...\n" RESET);
 
     fluid_names = FLUIDS_get_string_fluid_types_map();
     tile_names = TILEMAP_get_string_tile_types_map();
+    particle_names = PARTICLES_get_string_particle_types_map();
+    particle_shader_names = PARTICLES_get_string_particle_shaders_map();
 
     check_bloom();
     check_ripples();
@@ -683,7 +782,10 @@ void test_data_integrity(void) {
     check_fluid_fluid_into_tile();
     check_platforms();
     check_types_map();
+    check_particles();
 
     deinit_hashmap(&fluid_names);
     deinit_hashmap(&tile_names);
+    deinit_hashmap(&particle_names);
+    deinit_hashmap(&particle_shader_names);
 }

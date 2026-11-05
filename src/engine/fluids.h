@@ -121,6 +121,16 @@ void FLUIDS_prepare(fluids_canvas* canvas);
 // relative to the camera. Call on renderer update, after `FLUIDS_prepare()`.
 void FLUIDS_draw(fluids_canvas* canvas);
 
+// Writes on `codes` what's on each fluid cell of the simulated rect, row by row
+// from its top left, so cell `(x,y)` of it is `codes[y * rect.w + x]`, and
+// returns the rect, in fluid cell coords. Codes are the same as the red channel
+// of the fluids' texture, see `draw_grid()` on `fluids.c`: `0` is air, walls
+// are the red of `FLUIDS_WALL_COLOR` and fluids are
+// `FLUIDS_SHADER_IDX_STEP * (type + 1)`. A cell is a fluid when it has at least
+// `FLUIDS_INTERACTION_VOL_THRESHOLD` of them in total, coded as the densest of
+// them there. `codes` must fit the whole rect. Call it in any thread.
+SDL_Rect FLUIDS_get_codes(Uint8* codes);
+
 // Gets the rect being simulated, in fluid cell coords. It's the simulation
 // space from `CAMERA_get_simulation_rect()`, updated on each `FLUIDS_update()`.
 // Cells outside it are treated as walls by the simulation.

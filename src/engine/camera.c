@@ -80,7 +80,7 @@ void CAMERA_start(void) {
         {"smoothing_range", parsing_double, &data.smoothing_range},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 }
 

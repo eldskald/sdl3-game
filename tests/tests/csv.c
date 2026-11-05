@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "tests.h"
 #include "tests/csv.h"
+#include "utils/parsing.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
@@ -74,6 +75,42 @@ void test_csv(void) {
                SDL_strcmp(CSV_cell(1, CSV_row(0, &data)), "") == 0,
                SDL_strcmp(CSV_cell(2, CSV_row(0, &data)), "bit,of") == 0,
                SDL_strcmp(CSV_cell(0, CSV_row(1, &data)), "everything") == 0,
+           });
+    CSV_free(&data);
+
+    // `CSV_parse()` drops the empty cells at the end of the first entry, so
+    // they're past the end of its row.
+    typedef struct {
+        int a;
+        int b;
+        bool c;
+        SDL_FColor col;
+    } entry;
+    entry entries[2] = {0};
+    data = CSV_parse("name,a,b,c,col_r,col_g,col_b,col_a\n"
+                     "x,1,,,,,,\n"
+                     "y,2,3,1,255,0,0,255\n");
+    parsing_field fields[] = {
+        {"a", parsing_int, &entries->a},
+        {"b", parsing_int, &entries->b},
+        {"c", parsing_bool, &entries->c},
+        {"col_r", parsing_color, &entries->col},
+    };
+    size_t n =
+        read_csv_table(&data, fields, SDL_arraysize(fields), sizeof(entry));
+    expect("Reading a table whose first entry ends in empty cells, checking "
+           "values...",
+           9,
+           (bool[]){
+               n == 2,
+               entries[0].a == 1,
+               entries[0].b == 0,
+               !entries[0].c,
+               entries[0].col.r == 0.0f && entries[0].col.a == 0.0f,
+               entries[1].a == 2,
+               entries[1].b == 3,
+               entries[1].c,
+               entries[1].col.r == 1.0f && entries[1].col.g == 0.0f,
            });
     CSV_free(&data);
 }

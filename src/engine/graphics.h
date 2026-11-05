@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 #include <SDL3/SDL.h>
+#include <stddef.h>
 
 // How what's drawn is blended with what's already on the target, the same as
 // SDL's blend modes of the same names.
@@ -53,30 +54,52 @@ typedef struct {
     SDL_FColor col;
 } graphics_vertex;
 
-// How draws are made. `shader` is a fragment shader from
-// `GRAPHICS_load_fragment_shader()`, `NULL` for the base one, which draws the
-// texture multiplied by the vertex color. The texture being drawn is always
-// bound to the first sampler slot, and `samplers` to the slots after it. The
-// `uniforms_size` bytes at `uniforms` are its first uniform buffer, copied
-// when the state is set.
+// How draws are made, both of vertices and of instances.
+//
+// `vertex` is a vertex shader from `GRAPHICS_load_vertex_shader()`, `NULL` for
+// the base one, `src/gpu/base.vert.hlsl`. Draws of vertices feed it them as
+// `graphics_vertex`, so it must take them like the base one does, while draws
+// of instances bind no vertex buffer, so it builds its vertices itself from
+// `SV_VertexID`, `SV_InstanceID` and whatever it reads from `storage_buffers`,
+// bound to its `t` registers in order. Its first uniform buffer is always the
+// target's size, and the `vertex_uniforms_size` bytes at `vertex_uniforms` are
+// its second.
+//
+// `fragment` is a fragment shader from `GRAPHICS_load_fragment_shader()`,
+// `NULL` for the base one, which draws the texture multiplied by the vertex
+// color. The texture being drawn is always bound to its first sampler slot,
+// and `samplers` to the slots after it. The `fragment_uniforms_size` bytes at
+// `fragment_uniforms` are its first uniform buffer.
+//
+// Uniforms are copied when the state is set.
 //
 // ```
 // struct graphics_state {
-//     SDL_GPUShader* shader;
+//     SDL_GPUShader* vertex;
+//     SDL_GPUBuffer* storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+//     Uint32 num_storage_buffers;
+//     const void* vertex_uniforms;
+//     Uint32 vertex_uniforms_size;
+//     SDL_GPUShader* fragment;
 //     graphics_blend blend;
 //     SDL_GPUTextureSamplerBinding samplers[GRAPHICS_MAX_EXTRA_SAMPLERS];
 //     Uint32 num_samplers;
-//     const void* uniforms;
-//     Uint32 uniforms_size;
+//     const void* fragment_uniforms;
+//     Uint32 fragment_uniforms_size;
 // };
 // ```
 typedef struct {
-    SDL_GPUShader* shader;
+    SDL_GPUShader* vertex;
+    SDL_GPUBuffer* storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+    Uint32 num_storage_buffers;
+    const void* vertex_uniforms;
+    Uint32 vertex_uniforms_size;
+    SDL_GPUShader* fragment;
     graphics_blend blend;
     SDL_GPUTextureSamplerBinding samplers[GRAPHICS_MAX_EXTRA_SAMPLERS];
     Uint32 num_samplers;
-    const void* uniforms;
-    Uint32 uniforms_size;
+    const void* fragment_uniforms;
+    Uint32 fragment_uniforms_size;
 } graphics_state;
 
 // A shader's code in every format a device might take. Make it with
@@ -101,6 +124,62 @@ typedef struct {
 // arrays and not pointers, so their sizes are known.
 #define GRAPHICS_SHADER_CODE(spirv, dxil)                                      \
     ((graphics_shader_code){spirv, sizeof(spirv), dxil, sizeof(dxil)})
+
+// Macros for making sure buffer structs are correct, given how padding and
+// order can affect how the shader assigns values.
+#define ASSERT_SIZE_16(type) static_assert(sizeof(type) % 16 == 0)
+#define ASSERT_OFFSETOF(type, var, offset)                                     \
+    static_assert(offsetof(type, var) == (offset))
+
+// A compute shader run on `groups` groups of threads, along x only. It reads
+// the `readonly_buffers`, bound to its `t` registers in order, and reads and
+// writes the `readwrite_buffers`, bound to its `u` registers in order. The
+// `uniforms_size` bytes at `uniforms` are its first uniform buffer, copied when
+// it's dispatched.
+//
+// ```
+// struct graphics_dispatch {
+//     SDL_GPUComputePipeline* pipeline;
+//     SDL_GPUBuffer* readonly_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+//     Uint32 num_readonly_buffers;
+//     SDL_GPUBuffer* readwrite_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+//     Uint32 num_readwrite_buffers;
+//     const void* uniforms;
+//     Uint32 uniforms_size;
+//     Uint32 groups;
+// };
+// ```
+typedef struct {
+    SDL_GPUComputePipeline* pipeline;
+    SDL_GPUBuffer* readonly_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+    Uint32 num_readonly_buffers;
+    SDL_GPUBuffer* readwrite_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+    Uint32 num_readwrite_buffers;
+    const void* uniforms;
+    Uint32 uniforms_size;
+    Uint32 groups;
+} graphics_dispatch;
+
+// How many instances a draw of instances draws: `num_instances` of
+// `num_vertices` vertices each, every 3 of them a triangle. When
+// `indirect_buffer` is set, they're instead the `SDL_GPUIndirectDrawCommand`
+// at `indirect_offset` bytes on it, read when it's drawn, so the GPU can write
+// them, and `num_vertices` and `num_instances` aren't used.
+//
+// ```
+// struct graphics_instances {
+//     Uint32 num_vertices;
+//     Uint32 num_instances;
+//     SDL_GPUBuffer* indirect_buffer;
+//     Uint32 indirect_offset;
+// };
+// ```
+typedef struct {
+    Uint32 num_vertices;
+    Uint32 num_instances;
+    SDL_GPUBuffer* indirect_buffer;
+    Uint32 indirect_offset;
+} graphics_instances;
 
 
 
@@ -149,8 +228,54 @@ SDL_GPUShader* GRAPHICS_load_fragment_shader(const char* name,
                                              Uint32 num_samplers,
                                              Uint32 num_uniform_buffers);
 
-// Releases a shader from `GRAPHICS_load_fragment_shader()`. Accepts `NULL`.
+// Creates a vertex shader from `code`, for `graphics_state.vertex`, with
+// `num_storage_buffers` storage buffers and `num_uniform_buffers` uniform
+// buffers, the first of them always being the target's size. `name` is for
+// logging. Returns `NULL` on errors.
+SDL_GPUShader* GRAPHICS_load_vertex_shader(const char* name,
+                                           graphics_shader_code code,
+                                           Uint32 num_storage_buffers,
+                                           Uint32 num_uniform_buffers);
+
+// Releases a shader from `GRAPHICS_load_..._shader()`. Accepts `NULL`.
 void GRAPHICS_release_shader(SDL_GPUShader* shader);
+
+// Creates a compute pipeline from `code`, with `num_readonly_buffers`
+// read-only storage buffers, `num_readwrite_buffers` read-write storage
+// buffers, `num_uniform_buffers` uniform buffers and `threads` threads per
+// group along x, which must match its `[numthreads()]`. `name` is for logging.
+// Returns `NULL` on errors.
+SDL_GPUComputePipeline*
+GRAPHICS_load_compute_pipeline(const char* name,
+                               graphics_shader_code code,
+                               Uint32 num_readonly_buffers,
+                               Uint32 num_readwrite_buffers,
+                               Uint32 num_uniform_buffers,
+                               Uint32 threads);
+
+// Releases a pipeline from `GRAPHICS_load_compute_pipeline()`. Accepts `NULL`.
+void GRAPHICS_release_compute_pipeline(SDL_GPUComputePipeline* pipeline);
+
+
+
+// Creates a GPU buffer of `size` bytes for `usage`, `SDL_GPU_BUFFERUSAGE_*`
+// flags, filled with zeros. `name` is for logging. Returns `NULL` on errors.
+SDL_GPUBuffer* GRAPHICS_create_buffer(const char* name,
+                                      SDL_GPUBufferUsageFlags usage,
+                                      Uint32 size);
+
+// Releases a buffer from `GRAPHICS_create_buffer()`. Accepts `NULL`.
+void GRAPHICS_destroy_buffer(SDL_GPUBuffer* buffer);
+
+// Uploads the `size` bytes at `data` into `buffer`, `offset` bytes from its
+// start, leaving the rest of it as it was. `data` is copied right away. During
+// a frame, it's uploaded on `GRAPHICS_end_frame()` before any of the frame's
+// dispatches and draws run, with every other upload of the frame, in the order
+// they were made. Outside of one, it's uploaded right away.
+void GRAPHICS_upload_buffer(SDL_GPUBuffer* buffer,
+                            Uint32 offset,
+                            const void* data,
+                            Uint32 size);
 
 
 
@@ -181,8 +306,8 @@ void GRAPHICS_clear(SDL_FColor col);
 // after.
 void GRAPHICS_set_state(const graphics_state* state);
 
-// Draws the `n` vertices at `vertices` with `texture`, every 3 of them a
-// triangle.
+// Draws the `n` vertices at `vertices` with `texture` and the current state,
+// every 3 of them a triangle.
 void GRAPHICS_draw_vertices(graphics_texture* texture,
                             const graphics_vertex* vertices,
                             size_t n);
@@ -198,6 +323,19 @@ void GRAPHICS_draw_texture(graphics_texture* texture,
 
 // Fills `rect` with `col`.
 void GRAPHICS_fill_rect(SDL_FRect rect, SDL_FColor col);
+
+// Draws `instances` with `texture` and the current state, whose `vertex` must
+// be set, since the base vertex shader only draws vertices. Does nothing
+// otherwise.
+void GRAPHICS_draw_instances(graphics_texture* texture,
+                             const graphics_instances* instances);
+
+// Dispatches `dispatch`. Dispatches are recorded with the draws and run in
+// order with them, each finishing before what's after it starts, so it sees
+// what the dispatches and draws before it wrote, and those after it see what it
+// wrote. One between draws on the same target ends its render pass, and the
+// draws after it continue on a new one.
+void GRAPHICS_dispatch(const graphics_dispatch* dispatch);
 
 // Draws the pixel at `(x,y)` with `col`.
 void GRAPHICS_draw_point(float x, float y, SDL_FColor col);

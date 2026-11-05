@@ -17,6 +17,7 @@
 
 #ifdef DEV
 #include "dev/dev.h"
+#include "utils/logger.h"
 #endif
 
 #undef SDL_HINT_MAIN_CALLBACK_RATE
@@ -174,7 +175,11 @@ int GAME_MANAGER_start(void) {
 
     main_t_start = SDL_GetTicksNS();
     fixed_t = SDL_CreateThread(fixed_thread, "fixed", NULL);
+    if (!log_creation(SDL_LOG_CATEGORY_APPLICATION, fixed_t, "fixed thread"))
+        return 1;
     fluids_t = SDL_CreateThread(fluids_thread, "fluids", NULL);
+    if (!log_creation(SDL_LOG_CATEGORY_APPLICATION, fluids_t, "fluids thread"))
+        return 1;
 
     return 0;
 }

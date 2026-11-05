@@ -26,7 +26,7 @@ static size_t ffit_count = 0;
 
 static void load_fluid_fluid_into_tile_reactions(const char* csv) {
     dynarr parsed = CSV_parse(csv);
-    ffit_count = PARSING_count_entries(&parsed);
+    ffit_count = count_csv_entries(&parsed);
     ffit_data = SDL_calloc(ffit_count, sizeof(fluid_fluid_into_tile));
     fluid_fluid_into_tile* r = ffit_data;
     parsing_field fields[] = {
@@ -36,7 +36,7 @@ static void load_fluid_fluid_into_tile_reactions(const char* csv) {
         {"tile spritesheet x", parsing_uint8, &r->tile_coords_x},
         {"tile spritesheet y", parsing_uint8, &r->tile_coords_y},
     };
-    PARSING_read_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
+    read_csv_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

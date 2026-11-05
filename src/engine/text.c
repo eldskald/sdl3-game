@@ -3,6 +3,7 @@
 #include "engine/graphics.h"
 #include "engine/renderer.h"
 #include "paths.h"
+#include "utils/logger.h"
 #include <SDL3/SDL.h>
 
 // The codepoints loaded from the fonts are the ones every language needs, the
@@ -376,13 +377,11 @@ static int load_font(const char* name,
 
     SDL_Surface* surface = SDL_CreateSurface(
         TEXT_ATLAS_X, atlas_y + row_h, SDL_PIXELFORMAT_RGBA32);
-    if (!surface) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                     "Couldn't create the atlas surface of font %s: %s",
-                     name,
-                     SDL_GetError());
+    if (!log_creation(SDL_LOG_CATEGORY_APPLICATION,
+                      surface,
+                      "atlas surface of font %s",
+                      name))
         return 1;
-    }
 
     for (int s = 0; s < CHAIN_MAX && chain[s]; s++)
         for (const char* c = glyphs_start[s]; *c;) {
@@ -446,12 +445,8 @@ static int load_fonts(language lang, loaded_font f[TEXT_FONTS_TOTAL]) {
 
 int TEXT_start(void) {
     lock = SDL_CreateRWLock();
-    if (!lock) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                     "Couldn't create the fonts' lock: %s",
-                     SDL_GetError());
+    if (!log_creation(SDL_LOG_CATEGORY_APPLICATION, lock, "fonts' lock"))
         return 1;
-    }
     loaded_language = STARTING_LANGUAGE;
     SDL_SetAtomicInt(&requested_language, STARTING_LANGUAGE);
     return load_fonts(STARTING_LANGUAGE, fonts);
