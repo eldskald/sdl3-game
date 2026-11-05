@@ -257,24 +257,26 @@ void GAME_MANAGER_quit(void) {
 
 
 
+// Whether `t` is the current thread. `SDL_GetThreadID(NULL)` is the current
+// thread's ID, so threads not created yet, like on tests, must be checked.
+static bool is_current_thread(SDL_Thread* t) {
+    return t && SDL_GetThreadID(t) == SDL_GetCurrentThreadID();
+}
+
 double GAME_MANAGER_get_current_dt(void) {
-    if (SDL_GetThreadID(fixed_t) == SDL_GetCurrentThreadID())
-        return GAME_MANAGER_get_fixed_dt();
-    if (SDL_GetThreadID(fluids_t) == SDL_GetCurrentThreadID())
-        return GAME_MANAGER_get_fluids_dt();
+    if (is_current_thread(fixed_t)) return GAME_MANAGER_get_fixed_dt();
+    if (is_current_thread(fluids_t)) return GAME_MANAGER_get_fluids_dt();
     return GAME_MANAGER_get_main_dt();
 }
 
 thread GAME_MANAGER_get_current_thread(void) {
-    if (SDL_GetThreadID(fixed_t) == SDL_GetCurrentThreadID())
-        return thread_fixed;
-    if (SDL_GetThreadID(fluids_t) == SDL_GetCurrentThreadID())
-        return thread_fluids;
+    if (is_current_thread(fixed_t)) return thread_fixed;
+    if (is_current_thread(fluids_t)) return thread_fluids;
     return thread_main;
 }
 
 bool GAME_MANAGER_is_fluids_thread(void) {
-    return fluids_t && SDL_GetThreadID(fluids_t) == SDL_GetCurrentThreadID();
+    return is_current_thread(fluids_t);
 }
 
 double GAME_MANAGER_get_fixed_dt() {
