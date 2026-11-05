@@ -97,7 +97,7 @@ static dynarr types_map = (dynarr){0};
 
 static void load_platforms_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
-    size_t n = PARSING_count_entries(&parsed);
+    size_t n = count_csv_entries(&parsed);
     init_dynarr_with(&platforms, sizeof(platforms_rect), n);
     platforms_rect* r = grow_dynarr(n, &platforms);
     parsing_field fields[] = {
@@ -106,7 +106,7 @@ static void load_platforms_data(const char* csv) {
         {"w", parsing_uint8, &r->w},
         {"h", parsing_uint8, &r->h},
     };
-    PARSING_read_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
+    read_csv_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -115,7 +115,7 @@ static void load_platforms_data(const char* csv) {
 
 static void load_types_map_data(const char* csv) {
     dynarr parsed = CSV_parse(csv);
-    size_t n = PARSING_count_entries(&parsed);
+    size_t n = count_csv_entries(&parsed);
     init_dynarr_with(&types_map, sizeof(tile_type_rect), n);
     tile_type_rect* r = grow_dynarr(n, &types_map);
     parsing_field fields[] = {
@@ -125,7 +125,7 @@ static void load_types_map_data(const char* csv) {
         {"w", parsing_uint8, &r->w},
         {"h", parsing_uint8, &r->h},
     };
-    PARSING_read_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
+    read_csv_table(&parsed, fields, SDL_arraysize(fields), sizeof(*r));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

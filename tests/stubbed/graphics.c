@@ -69,7 +69,46 @@ GRAPHICS_load_fragment_shader([[maybe_unused]] const char* name,
     return (SDL_GPUShader*)&dummy_shader;
 }
 
+SDL_GPUShader*
+GRAPHICS_load_vertex_shader([[maybe_unused]] const char* name,
+                            [[maybe_unused]] graphics_shader_code code,
+                            [[maybe_unused]] Uint32 num_storage_buffers,
+                            [[maybe_unused]] Uint32 num_uniform_buffers) {
+    return (SDL_GPUShader*)&dummy_shader;
+}
+
 void GRAPHICS_release_shader(SDL_GPUShader* shader) {
+}
+
+SDL_GPUComputePipeline*
+GRAPHICS_load_compute_pipeline([[maybe_unused]] const char* name,
+                               [[maybe_unused]] graphics_shader_code code,
+                               [[maybe_unused]] Uint32 num_readonly_buffers,
+                               [[maybe_unused]] Uint32 num_readwrite_buffers,
+                               [[maybe_unused]] Uint32 num_uniform_buffers,
+                               [[maybe_unused]] Uint32 threads) {
+    return (SDL_GPUComputePipeline*)&dummy_shader;
+}
+
+void GRAPHICS_release_compute_pipeline(
+    [[maybe_unused]] SDL_GPUComputePipeline* pipeline) {
+}
+
+// Buffers are opaque pointers too, never dereferenced.
+SDL_GPUBuffer*
+GRAPHICS_create_buffer([[maybe_unused]] const char* name,
+                       [[maybe_unused]] SDL_GPUBufferUsageFlags usage,
+                       [[maybe_unused]] Uint32 size) {
+    return (SDL_GPUBuffer*)&dummy_shader;
+}
+
+void GRAPHICS_destroy_buffer([[maybe_unused]] SDL_GPUBuffer* buffer) {
+}
+
+void GRAPHICS_upload_buffer([[maybe_unused]] SDL_GPUBuffer* buffer,
+                            [[maybe_unused]] Uint32 offset,
+                            [[maybe_unused]] const void* data,
+                            [[maybe_unused]] Uint32 size) {
 }
 
 
@@ -113,6 +152,14 @@ void GRAPHICS_draw_texture(graphics_texture* texture,
 void GRAPHICS_fill_rect(SDL_FRect rect, [[maybe_unused]] SDL_FColor col) {
     if (fill_rect_calls_size == SUB_CALLS_MAX) return;
     fill_rect_calls[fill_rect_calls_size++].rect = rect;
+}
+
+void GRAPHICS_draw_instances(
+    [[maybe_unused]] graphics_texture* texture,
+    [[maybe_unused]] const graphics_instances* instances) {
+}
+
+void GRAPHICS_dispatch([[maybe_unused]] const graphics_dispatch* dispatch) {
 }
 
 void GRAPHICS_draw_point(float x, float y, [[maybe_unused]] SDL_FColor col) {

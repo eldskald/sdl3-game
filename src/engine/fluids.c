@@ -7,6 +7,7 @@
 #include "engine/tilemap.h"
 #include "paths.h"
 #include "services/csv.h"
+#include "utils/logger.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
@@ -170,8 +171,8 @@ static void load_fluid_data(const char* csv) {
         {"col_a", parsing_uint8, &d->col_a},
     };
     dynarr parsed = CSV_parse(csv);
-    size_t n = PARSING_read_table(
-        &parsed, fields, SDL_arraysize(fields), sizeof(rows[0]));
+    size_t n =
+        read_csv_table(&parsed, fields, SDL_arraysize(fields), sizeof(rows[0]));
     for (size_t i = 0; i < n; i++)
         data[rows[i].type] = rows[i].data;
     CSV_free(&parsed);
@@ -269,7 +270,7 @@ static void load_fluid_particles_data(const char* csv) {
         {"body_max_speed", parsing_double, &p->splash_body_max_speed},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -282,7 +283,7 @@ static void load_ripples_data(const char* csv) {
         {"refraction", parsing_float, &ripples_refraction},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -309,12 +310,21 @@ void FLUIDS_start(void) {
     stagger_move_timers();
     init_dynarr(&mods, sizeof(mod));
     mods_mutex = SDL_CreateMutex();
+    log_creation(
+        SDL_LOG_CATEGORY_APPLICATION, mods_mutex, "fluids' mods mutex");
     init_dynarr(&queued_particles, sizeof(fluid_particle));
     queued_particles_mutex = SDL_CreateMutex();
+    log_creation(SDL_LOG_CATEGORY_APPLICATION,
+                 queued_particles_mutex,
+                 "fluids' queued particles mutex");
     init_dynarr(&splashes, sizeof(splash));
     splashes_mutex = SDL_CreateMutex();
+    log_creation(
+        SDL_LOG_CATEGORY_APPLICATION, splashes_mutex, "fluids' splashes mutex");
     init_dynarr(&ripples, sizeof(ripple));
     ripples_mutex = SDL_CreateMutex();
+    log_creation(
+        SDL_LOG_CATEGORY_APPLICATION, ripples_mutex, "fluids' ripples mutex");
     ripples_idx = 0;
     ripples_x = 0.0f;
     ripples_y = 0.0f;
@@ -323,6 +333,9 @@ void FLUIDS_start(void) {
                      sizeof(fluid_particle),
                      FLUIDS_STARTING_PARTICLES_DYNARR_CAP);
     particles_mutex = SDL_CreateMutex();
+    log_creation(SDL_LOG_CATEGORY_APPLICATION,
+                 particles_mutex,
+                 "fluids' particles mutex");
 }
 
 void FLUIDS_stop(void) {
@@ -1211,11 +1224,11 @@ static void step_ripples(fluids_canvas* canvas, SDL_FRect area) {
     SDL_UnlockMutex(ripples_mutex);
 
     GRAPHICS_set_state(&(graphics_state){
-        .shader = canvas->ripples_shader,
+        .fragment = canvas->ripples_shader,
         .samplers = {GRAPHICS_binding(canvas->texture)},
         .num_samplers = 1,
-        .uniforms = &ripples_damping,
-        .uniforms_size = sizeof(ripples_damping),
+        .fragment_uniforms = &ripples_damping,
+        .fragment_uniforms_size = sizeof(ripples_damping),
     });
     for (int i = 0; i < ticks; i++) {
         graphics_texture* from = canvas->ripples[ripples_idx];
@@ -1281,12 +1294,12 @@ void FLUIDS_draw(fluids_canvas* canvas) {
 
     shader_uniforms uniforms = get_shader_uniforms(cam);
     GRAPHICS_set_state(&(graphics_state){
-        .shader = canvas->shader,
+        .fragment = canvas->shader,
         .samplers = {GRAPHICS_binding(canvas->ripples[ripples_idx]),
                      GRAPHICS_binding(canvas->pre_fluids)},
         .num_samplers = 2,
-        .uniforms = &uniforms,
-        .uniforms_size = sizeof(uniforms),
+        .fragment_uniforms = &uniforms,
+        .fragment_uniforms_size = sizeof(uniforms),
     });
     SDL_FRect screen = {cam.x - area.x, cam.y - area.y, cam.w, cam.h};
     GRAPHICS_draw_texture(canvas->texture,
@@ -1297,6 +1310,33 @@ void FLUIDS_draw(fluids_canvas* canvas) {
     GRAPHICS_set_state(NULL);
 
     draw_particles(cam);
+}
+
+// The simulated rect is read once, since the fluids thread may move it midway.
+SDL_Rect FLUIDS_get_codes(Uint8* codes) {
+    SDL_Rect rect = FLUIDS_get_simulated_rect();
+    Uint8 wall = ((SDL_Color){FLUIDS_WALL_COLOR}).r;
+    for (int y = 0; y < rect.h; y++) {
+        for (int x = 0; x < rect.w; x++) {
+            Uint32 cx = rect.x + x, cy = rect.y + y;
+            Uint8* code = &codes[y * rect.w + x];
+            if (is_solid(cx, cy)) {
+                *code = wall;
+                continue;
+            }
+            *code = 0;
+            if (get_fill(grid[cx][cy], FLUIDS_TOTAL - 1) <
+                FLUIDS_INTERACTION_VOL_THRESHOLD)
+                continue;
+            for (int t = 0; t < FLUIDS_TOTAL; t++) {
+                if (grid[cx][cy].volume[ordered[t]] > EPSILON) {
+                    *code = FLUIDS_SHADER_IDX_STEP * (ordered[t] + 1);
+                    break;
+                }
+            }
+        }
+    }
+    return rect;
 }
 
 SDL_Rect FLUIDS_get_simulated_rect(void) {

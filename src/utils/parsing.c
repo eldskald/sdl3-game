@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "engine/fluids.h"
+#include "engine/particles.h"
 #include "engine/tilemap.h"
 #include "services/csv.h"
 #include <SDL3/SDL.h>
@@ -26,16 +27,26 @@ static size_t get_size(parsing_type type) {
         return sizeof(fluid_type);
     case parsing_tile:
         return sizeof(tile_type);
+    case parsing_particle:
+        return sizeof(particle_type);
+    case parsing_particle_shader:
+        return sizeof(particle_shader);
     case parsing_color:
         return sizeof(SDL_FColor);
     }
     return 0;
 }
 
+// Most cells a value takes, those of `parsing_color`.
+#define MAX_VALUE_CELLS 4
+
 // How many cells a value of `type` takes.
 static size_t get_cells(parsing_type type) {
-    return type == parsing_color ? 4 : 1;
+    return type == parsing_color ? MAX_VALUE_CELLS : 1;
 }
+
+// What cells past the end of a row are read as.
+static char empty_cell[] = "";
 
 // Writes the value of `name` on `map` into `dst`, then deinits `map`.
 static void read_name(hashmap map, const char* name, void* dst) {
@@ -77,6 +88,12 @@ static void read_value(char** cells, parsing_type type, void* dst) {
     case parsing_tile:
         read_name(TILEMAP_get_string_tile_types_map(), cells[0], dst);
         break;
+    case parsing_particle:
+        read_name(PARTICLES_get_string_particle_types_map(), cells[0], dst);
+        break;
+    case parsing_particle_shader:
+        read_name(PARTICLES_get_string_particle_shaders_map(), cells[0], dst);
+        break;
     case parsing_color:
         *(SDL_FColor*)dst = (SDL_FColor){SDL_strtod(cells[0], NULL) / 255.0f,
                                          SDL_strtod(cells[1], NULL) / 255.0f,
@@ -104,9 +121,7 @@ static size_t get_header(const dynarr* csv) {
 
 
 
-void PARSING_read_keys(const dynarr* csv,
-                       const parsing_field* fields,
-                       size_t n) {
+void read_csv_keys(const dynarr* csv, const parsing_field* fields, size_t n) {
     for (size_t f = 0; f < n; f++) {
         dynarr* row = get_row(csv, fields[f].key);
         if (!row) continue;
@@ -122,22 +137,22 @@ void PARSING_read_keys(const dynarr* csv,
     }
 }
 
-size_t PARSING_count_values(const dynarr* csv, const char* key) {
+size_t count_csv_values(const dynarr* csv, const char* key) {
     dynarr* row = get_row(csv, key);
     return row ? row->len - 1 : 0;
 }
 
-size_t PARSING_count_entries(const dynarr* csv) {
+size_t count_csv_entries(const dynarr* csv) {
     size_t entries = 0;
     for (size_t i = get_header(csv) + 1; i < csv->len; i++)
         if (CSV_row(i, csv)->len >= 2) entries++;
     return entries;
 }
 
-size_t PARSING_read_table(const dynarr* csv,
-                          const parsing_field* fields,
-                          size_t n,
-                          size_t entry_size) {
+size_t read_csv_table(const dynarr* csv,
+                      const parsing_field* fields,
+                      size_t n,
+                      size_t entry_size) {
     size_t h = get_header(csv);
     dynarr* header = CSV_row(h, csv);
     hashmap columns = (hashmap){0};
@@ -153,10 +168,17 @@ size_t PARSING_read_table(const dynarr* csv,
     for (size_t i = h + 1; i < csv->len; i++) {
         dynarr* row = CSV_row(i, csv);
         if (row->len < 2) continue;
-        for (size_t f = 0; f < n; f++)
-            read_value(dynarr_at(cols[f], row),
+        for (size_t f = 0; f < n; f++) {
+            // `CSV_parse()` drops a row's empty cells at its end, so cells
+            // past it are empty ones.
+            char* cells[MAX_VALUE_CELLS];
+            for (size_t k = 0; k < get_cells(fields[f].type); k++)
+                cells[k] = cols[f] + k < row->len ? CSV_cell(cols[f] + k, row)
+                                                  : empty_cell;
+            read_value(cells,
                        fields[f].type,
                        (Uint8*)fields[f].dst + entry * entry_size);
+        }
         entry++;
     }
     SDL_free(cols);

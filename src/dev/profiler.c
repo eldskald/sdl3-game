@@ -3,6 +3,7 @@
 #include "engine/game-manager.h"
 #include "engine/graphics.h"
 #include "engine/text.h"
+#include "utils/logger.h"
 #include <SDL3/SDL.h>
 
 #define PAD 8.0f
@@ -52,6 +53,10 @@ void PROFILER_start(void) {
         init_hashmap(&start[i], sizeof(Uint64));
         init_hashmap(&ready[i], sizeof(Uint64));
         ready_mutexes[i] = SDL_CreateMutex();
+        log_creation(SDL_LOG_CATEGORY_APPLICATION,
+                     ready_mutexes[i],
+                     "profiler's mutex %d",
+                     i);
     }
 }
 

@@ -10,6 +10,7 @@
 #include "engine/tilemap.h"
 #include "paths.h"
 #include "services/csv.h"
+#include "utils/logger.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
@@ -500,8 +501,8 @@ static void load_vine_data(const char* csv) {
         {"vine_fade_time", parsing_double, &settings.fade_time},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
-    size_t n = PARSING_count_values(&parsed, "vine_destroyer_fluids");
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
+    size_t n = count_csv_values(&parsed, "vine_destroyer_fluids");
     for (size_t i = 0; i < n && i < FLUIDS_TOTAL; i++)
         settings.destroyer_fluids[destroyers[i]] = true;
     CSV_free(&parsed);
@@ -518,7 +519,7 @@ static void load_ripples_data(const char* csv) {
         {"new_prop_ripple_pix_size", parsing_uint32, &settings.ripple_size},
     };
     dynarr parsed = CSV_parse(csv);
-    PARSING_read_keys(&parsed, fields, SDL_arraysize(fields));
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -551,6 +552,8 @@ void VINES_start(void) {
     front = 2;
     fresh = false;
     frames_mutex = SDL_CreateMutex();
+    log_creation(
+        SDL_LOG_CATEGORY_APPLICATION, frames_mutex, "vines' frames mutex");
 }
 
 void VINES_stop(void) {

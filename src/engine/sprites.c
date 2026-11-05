@@ -5,6 +5,7 @@
 #include "engine/camera.h"
 #include "engine/game-manager.h"
 #include "engine/renderer.h"
+#include "utils/logger.h"
 #include <SDL3/SDL.h>
 
 #define SPRITES_FRAMES_TOTAL 3
@@ -285,6 +286,8 @@ void SPRITES_start(void) {
     front = 2;
     fresh = false;
     frames_mutex = SDL_CreateMutex();
+    log_creation(
+        SDL_LOG_CATEGORY_APPLICATION, frames_mutex, "sprites' frames mutex");
 }
 
 

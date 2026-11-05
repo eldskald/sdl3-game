@@ -15,6 +15,8 @@
 //     parsing_bool,   // bool, from 0 or 1
 //     parsing_fluid,  // fluid_type, from its name
 //     parsing_tile,   // tile_type, from its name
+//     parsing_particle, // particle_type, from its name, particle_none if empty
+//     parsing_particle_shader, // particle_shader, from its name, base if empty
 //     parsing_color,  // SDL_FColor, from 4 values from 0 to 255
 // };
 // ```
@@ -28,6 +30,8 @@ typedef enum {
     parsing_bool,
     parsing_fluid,
     parsing_tile,
+    parsing_particle,
+    parsing_particle_shader,
     parsing_color,
 } parsing_type;
 
@@ -60,26 +64,24 @@ typedef struct {
 // Reads the `n` `fields` from `csv`, parsed with `CSV_parse()`, whose rows
 // start with a key followed by its values. Fields whose keys are missing are
 // left as they were.
-void PARSING_read_keys(const dynarr* csv,
-                       const parsing_field* fields,
-                       size_t n);
+void read_csv_keys(const dynarr* csv, const parsing_field* fields, size_t n);
 
 // How many values there are after `key` on `csv`, parsed with `CSV_parse()`,
 // whose rows start with a key followed by its values. `0` if it's missing.
-size_t PARSING_count_values(const dynarr* csv, const char* key);
+size_t count_csv_values(const dynarr* csv, const char* key);
 
 // How many entries there are on `csv`, parsed with `CSV_parse()`, whose first
 // row with more than one cell is a header naming its columns and each row with
 // more than one cell after it is an entry. Single cell rows are section headers
 // organizing the file.
-size_t PARSING_count_entries(const dynarr* csv);
+size_t count_csv_entries(const dynarr* csv);
 
-// Reads every entry of `csv`, as on `PARSING_count_entries()`, into an array
+// Reads every entry of `csv`, as on `count_csv_entries()`, into an array
 // of entries of `entry_size` bytes. Each of the `n` `fields` points to its
 // value on the first entry, and entry `i` is written `i * entry_size` bytes
-// after it. The array must fit `PARSING_count_entries()` entries. Returns how
+// after it. The array must fit `count_csv_entries()` entries. Returns how
 // many were read.
-size_t PARSING_read_table(const dynarr* csv,
-                          const parsing_field* fields,
-                          size_t n,
-                          size_t entry_size);
+size_t read_csv_table(const dynarr* csv,
+                      const parsing_field* fields,
+                      size_t n,
+                      size_t entry_size);
