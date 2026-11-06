@@ -71,6 +71,13 @@ typedef struct {
 
 
 
+static const char ripples_csv[] = {
+#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+};
+static const char props_csv[] = {
+#embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
+};
+
 static pool bodies = (pool){0};
 static dynarr nbsearch[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = {0};
 static SDL_Rect sim = (SDL_Rect){0};
@@ -1311,13 +1318,6 @@ static void load_props_data(const char* csv) {
 }
 
 void PHYSICS_start(void) {
-    char ripples_csv[] = {
-#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
-    };
-    char props_csv[] = {
-#embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
-    };
-
     load_ripples_data(ripples_csv);
     load_props_data(props_csv);
 

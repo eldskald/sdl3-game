@@ -94,9 +94,9 @@ typedef struct {
     Uint8 step_next_voice;
 } sprite_state;
 
-static sprite_data data = (sprite_data){0};
-static sprite_state state = (sprite_state){0};
-
+static const char presentation_csv[] = {
+#embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
+};
 static const Uint8 step_1_wav[] = {
 #embed PLAYER_STEP_1_SFX_PATH
 };
@@ -112,6 +112,9 @@ static const Uint8 step_4_wav[] = {
 static const Uint8 step_5_wav[] = {
 #embed PLAYER_STEP_5_SFX_PATH
 };
+
+static sprite_data data = (sprite_data){0};
+static sprite_state state = (sprite_state){0};
 static audio_wav* step_sfx[STEP_SFX_TOTAL] = {0};
 
 
@@ -616,10 +619,6 @@ static void load_step_sfx(void) {
 }
 
 void PLAYER_PRESENTATION_start(void) {
-    char csv[] = {
-#embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
-    };
-
     sprite_data* d = &data;
     parsing_field fields[] = {
         {"coords", parsing_uint8, &d->coords_x},
@@ -663,7 +662,7 @@ void PLAYER_PRESENTATION_start(void) {
         ANIM_FIELDS("crouch_moving", d->crouch_moving_anim),
         ANIM_FIELDS("swimming", d->swimming_anim),
     };
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(presentation_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     load_hair_pins(&parsed);
     load_cloak_pins(&parsed);

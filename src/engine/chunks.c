@@ -56,6 +56,25 @@ typedef struct {
 
 
 
+static const char platforms_csv[] = {
+#embed CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
+};
+static const char types_map_csv[] = {
+#embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
+};
+static const char chunk001[] = {
+#embed CHUNKS_001_PATH suffix(, '\0')
+};
+static const char chunk002[] = {
+#embed CHUNKS_002_PATH suffix(, '\0')
+};
+static const char chunk003[] = {
+#embed CHUNKS_003_PATH suffix(, '\0')
+};
+static const char chunk004[] = {
+#embed CHUNKS_004_PATH suffix(, '\0')
+};
+
 // Indexed by tile ID on `editor/helper-tiles.png`, which starts at the
 // helper tileset's `firstgid` on the chunk's JSON.
 static const helper_tile helper_tiles[CHUNKS_HELPER_TILES_TOTAL] = {
@@ -360,35 +379,15 @@ static chunk load_from_json(const char* json) {
 }
 
 void CHUNKS_start(void) {
-    char platforms_csv[] = {
-#embed CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
-    };
-
-    char types_map_csv[] = {
-#embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
-    };
-
     load_platforms_data(platforms_csv);
     load_types_map_data(types_map_csv);
 
-    char chunk001[] = {
-#embed CHUNKS_001_PATH suffix(, '\0')
-    };
     chunks[0] = load_from_json(chunk001);
 
-    char chunk002[] = {
-#embed CHUNKS_002_PATH suffix(, '\0')
-    };
     chunks[1] = load_from_json(chunk002);
 
-    char chunk003[] = {
-#embed CHUNKS_003_PATH suffix(, '\0')
-    };
     chunks[2] = load_from_json(chunk003);
 
-    char chunk004[] = {
-#embed CHUNKS_004_PATH suffix(, '\0')
-    };
     chunks[3] = load_from_json(chunk004);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Chunks loaded successfully.");

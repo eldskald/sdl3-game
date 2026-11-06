@@ -14,6 +14,10 @@
 #define WAIT_TIMEOUT_MS 1000
 #define WAIT_STEP_MS 5
 
+static const Uint8 wav_bytes[] = {
+#embed MOCK_WAV_PATH
+};
+
 // Waits for the voice to finish playing, returning whether it did before
 // `WAIT_TIMEOUT_MS`.
 static bool wait_for_voice(size_t voice_id) {
@@ -51,9 +55,6 @@ void test_sfx(void) {
                     is_near(SDL_GetAudioDeviceGain(gameplay), 1.0f),
                     is_near(SDL_GetAudioDeviceGain(gui), 1.0f)});
 
-    static const Uint8 wav_bytes[] = {
-#embed MOCK_WAV_PATH
-    };
     audio_wav* wav = AUDIO_create_wav(
         "test", SDL_IOFromConstMem(wav_bytes, sizeof(wav_bytes)), true);
     expect("Loaded a WAV of 50ms, checking its format and length...",

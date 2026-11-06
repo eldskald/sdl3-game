@@ -14,6 +14,10 @@ typedef struct {
     double smoothing_range;
 } camera_data;
 
+static const char camera_csv[] = {
+#embed CAMERA_CSV_PATH suffix(, '\0')
+};
+
 static camera_data data = (camera_data){0};
 static double target_x = 0.0f;
 static double target_y = 0.0f;
@@ -71,15 +75,11 @@ void CAMERA_target_at(double x, double y) {
 
 
 void CAMERA_start(void) {
-    char csv[] = {
-#embed CAMERA_CSV_PATH suffix(, '\0')
-    };
-
     parsing_field fields[] = {
         {"speed", parsing_double, &data.speed},
         {"smoothing_range", parsing_double, &data.smoothing_range},
     };
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(camera_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 }

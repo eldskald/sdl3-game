@@ -69,6 +69,19 @@ typedef struct {
     SDL_GPUGraphicsPipeline* pipeline;
 } pipeline_entry;
 
+static const Uint8 vert_spirv[] = {
+#embed GRAPHICS_BASE_VERT_SPIRV_PATH
+};
+static const Uint8 vert_dxil[] = {
+#embed GRAPHICS_BASE_VERT_DXIL_PATH
+};
+static const Uint8 frag_spirv[] = {
+#embed GRAPHICS_BASE_FRAG_SPIRV_PATH
+};
+static const Uint8 frag_dxil[] = {
+#embed GRAPHICS_BASE_FRAG_DXIL_PATH
+};
+
 static SDL_Window* window = NULL;
 static SDL_GPUDevice* device = NULL;
 static SDL_GPUShader* base_vert = NULL;
@@ -279,12 +292,6 @@ int GRAPHICS_start(void) {
     init_dynarr_with(&uploads, sizeof(upload), GRAPHICS_UPLOADS_STARTING_CAP);
     init_dynarr_with(&staging, sizeof(Uint8), GRAPHICS_STAGING_STARTING_CAP);
 
-    static const Uint8 vert_spirv[] = {
-#embed GRAPHICS_BASE_VERT_SPIRV_PATH
-    };
-    static const Uint8 vert_dxil[] = {
-#embed GRAPHICS_BASE_VERT_DXIL_PATH
-    };
     base_vert = load_shader("base_vert",
                             GRAPHICS_SHADER_CODE(vert_spirv, vert_dxil),
                             SDL_GPU_SHADERSTAGE_VERTEX,
@@ -293,12 +300,6 @@ int GRAPHICS_start(void) {
                             1);
     if (!base_vert) return 1;
 
-    static const Uint8 frag_spirv[] = {
-#embed GRAPHICS_BASE_FRAG_SPIRV_PATH
-    };
-    static const Uint8 frag_dxil[] = {
-#embed GRAPHICS_BASE_FRAG_DXIL_PATH
-    };
     base_frag = GRAPHICS_load_fragment_shader(
         "base_frag", GRAPHICS_SHADER_CODE(frag_spirv, frag_dxil), 1, 0);
     if (!base_frag) return 1;

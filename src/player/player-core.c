@@ -31,6 +31,10 @@ typedef struct {
     double swimming_swim_speed;
 } player_data;
 
+static const char core_csv[] = {
+#embed PLAYER_BASE_CSV_PATH suffix(, '\0')
+};
+
 static player_data data = (player_data){0};
 static player_state state = (player_state){0};
 
@@ -198,10 +202,6 @@ void PLAYER_update(void) {
 
 
 static void load_base_data_from_csv(void) {
-    char csv[] = {
-#embed PLAYER_BASE_CSV_PATH suffix(, '\0')
-    };
-
     parsing_field fields[] = {
         {"max_speed", parsing_double, &data.max_speed},
         {"acceleration", parsing_double, &data.acceleration},
@@ -223,7 +223,7 @@ static void load_base_data_from_csv(void) {
         {"swimming_gravity", parsing_double, &data.swimming_gravity},
         {"swimming_swim_speed", parsing_double, &data.swimming_swim_speed},
     };
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(core_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
 
