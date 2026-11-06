@@ -260,6 +260,12 @@ static int create_device(void) {
                                  NULL);
     if (!log_creation(SDL_LOG_CATEGORY_GPU, device, "GPU device")) return 1;
 
+#ifdef TEST
+    // Tests run on the offscreen video driver, whose windows can't be claimed
+    // without `VK_EXT_headless_surface`, and only draw on textures, so there's
+    // never a swapchain texture.
+    return 0;
+#endif
     if (!SDL_ClaimWindowForGPUDevice(device, window)) {
         SDL_LogError(SDL_LOG_CATEGORY_GPU,
                      "Couldn't claim window for SDL_GPUDevice: %s",
