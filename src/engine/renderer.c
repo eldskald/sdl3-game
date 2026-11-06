@@ -31,6 +31,43 @@ typedef struct {
     float intensity;
 } box_sample_uniforms;
 
+static const char bloom_csv[] = {
+#embed RENDERER_BLOOM_CSV_PATH suffix(, '\0')
+};
+static const Uint8 spritesheet_png[] = {
+#embed SPRITESHEET_PATH
+};
+static const Uint8 fluids_spirv[] = {
+#embed FLUIDS_FRAG_SPIRV_PATH
+};
+static const Uint8 fluids_dxil[] = {
+#embed FLUIDS_FRAG_DXIL_PATH
+};
+static const Uint8 ripples_spirv[] = {
+#embed FLUIDS_RIPPLES_FRAG_SPIRV_PATH
+};
+static const Uint8 ripples_dxil[] = {
+#embed FLUIDS_RIPPLES_FRAG_DXIL_PATH
+};
+static const Uint8 tonemap_spirv[] = {
+#embed RENDERER_TONEMAP_FRAG_SPIRV_PATH
+};
+static const Uint8 tonemap_dxil[] = {
+#embed RENDERER_TONEMAP_FRAG_DXIL_PATH
+};
+static const Uint8 bloom_prefilter_spirv[] = {
+#embed RENDERER_BLOOM_PREFILTER_FRAG_SPIRV_PATH
+};
+static const Uint8 bloom_prefilter_dxil[] = {
+#embed RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH
+};
+static const Uint8 box_sample_spirv[] = {
+#embed RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH
+};
+static const Uint8 box_sample_dxil[] = {
+#embed RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH
+};
+
 // The spritesheet has an extra row of pixels at its bottom, with a white pixel
 // on its first one, at `white_u,white_v`. Lines and triangles are drawn with
 // it, so they batch with the sprites.
@@ -148,10 +185,6 @@ static int create_textures(void) {
 }
 
 static void load_bloom_data_from_csv(void) {
-    char csv[] = {
-#embed RENDERER_BLOOM_CSV_PATH suffix(, '\0')
-    };
-
     for (int i = 0; i < RENDERER_BLOOM_MAX_ITERATIONS; i++)
         bloom_intensities[i] = 1.0f;
 
@@ -163,7 +196,7 @@ static void load_bloom_data_from_csv(void) {
          bloom_intensities,
          .count = RENDERER_BLOOM_MAX_ITERATIONS},
     };
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(bloom_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     bloom_iterations = SDL_clamp(count_csv_values(&parsed, "intensities"),
                                  1,
@@ -175,10 +208,8 @@ static void load_bloom_data_from_csv(void) {
 }
 
 static int load_spritesheet(void) {
-    Uint8 mem[] = {
-#embed SPRITESHEET_PATH
-    };
-    SDL_IOStream* stream = SDL_IOFromConstMem(mem, sizeof(mem));
+    SDL_IOStream* stream =
+        SDL_IOFromConstMem(spritesheet_png, sizeof(spritesheet_png));
     SDL_Surface* png = SDL_LoadPNG_IO(stream, true);
     if (!log_creation(SDL_LOG_CATEGORY_APPLICATION, png, "spritesheet png"))
         return 1;
@@ -205,23 +236,11 @@ static int load_spritesheet(void) {
 static int load_shaders(void) {
     // Fluids shader, sampling one of the ripples textures and
     // pre_fluids_texture as well, see FLUIDS_draw()
-    static const Uint8 fluids_spirv[] = {
-#embed FLUIDS_FRAG_SPIRV_PATH
-    };
-    static const Uint8 fluids_dxil[] = {
-#embed FLUIDS_FRAG_DXIL_PATH
-    };
     fluids.shader = GRAPHICS_load_fragment_shader(
         "fluids_shader", GRAPHICS_SHADER_CODE(fluids_spirv, fluids_dxil), 3, 1);
     if (!fluids.shader) return 1;
 
     // Ripples shader, sampling the fluids texture as well
-    static const Uint8 ripples_spirv[] = {
-#embed FLUIDS_RIPPLES_FRAG_SPIRV_PATH
-    };
-    static const Uint8 ripples_dxil[] = {
-#embed FLUIDS_RIPPLES_FRAG_DXIL_PATH
-    };
     fluids.ripples_shader = GRAPHICS_load_fragment_shader(
         "ripples_shader",
         GRAPHICS_SHADER_CODE(ripples_spirv, ripples_dxil),
@@ -229,12 +248,6 @@ static int load_shaders(void) {
         1);
     if (!fluids.ripples_shader) return 1;
 
-    static const Uint8 tonemap_spirv[] = {
-#embed RENDERER_TONEMAP_FRAG_SPIRV_PATH
-    };
-    static const Uint8 tonemap_dxil[] = {
-#embed RENDERER_TONEMAP_FRAG_DXIL_PATH
-    };
     tonemap_shader = GRAPHICS_load_fragment_shader(
         "tonemap_shader",
         GRAPHICS_SHADER_CODE(tonemap_spirv, tonemap_dxil),
@@ -242,12 +255,6 @@ static int load_shaders(void) {
         0);
     if (!tonemap_shader) return 1;
 
-    static const Uint8 bloom_prefilter_spirv[] = {
-#embed RENDERER_BLOOM_PREFILTER_FRAG_SPIRV_PATH
-    };
-    static const Uint8 bloom_prefilter_dxil[] = {
-#embed RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH
-    };
     bloom_prefilter_shader = GRAPHICS_load_fragment_shader(
         "bloom_prefilter_shader",
         GRAPHICS_SHADER_CODE(bloom_prefilter_spirv, bloom_prefilter_dxil),
@@ -255,12 +262,6 @@ static int load_shaders(void) {
         1);
     if (!bloom_prefilter_shader) return 1;
 
-    static const Uint8 box_sample_spirv[] = {
-#embed RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH
-    };
-    static const Uint8 box_sample_dxil[] = {
-#embed RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH
-    };
     box_sample_shader = GRAPHICS_load_fragment_shader(
         "box_sample_shader",
         GRAPHICS_SHADER_CODE(box_sample_spirv, box_sample_dxil),

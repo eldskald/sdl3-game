@@ -193,6 +193,46 @@ typedef struct {
 static_assert((PARTICLES_CAPACITY & (PARTICLES_CAPACITY - 1)) == 0,
               "PARTICLES_CAPACITY must be a power of 2");
 
+static const char particles_csv[] = {
+#embed PARTICLES_CSV_PATH suffix(, '\0')
+};
+static const Uint8 simulate_spirv[] = {
+#embed PARTICLES_SIMULATE_COMP_SPIRV_PATH
+};
+static const Uint8 simulate_dxil[] = {
+#embed PARTICLES_SIMULATE_COMP_DXIL_PATH
+};
+static const Uint8 spawn_spirv[] = {
+#embed PARTICLES_SPAWN_COMP_SPIRV_PATH
+};
+static const Uint8 spawn_dxil[] = {
+#embed PARTICLES_SPAWN_COMP_DXIL_PATH
+};
+static const Uint8 compact_spirv[] = {
+#embed PARTICLES_COMPACT_COMP_SPIRV_PATH
+};
+static const Uint8 compact_dxil[] = {
+#embed PARTICLES_COMPACT_COMP_DXIL_PATH
+};
+static const Uint8 vert_spirv[] = {
+#embed PARTICLES_VERT_SPIRV_PATH
+};
+static const Uint8 vert_dxil[] = {
+#embed PARTICLES_VERT_DXIL_PATH
+};
+static const Uint8 frag_spirv[] = {
+#embed PARTICLES_FRAG_SPIRV_PATH
+};
+static const Uint8 frag_dxil[] = {
+#embed PARTICLES_FRAG_DXIL_PATH
+};
+static const Uint8 glow_shader_spirv[] = {
+#embed PARTICLES_SHADER_GLOW_SPIRV_PATH
+};
+static const Uint8 glow_shader_dxil[] = {
+#embed PARTICLES_SHADER_GLOW_DXIL_PATH
+};
+
 static gpu_type types[PARTICLES_TOTAL] = {0};
 static Uint8 grid[GRID_SIZE] = {0};
 
@@ -219,11 +259,7 @@ static SDL_GPUIndirectDrawCommand draw_args[particle_shaders_total] = {0};
 
 
 static void load_types(void) {
-    char csv[] = {
-#embed PARTICLES_CSV_PATH suffix(, '\0')
-    };
-
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(particles_csv);
     type_data* rows = SDL_calloc(count_csv_entries(&parsed), sizeof(type_data));
     parsing_field fields[] = {
         {"particle", parsing_particle, &rows->type},
@@ -379,12 +415,6 @@ static int create_buffers(void) {
 }
 
 static int load_shaders(void) {
-    static const Uint8 simulate_spirv[] = {
-#embed PARTICLES_SIMULATE_COMP_SPIRV_PATH
-    };
-    static const Uint8 simulate_dxil[] = {
-#embed PARTICLES_SIMULATE_COMP_DXIL_PATH
-    };
     simulate_pipeline = GRAPHICS_load_compute_pipeline(
         "particles_simulate",
         GRAPHICS_SHADER_CODE(simulate_spirv, simulate_dxil),
@@ -394,12 +424,6 @@ static int load_shaders(void) {
         PARTICLES_THREADS);
     if (!simulate_pipeline) return 1;
 
-    static const Uint8 spawn_spirv[] = {
-#embed PARTICLES_SPAWN_COMP_SPIRV_PATH
-    };
-    static const Uint8 spawn_dxil[] = {
-#embed PARTICLES_SPAWN_COMP_DXIL_PATH
-    };
     spawn_pipeline = GRAPHICS_load_compute_pipeline(
         "particles_spawn",
         GRAPHICS_SHADER_CODE(spawn_spirv, spawn_dxil),
@@ -409,12 +433,6 @@ static int load_shaders(void) {
         PARTICLES_THREADS);
     if (!spawn_pipeline) return 1;
 
-    static const Uint8 compact_spirv[] = {
-#embed PARTICLES_COMPACT_COMP_SPIRV_PATH
-    };
-    static const Uint8 compact_dxil[] = {
-#embed PARTICLES_COMPACT_COMP_DXIL_PATH
-    };
     compact_pipeline = GRAPHICS_load_compute_pipeline(
         "particles_compact",
         GRAPHICS_SHADER_CODE(compact_spirv, compact_dxil),
@@ -424,34 +442,16 @@ static int load_shaders(void) {
         PARTICLES_THREADS);
     if (!compact_pipeline) return 1;
 
-    static const Uint8 vert_spirv[] = {
-#embed PARTICLES_VERT_SPIRV_PATH
-    };
-    static const Uint8 vert_dxil[] = {
-#embed PARTICLES_VERT_DXIL_PATH
-    };
     vert_shader = GRAPHICS_load_vertex_shader(
         "particles_vert", GRAPHICS_SHADER_CODE(vert_spirv, vert_dxil), 3, 2);
     if (!vert_shader) return 1;
 
-    static const Uint8 frag_spirv[] = {
-#embed PARTICLES_FRAG_SPIRV_PATH
-    };
-    static const Uint8 frag_dxil[] = {
-#embed PARTICLES_FRAG_DXIL_PATH
-    };
     frag_shaders[particle_shader_base] = GRAPHICS_load_fragment_shader(
         "particles_base_frag",
         GRAPHICS_SHADER_CODE(frag_spirv, frag_dxil),
         1,
         0);
 
-    static const Uint8 glow_shader_spirv[] = {
-#embed PARTICLES_SHADER_GLOW_SPIRV_PATH
-    };
-    static const Uint8 glow_shader_dxil[] = {
-#embed PARTICLES_SHADER_GLOW_DXIL_PATH
-    };
     frag_shaders[particle_shader_glow] = GRAPHICS_load_fragment_shader(
         "particles_shader_glow",
         GRAPHICS_SHADER_CODE(glow_shader_spirv, glow_shader_dxil),

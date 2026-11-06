@@ -18,6 +18,13 @@ typedef struct {
 
 
 
+static const char dirt_json[] = {
+#embed TILEMAP_DIRT_AUTOTILE_PATH suffix(, '\0')
+};
+static const char stone_json[] = {
+#embed TILEMAP_STONE_AUTOTILE_PATH suffix(, '\0')
+};
+
 // Neighbor offsets, in the order of their bits on the autotiles' lookup tables:
 //
 // ```
@@ -159,14 +166,6 @@ static int update_autotile(Uint16 x, Uint16 y, bool suppress_warnings) {
 
 
 void TILEMAP_start(void) {
-    char dirt_json[] = {
-#embed TILEMAP_DIRT_AUTOTILE_PATH suffix(, '\0')
-    };
-
-    char stone_json[] = {
-#embed TILEMAP_STONE_AUTOTILE_PATH suffix(, '\0')
-    };
-
     init_dynarr(&autotiles, sizeof(autotile_table));
     load_autotile(dirt_json);
     load_autotile(stone_json);

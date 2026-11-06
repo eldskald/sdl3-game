@@ -19,6 +19,10 @@ typedef struct {
     Uint8 tile_coords_y;
 } fluid_fluid_into_tile;
 
+static const char ffit_csv[] = {
+#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
+};
+
 static fluid_fluid_into_tile* ffit_data = NULL;
 static size_t ffit_count = 0;
 
@@ -46,9 +50,6 @@ static void load_fluid_fluid_into_tile_reactions(const char* csv) {
 
 
 void REACTIONS_start(void) {
-    char ffit_csv[] = {
-#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
-    };
     load_fluid_fluid_into_tile_reactions(ffit_csv);
 }
 

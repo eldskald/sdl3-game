@@ -54,6 +54,46 @@ typedef struct {
     size_t errors_len;
 } report;
 
+static const char bloom_csv[] = {
+#embed RENDERER_BLOOM_CSV_PATH suffix(, '\0')
+};
+static const char ripples_csv[] = {
+#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+};
+static const char props_csv[] = {
+#embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
+};
+static const char camera_csv[] = {
+#embed CAMERA_CSV_PATH suffix(, '\0')
+};
+static const char core_csv[] = {
+#embed PLAYER_BASE_CSV_PATH suffix(, '\0')
+};
+static const char presentation_csv[] = {
+#embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
+};
+static const char fluid_particles_csv[] = {
+#embed FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
+};
+static const char fluids_csv[] = {
+#embed FLUIDS_CSV_PATH suffix(, '\0')
+};
+static const char ffit_csv[] = {
+#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
+};
+static const char platforms_csv[] = {
+#embed CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
+};
+static const char types_map_csv[] = {
+#embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
+};
+static const char particles_csv[] = {
+#embed PARTICLES_CSV_PATH suffix(, '\0')
+};
+static const char tracks_csv[] = {
+#embed BGS_TRACKS_CSV_PATH suffix(, '\0')
+};
+
 static hashmap fluid_names = (hashmap){0};
 static hashmap tile_names = (hashmap){0};
 static hashmap particle_names = (hashmap){0};
@@ -267,25 +307,19 @@ static int get_column(dynarr* parsed, const char* name) {
 
 
 static void check_bloom(void) {
-    char csv[] = {
-#embed RENDERER_BLOOM_CSV_PATH suffix(, '\0')
-    };
     const key_spec specs[] = {
         {"threshold", val_double, 1, 1},
         {"soft_threshold", val_double, 1, 1},
         {"intensities", val_double, 1, RENDERER_BLOOM_MAX_ITERATIONS},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(bloom_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(RENDERER_BLOOM_CSV_PATH, &r);
 }
 
 static void check_ripples(void) {
-    char csv[] = {
-#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
-    };
     const key_spec specs[] = {
         {"body_max_speed", val_double, 1, 1},
         {"prop_max_speed", val_double, 1, 1},
@@ -298,16 +332,13 @@ static void check_ripples(void) {
         {"refraction", val_double, 1, 1},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(ripples_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(FLUIDS_RIPPLES_CSV_PATH, &r);
 }
 
 static void check_props(void) {
-    char csv[] = {
-#embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
-    };
     const key_spec specs[] = {
         {"prop_body_collision_pad", val_double, 1, 1},
         {"prop_global_damping", val_double, 1, 1},
@@ -319,31 +350,25 @@ static void check_props(void) {
         {"vine_fade_time", val_double, 1, 1},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(props_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(PHYSICS_PROPS_CSV_PATH, &r);
 }
 
 static void check_camera(void) {
-    char csv[] = {
-#embed CAMERA_CSV_PATH suffix(, '\0')
-    };
     const key_spec specs[] = {
         {"speed", val_double, 1, 1},
         {"smoothing_range", val_double, 1, 1},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(camera_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(CAMERA_CSV_PATH, &r);
 }
 
 static void check_player_core(void) {
-    char csv[] = {
-#embed PLAYER_BASE_CSV_PATH suffix(, '\0')
-    };
     const key_spec specs[] = {
         {"max_speed", val_double, 1, 1},
         {"acceleration", val_double, 1, 1},
@@ -364,7 +389,7 @@ static void check_player_core(void) {
         {"height", val_uint8, 1, 1},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(core_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(PLAYER_BASE_CSV_PATH, &r);
@@ -443,9 +468,6 @@ static void check_pins(report* r,
 }
 
 static void check_player_presentation(void) {
-    char csv[] = {
-#embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
-    };
     const char* anims[] = {"idle_anim",
                            "moving_anim",
                            "airborne_anim",
@@ -507,7 +529,7 @@ static void check_player_presentation(void) {
             (key_spec){keys[a][2], val_double, 1, SPRITES_ANIM_MAX_KEYFRAMES};
     }
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(presentation_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
 
     // Each keyframe of an animation needs its x, y and duration.
@@ -580,9 +602,6 @@ static void check_player_presentation(void) {
 }
 
 static void check_fluid_particles(void) {
-    char csv[] = {
-#embed FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
-    };
     const key_spec specs[] = {
         {"gravity", val_double, 1, 1},
         {"size_threshold", val_double, 1, 1},
@@ -593,16 +612,13 @@ static void check_fluid_particles(void) {
         {"body_max_speed", val_double, 1, 1},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(fluid_particles_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(FLUIDS_PARTICLES_CSV_PATH, &r);
 }
 
 static void check_fluids(void) {
-    char csv[] = {
-#embed FLUIDS_CSV_PATH suffix(, '\0')
-    };
     const column_spec specs[] = {
         {"fluid", val_fluid},
         {"density", val_double},
@@ -617,7 +633,7 @@ static void check_fluids(void) {
         {"col_a", val_uint8},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(fluids_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
 
     // The loader reads exactly one row for each fluid.
@@ -651,9 +667,6 @@ static void check_fluids(void) {
 }
 
 static void check_fluid_fluid_into_tile(void) {
-    char csv[] = {
-#embed REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH suffix(, '\0')
-    };
     const column_spec specs[] = {
         {"fluid A", val_fluid},
         {"fluid B", val_fluid},
@@ -662,16 +675,13 @@ static void check_fluid_fluid_into_tile(void) {
         {"tile spritesheet y", val_uint8},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(ffit_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH, &r);
 }
 
 static void check_platforms(void) {
-    char csv[] = {
-#embed CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
-    };
     const column_spec specs[] = {
         {"x", val_uint8},
         {"y", val_uint8},
@@ -679,16 +689,13 @@ static void check_platforms(void) {
         {"h", val_uint8},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(platforms_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(CHUNKS_PLATFORMS_CSV_PATH, &r);
 }
 
 static void check_types_map(void) {
-    char csv[] = {
-#embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
-    };
     const column_spec specs[] = {
         {"type", val_tile},
         {"x", val_uint8},
@@ -697,7 +704,7 @@ static void check_types_map(void) {
         {"h", val_uint8},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(types_map_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(CHUNKS_TYPES_MAP_CSV_PATH, &r);
@@ -705,9 +712,6 @@ static void check_types_map(void) {
 
 
 static void check_particles(void) {
-    char csv[] = {
-#embed PARTICLES_CSV_PATH suffix(, '\0')
-    };
     const column_spec specs[] = {
         {"particle", val_particle},
         {"shader", val_particle_shader},
@@ -749,7 +753,7 @@ static void check_particles(void) {
         {"trail_speed_jitter", val_double},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(particles_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
 
     // The loader reads exactly one row for each particle type, `particle_none`
@@ -787,16 +791,13 @@ static void check_particles(void) {
 // Each track's loop points, one row per track, which a track without uses its
 // whole file for.
 static void check_tracks(void) {
-    char csv[] = {
-#embed BGS_TRACKS_CSV_PATH suffix(, '\0')
-    };
     const column_spec specs[] = {
         {"track", val_bgs_track},
         {"loop_start", val_uint32},
         {"loop_end", val_uint32},
     };
     report r = (report){0};
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(tracks_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
 
     int h = get_header(&parsed);

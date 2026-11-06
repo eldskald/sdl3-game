@@ -10,20 +10,12 @@
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
-static const Uint8 cave_ogg[] = {
-#embed BGS_CAVE_PATH
-};
-
 typedef struct {
     const char* name;
     const Uint8* data;
     size_t size;
     bgs_bus bus;
 } track_source;
-
-static const track_source sources[BGS_TRACKS_TOTAL] = {
-    [bgs_track_cave] = {"cave", cave_ogg, sizeof(cave_ogg), bgs_bus_ambience},
-};
 
 typedef struct {
     audio_ogg* ogg;
@@ -41,6 +33,16 @@ typedef struct {
 
 
 
+static const Uint8 cave_ogg[] = {
+#embed BGS_CAVE_PATH
+};
+static const char tracks_csv[] = {
+#embed BGS_TRACKS_CSV_PATH suffix(, '\0')
+};
+
+static const track_source sources[BGS_TRACKS_TOTAL] = {
+    [bgs_track_cave] = {"cave", cave_ogg, sizeof(cave_ogg), bgs_bus_ambience},
+};
 static track_data tracks[BGS_TRACKS_TOTAL] = {0};
 static SDL_Mutex* tracks_mutex = NULL;
 static SDL_AudioDeviceID devices[BGS_BUSES_TOTAL] = {0};
@@ -146,10 +148,7 @@ typedef struct {
 } loop_row;
 
 static void load_loops(void) {
-    char csv[] = {
-#embed BGS_TRACKS_CSV_PATH suffix(, '\0')
-    };
-    dynarr parsed = CSV_parse(csv);
+    dynarr parsed = CSV_parse(tracks_csv);
     loop_row* rows = SDL_calloc(count_csv_entries(&parsed), sizeof(loop_row));
     parsing_field fields[] = {
         {"track", parsing_bgs_track, &rows->track},

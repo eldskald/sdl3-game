@@ -154,7 +154,7 @@ typedef enum {
 #define FLUIDS_Z_INDEX 10 // Lower z_indexes are drawn under the fluids
 
 // Particles
-#define PARTICLES_TYPES particle_firework = 1, particle_spark,
+#define PARTICLES_TYPES particle_firework, particle_spark,
 #define PARTICLES_TOTAL 3
 #define PARTICLES_SPLIT_X 2
 #define PARTICLES_SPLIT_Y 2

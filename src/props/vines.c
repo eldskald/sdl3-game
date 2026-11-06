@@ -64,6 +64,13 @@ typedef struct {
 
 
 
+static const char props_csv[] = {
+#embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
+};
+static const char ripples_csv[] = {
+#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+};
+
 static pool vines = (pool){0};
 
 static vine_data settings = (vine_data){0};
@@ -527,14 +534,7 @@ static void load_ripples_data(const char* csv) {
 }
 
 void VINES_start(void) {
-    char csv[] = {
-#embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
-    };
-    char ripples_csv[] = {
-#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
-    };
-
-    load_vine_data(csv);
+    load_vine_data(props_csv);
     load_ripples_data(ripples_csv);
 
     init_pool_with(&vines, sizeof(vine), PROPS_VINE_STARTING_DYNARR_CAP);

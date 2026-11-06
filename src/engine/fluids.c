@@ -77,6 +77,16 @@ typedef struct {
 
 
 
+static const char fluids_csv[] = {
+#embed FLUIDS_CSV_PATH suffix(, '\0')
+};
+static const char fluid_particles_csv[] = {
+#embed FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
+};
+static const char ripples_csv[] = {
+#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+};
+
 static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
                   [TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y] = {0};
 static fluids buffer[SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
@@ -291,18 +301,6 @@ static void load_ripples_data(const char* csv) {
 }
 
 void FLUIDS_start(void) {
-    char fluids_csv[] = {
-#embed FLUIDS_CSV_PATH suffix(, '\0')
-    };
-
-    char fluid_particles_csv[] = {
-#embed FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
-    };
-
-    char ripples_csv[] = {
-#embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
-    };
-
     load_fluid_data(fluids_csv);
     load_fluid_particles_data(fluid_particles_csv);
     load_ripples_data(ripples_csv);
