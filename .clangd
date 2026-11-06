@@ -1,2 +1,10 @@
 Documentation:
   CommentFormat: Markdown 
+---
+# Test files are built with `-DTEST` and `-Itests` before `-Isrc`, so
+# `tests/paths.h` replaces `src/paths.h`. `-iquote` puts `tests` first for
+# quoted includes, like the Makefile does.
+If:
+  PathMatch: tests/.*
+CompileFlags:
+  Add: [-DTEST, -iquote, tests]

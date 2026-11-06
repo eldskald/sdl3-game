@@ -1,5 +1,6 @@
 #include "engine/tilemap.h"
 #include "tests.h"
+#include "tests/bgs.h"
 #include "tests/chunks.h"
 #include "tests/csv.h"
 #include "tests/data-integrity.h"
@@ -12,6 +13,7 @@
 #include "tests/physics.h"
 #include "tests/pool.h"
 #include "tests/reactions.h"
+#include "tests/sfx.h"
 #include "tests/text.h"
 #include "tests/tilemap.h"
 #include <SDL3/SDL.h>
@@ -43,6 +45,8 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
     if (argc == 1 || SDL_strcmp(argv[1], "text") == 0) test_text();
     if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();
+    if (argc == 1 || SDL_strcmp(argv[1], "sfx") == 0) test_sfx();
+    if (argc == 1 || SDL_strcmp(argv[1], "bgs") == 0) test_bgs();
     if (argc == 1 || SDL_strcmp(argv[1], "data-integrity") == 0)
         test_data_integrity();
 

@@ -4,7 +4,6 @@
 #include "paths.h"
 #include "utils/logger.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_gpu.h>
 #include <stddef.h>
 
 typedef enum {

@@ -23,6 +23,10 @@ Checks: >
 
 WarningsAsErrors: '*' 
 
+# Third party code included by ours, like `vendor/stb_vorbis.c` on
+# `src/engine/audio.c`, isn't ours to fix.
+ExcludeHeaderFilterRegex: 'vendor/.*'
+
 CheckOptions:
   - key:             bugprone-assert-side-effect.AssertMacros
     value:           'ASSERT'

@@ -43,6 +43,7 @@ typedef struct {
     animation anim;
     double anim_time;
     bool anim_playing;
+    int anim_frame;
     dynarr shapes;
     SDL_FRect shapes_rect;
 } sprite_data;
@@ -310,6 +311,7 @@ int SPRITES_play_anim(size_t sprite_id, animation anim) {
     get_sprite(sprite_id)->anim = anim;
     get_sprite(sprite_id)->anim_playing = true;
     get_sprite(sprite_id)->anim_time = 0.0f;
+    get_sprite(sprite_id)->anim_frame = -1;
     return 0;
 }
 
@@ -364,9 +366,20 @@ static bool is_simulated(SDL_FRect rect, SDL_Rect space) {
            rect.y < (space.y + space.h) * SPRITESHEET_CELL_Y;
 }
 
+// Marks frame `i` of the sprite's animation as reached, calling its
+// `on_reach_frame_func`.
+static void reach_frame(size_t id, sprite_data* sd, int i) {
+    sd->anim_frame = i;
+    keyframe k = sd->anim.frames[i];
+    if (k.on_reach_frame_func) k.on_reach_frame_func(id, k.on_reach_frame_arg);
+}
+
 // Advances the sprite's animation, returning whether a non-looping one just
-// ended.
-static bool animate(sprite_data* sd) {
+// ended. Frames are walked from the start each time to find the current one,
+// so `anim_frame` keeps the last one reached, and only the frames after it get
+// reached, each once, even when a long `dt` skips over some of them.
+static bool animate(size_t id) {
+    sprite_data* sd = get_sprite(id);
     if (!sd->anim_playing) return false;
     sd->anim_time += GAME_MANAGER_get_current_dt();
     animation anim = sd->anim;
@@ -375,6 +388,7 @@ static bool animate(sprite_data* sd) {
     while (time >= 0.0f && anim.frames[i].duration > 0.0f) {
         sd->sprite.coords_x = anim.frames[i].coords_x;
         sd->sprite.coords_y = anim.frames[i].coords_y;
+        if (i > sd->anim_frame) reach_frame(id, sd, i);
         time -= anim.frames[i].duration;
         i++;
     }
@@ -383,6 +397,7 @@ static bool animate(sprite_data* sd) {
         sd->anim_time = time;
         sd->sprite.coords_x = anim.frames[0].coords_x;
         sd->sprite.coords_y = anim.frames[0].coords_y;
+        reach_frame(id, sd, 0);
         return false;
     }
     sd->anim_playing = false;
@@ -442,7 +457,7 @@ void SPRITES_update(void) {
         sprite_data* sd = get_sprite(id);
         if (!sd) continue;
         SDL_FRect rect = get_rect(sd);
-        if (is_simulated(rect, space) && animate(sd))
+        if (is_simulated(rect, space) && animate(id))
             push_to_dynarr(&id, &finished);
         add_to_frame(f, sd, rect, cam);
     }
