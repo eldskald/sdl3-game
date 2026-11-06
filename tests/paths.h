@@ -57,3 +57,12 @@
 // the buffer so filling it has to loop.
 #define BGS_TRACKS_CSV_PATH "tests/mocks/audio/tracks.csv"
 #define BGS_CAVE_PATH "tests/mocks/audio/track.ogg"
+
+// Graphics
+// Shaders only the graphics tests use, compiled by `bin/compile-shaders`.
+#define TEST_GRAPHICS_RECTS_VERT_SPIRV_PATH "tests/mocks/shaders/rects.vert.spv"
+#define TEST_GRAPHICS_RECTS_VERT_DXIL_PATH "tests/mocks/shaders/rects.vert.dxil"
+#define TEST_GRAPHICS_MASK_FRAG_SPIRV_PATH "tests/mocks/shaders/mask.frag.spv"
+#define TEST_GRAPHICS_MASK_FRAG_DXIL_PATH "tests/mocks/shaders/mask.frag.dxil"
+#define TEST_GRAPHICS_RECTS_COMP_SPIRV_PATH "tests/mocks/shaders/rects.comp.spv"
+#define TEST_GRAPHICS_RECTS_COMP_DXIL_PATH "tests/mocks/shaders/rects.comp.dxil"
