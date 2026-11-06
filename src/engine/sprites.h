@@ -6,15 +6,25 @@
 // seconds. A duration of `0.0f` means no frame, so leave the last frames in the
 // `animation.frames` zeroed out if you don't need all the frames.
 //
+// Each time the animation reaches the frame, `on_reach_frame_func` is called
+// with the sprite's ID and `on_reach_frame_arg`, once per loop on looping ones,
+// including the first frame when it starts. It can be `NULL`. Unlike
+// `on_anim_finished_func`, it runs while sprites are being updated, so it must
+// not create, edit or delete sprites.
+//
 // ```
 // struct keyframe {
 //     Uint8 coords_x, coords_y;
 //     double duration;
+//     void (*on_reach_frame_func)(size_t sprite_id, size_t arg);
+//     size_t on_reach_frame_arg;
 // };
 // ```
 typedef struct {
     Uint8 coords_x, coords_y;
     double duration;
+    void (*on_reach_frame_func)(size_t sprite_id, size_t arg);
+    size_t on_reach_frame_arg;
 } keyframe;
 
 // An animation. Leaves the sprite at `frame[0]`'s `coords_x` `coords_y` for its

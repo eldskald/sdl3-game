@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/bgs.h"
 #include "engine/fluids.h"
 #include "engine/particles.h"
 #include "engine/tilemap.h"
@@ -21,11 +22,13 @@ typedef enum {
     val_int,
     val_uint8,
     val_sint8,
+    val_uint32,
     val_bool,
     val_fluid,
     val_tile,
     val_particle,
     val_particle_shader,
+    val_bgs_track,
 } val_type;
 
 // Row of a key/value CSV, a key followed by `min` up to `max` values.
@@ -55,6 +58,7 @@ static hashmap fluid_names = (hashmap){0};
 static hashmap tile_names = (hashmap){0};
 static hashmap particle_names = (hashmap){0};
 static hashmap particle_shader_names = (hashmap){0};
+static hashmap bgs_track_names = (hashmap){0};
 
 static void check(report* r, bool ok, const char* fmt, ...) {
     // Past `MAX_EXPECTATIONS`, failures go on the last check so they still fail
@@ -86,6 +90,7 @@ static bool is_val(const char* s, val_type type) {
         return !s[0] || get_from_hashmap(s, &particle_names);
     if (type == val_particle_shader)
         return !s[0] || get_from_hashmap(s, &particle_shader_names);
+    if (type == val_bgs_track) return get_from_hashmap(s, &bgs_track_names);
 
     // `SDL_strtod()` and `SDL_strtol()` skip leading spaces, which we don't
     // want, and the whole string must be the number.
@@ -100,6 +105,7 @@ static bool is_val(const char* s, val_type type) {
     if (end != s + len) return false;
     if (type == val_uint8) return n >= 0 && n <= 255;
     if (type == val_sint8) return n >= -128 && n <= 127;
+    if (type == val_uint32) return n >= 0 && n <= SDL_MAX_UINT32;
     if (type == val_bool) return n == 0 || n == 1;
     return true;
 }
@@ -114,6 +120,8 @@ static const char* val_type_name(val_type type) {
         return "an integer from 0 to 255";
     case val_sint8:
         return "an integer from -128 to 127";
+    case val_uint32:
+        return "an integer from 0 to 4294967295";
     case val_bool:
         return "0 or 1";
     case val_fluid:
@@ -124,6 +132,8 @@ static const char* val_type_name(val_type type) {
         return "a particle type or empty";
     case val_particle_shader:
         return "a particle shader or empty";
+    case val_bgs_track:
+        return "a background sound track";
     }
     return "";
 }
@@ -479,6 +489,8 @@ static void check_player_presentation(void) {
         {"cloak_pin_l_y", val_uint8, 1, cells},
         {"cloak_pin_r_x", val_uint8, 1, cells},
         {"cloak_pin_r_y", val_uint8, 1, cells},
+        {"step_func_x", val_uint8, 1, cells},
+        {"step_func_y", val_uint8, 1, cells},
     };
     const size_t base_n = SDL_arraysize(base_specs);
     key_spec specs[SDL_arraysize(base_specs) + 3 * SDL_arraysize(anims)];
@@ -512,6 +524,16 @@ static void check_player_presentation(void) {
               y->len - 1,
               dur->len - 1);
     }
+
+    // Each frame calling the step function needs its x and y.
+    dynarr* step_x = get_row(&parsed, "step_func_x");
+    dynarr* step_y = get_row(&parsed, "step_func_y");
+    if (step_x && step_y)
+        check(&r,
+              step_x->len == step_y->len,
+              "\"step_func\" has %lu x and %lu y, expected the same",
+              step_x->len - 1,
+              step_y->len - 1);
 
     // The hair's and cloak's points are kept on arrays of fixed size.
     const char* segment_keys[] = {
@@ -762,6 +784,62 @@ static void check_particles(void) {
 }
 
 
+// Each track's loop points, one row per track, which a track without uses its
+// whole file for.
+static void check_tracks(void) {
+    char csv[] = {
+#embed BGS_TRACKS_CSV_PATH suffix(, '\0')
+    };
+    const column_spec specs[] = {
+        {"track", val_bgs_track},
+        {"loop_start", val_uint32},
+        {"loop_end", val_uint32},
+    };
+    report r = (report){0};
+    dynarr parsed = CSV_parse(csv);
+    check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
+
+    int h = get_header(&parsed);
+    int track_col = get_column(&parsed, "track");
+    int start_col = get_column(&parsed, "loop_start");
+    int end_col = get_column(&parsed, "loop_end");
+    for (size_t i = 0; i < bgs_track_names.len; i++) {
+        const char* name = hashmap_key_at(i, &bgs_track_names);
+        size_t count = 0;
+        for (size_t j = h + 1; h >= 0 && j < parsed.len; j++) {
+            dynarr* row = CSV_row(j, &parsed);
+            if (row->len < 2) continue;
+            if (track_col >= 0 && track_col < row->len &&
+                SDL_strcmp(CSV_cell(track_col, row), name) == 0)
+                count++;
+        }
+        check(&r,
+              count == 1,
+              "Track \"%s\" found %lu times, expected once",
+              name,
+              count);
+    }
+
+    // A `loop_end` of `0` is the end of the file.
+    for (size_t j = h + 1;
+         h >= 0 && start_col >= 0 && end_col >= 0 && j < parsed.len;
+         j++) {
+        dynarr* row = CSV_row(j, &parsed);
+        if (row->len <= (size_t)SDL_max(start_col, end_col)) continue;
+        long start = SDL_strtol(CSV_cell(start_col, row), NULL, 10);
+        long end = SDL_strtol(CSV_cell(end_col, row), NULL, 10);
+        check(&r,
+              end == 0 || start < end,
+              "Row %lu loops from %ld to %ld, expected start before end",
+              j + 1,
+              start,
+              end);
+    }
+    CSV_free(&parsed);
+    finish(BGS_TRACKS_CSV_PATH, &r);
+}
+
+
 
 void test_data_integrity(void) {
     printf(YELLOW "\nTesting data integrity...\n" RESET);
@@ -770,6 +848,7 @@ void test_data_integrity(void) {
     tile_names = TILEMAP_get_string_tile_types_map();
     particle_names = PARTICLES_get_string_particle_types_map();
     particle_shader_names = PARTICLES_get_string_particle_shaders_map();
+    bgs_track_names = BGS_get_string_tracks_map();
 
     check_bloom();
     check_ripples();
@@ -783,9 +862,11 @@ void test_data_integrity(void) {
     check_platforms();
     check_types_map();
     check_particles();
+    check_tracks();
 
     deinit_hashmap(&fluid_names);
     deinit_hashmap(&tile_names);
     deinit_hashmap(&particle_names);
     deinit_hashmap(&particle_shader_names);
+    deinit_hashmap(&bgs_track_names);
 }

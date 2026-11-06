@@ -10,13 +10,13 @@
 #include "paths.h"
 #include "props/vines.h"
 #include "services/csv.h"
+#include "utils/logger.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
 #ifdef DEV
 #include "dev/dev.h"
 #include "dev/profiler.h"
-#include "utils/logger.h"
 #endif
 
 // Matches the uniforms on `src/gpu/bloom-prefilter.frag.hlsl`.

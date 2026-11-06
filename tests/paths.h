@@ -18,6 +18,8 @@
 #undef REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH
 #undef PHYSICS_PROPS_CSV_PATH
 #undef TEXT_ABLE_5_PATH
+#undef BGS_TRACKS_CSV_PATH
+#undef BGS_CAVE_PATH
 
 // Chunks
 #define CHUNKS_PLATFORMS_CSV_PATH "tests/mocks/tiles/platforms.csv"
@@ -48,3 +50,10 @@
 // Able 5's glyphs are replaced by a mock font 4 pixels tall, with glyphs
 // drawing to the left of where they're drawn and past their width.
 #define TEXT_ABLE_5_PATH "tests/mocks/fonts/mock.hex"
+
+// BGS
+// The cave track is 1s of a sine in stereo at 44100Hz, longer than the buffer
+// so it's never all decoded at once, looping from 50ms to 100ms, shorter than
+// the buffer so filling it has to loop.
+#define BGS_TRACKS_CSV_PATH "tests/mocks/audio/tracks.csv"
+#define BGS_CAVE_PATH "tests/mocks/audio/track.ogg"

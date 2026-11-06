@@ -107,6 +107,20 @@ typedef enum {
 
 
 
+// SFX
+#define SFX_STARTING_POOL_CAP 64
+#define SFX_STARTING_VOLUME 1.0f
+
+// BGS
+#define BGS_TRACKS bgs_track_cave,
+#define BGS_TRACKS_TOTAL 2
+#define BGS_STARTING_VOLUME 1.0f
+#define BGS_BUFFER_MS 500   // How far ahead of what's heard tracks are decoded
+#define BGS_MAX_FILL_MS 100 // Most a track decodes per tick to get there
+#define BGS_DECODE_CHUNK_SAMPLES 4096 // Floats decoded at a time
+
+
+
 // Chunks
 #define CHUNKS_TOTAL 4
 #define CHUNKS_HELPER_TILESET_NAME "helper-tiles.tsx"

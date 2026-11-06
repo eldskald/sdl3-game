@@ -1,0 +1,4 @@
+# Third party code isn't ours to lint. clang-tidy refuses to run without any
+# check, so the only one left is one that can't apply to a `.c` file.
+Checks: '-*,-clang-diagnostic-*,misc-definitions-in-headers'
+WarningsAsErrors: ''

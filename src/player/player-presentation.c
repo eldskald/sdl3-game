@@ -1,8 +1,10 @@
 #include "player/player-presentation.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
+#include "engine/audio.h"
 #include "engine/fluids.h"
 #include "engine/physics.h"
+#include "engine/sfx.h"
 #include "engine/sprites.h"
 #include "paths.h"
 #include "player/player-core.h"
@@ -11,6 +13,11 @@
 #include <SDL3/SDL.h>
 
 #define HAIR_BASE_WIDTH 3
+
+// Each step plays one of `STEP_SFX_TOTAL` sounds at random, on the next of
+// `STEP_VOICES_TOTAL` voices, so a step doesn't cut the one before it.
+#define STEP_SFX_TOTAL 5
+#define STEP_VOICES_TOTAL 2
 
 typedef enum {
     state_idle,
@@ -21,25 +28,16 @@ typedef enum {
     state_swimming,
 } states_machine_state;
 
-// Left and right pins of the cloak in pixels inside the sprite's cell, for a
-// frame of the player's sprite. `mapped` is false for frames without any.
 typedef struct {
     bool mapped;
     SDL_Point l, r;
 } cloak_pins;
 
-// Pin of the hair in pixels inside the spritesheet's cell, for a frame of the
-// player's sprite. `mapped` is false for frames without one.
 typedef struct {
     bool mapped;
     SDL_Point pin;
 } hair_pin;
 
-// The hair's and cloak's pins are mapped by the spritesheet cell of the
-// sprite's current frame on `hair_pins` and `cloak_pins`. The hair has
-// `hair_segments` segments, so one more point than that, and the cloak has
-// `cloak_horiz_segments` by `cloak_vert_segments` segments, so one more column
-// and one more row of points than that.
 typedef struct {
     Uint8 coords_x, coords_y, coords_w, coords_h;
     Sint8 offset_x, offset_y;
@@ -75,14 +73,6 @@ typedef struct {
                          [SPRITESHEET_Y / SPRITESHEET_CELL_Y];
 } sprite_data;
 
-// The cloak is a grid of prop points on `cloak`, each one connected to its
-// neighbours to the right and below, with its top row pinned to the player.
-// `cloak_deleted` has whether each point was already deleted, and once any of
-// them is the cloak is `cloak_broken` and gets recreated on the next update.
-// `cloak_under_fluid` has whether each point was in a fluid cell on the last
-// update. `cloak_pins` are the pins of the last mapped frame the sprite was on,
-// kept on frames that aren't mapped. The hair is a chain of prop points on
-// `hair` from its pinned point, with the same kind of state as the cloak.
 typedef struct {
     bool created;
     size_t sprite_id;
@@ -100,12 +90,39 @@ typedef struct {
                           [PLAYER_CLOAK_MAX_HORIZ_SEGMENTS + 1];
     bool cloak_broken;
     cloak_pins cloak_pins;
+    size_t step_voices[STEP_VOICES_TOTAL];
+    Uint8 step_next_voice;
 } sprite_state;
 
 static sprite_data data = (sprite_data){0};
 static sprite_state state = (sprite_state){0};
 
+static const Uint8 step_1_wav[] = {
+#embed PLAYER_STEP_1_SFX_PATH
+};
+static const Uint8 step_2_wav[] = {
+#embed PLAYER_STEP_2_SFX_PATH
+};
+static const Uint8 step_3_wav[] = {
+#embed PLAYER_STEP_3_SFX_PATH
+};
+static const Uint8 step_4_wav[] = {
+#embed PLAYER_STEP_4_SFX_PATH
+};
+static const Uint8 step_5_wav[] = {
+#embed PLAYER_STEP_5_SFX_PATH
+};
+static audio_wav* step_sfx[STEP_SFX_TOTAL] = {0};
 
+
+
+// Called by the sprite's animations on the frames on the `step_func` rows.
+static void on_step(size_t _sprite_id, size_t _arg) { // NOLINT
+    audio_wav* wav = step_sfx[SDL_rand(STEP_SFX_TOTAL)];
+    if (!wav) return;
+    SFX_play_voice(state.step_voices[state.step_next_voice], wav);
+    state.step_next_voice = (state.step_next_voice + 1) % STEP_VOICES_TOTAL;
+}
 
 static void state_changed(states_machine_state new_state) {
     switch (new_state) {
@@ -556,6 +573,48 @@ static void load_cloak_pins(dynarr* parsed) {
             (cloak_pins){.mapped = true, .l = pins[i].l, .r = pins[i].r};
 }
 
+// Each column of the step rows is a frame of the sprite that calls
+// `on_step()` on every animation it's in.
+static void load_steps(dynarr* parsed) {
+    static struct {
+        Uint8 anim_x, anim_y;
+    } steps[PINS_MAX];
+    parsing_field fields[] = {
+        PINS_FIELD("step_func_x", parsing_uint8, steps, anim_x),
+        PINS_FIELD("step_func_y", parsing_uint8, steps, anim_y),
+    };
+    read_csv_keys(parsed, fields, SDL_arraysize(fields));
+    size_t n = count_csv_values(parsed, "step_func_x");
+    animation* anims[] = {&data.idle_anim,
+                          &data.moving_anim,
+                          &data.airborne_anim,
+                          &data.crouch_idle_anim,
+                          &data.crouch_moving_anim,
+                          &data.swimming_anim};
+    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
+        for (size_t f = 0; f < SPRITES_ANIM_MAX_KEYFRAMES; f++) {
+            keyframe* k = &anims[a]->frames[f];
+            for (size_t i = 0; i < n; i++)
+                if (k->coords_x == steps[i].anim_x &&
+                    k->coords_y == steps[i].anim_y)
+                    k->on_reach_frame_func = on_step;
+        }
+    }
+}
+
+static void load_step_sfx(void) {
+    const Uint8* mems[] = {
+        step_1_wav, step_2_wav, step_3_wav, step_4_wav, step_5_wav};
+    size_t sizes[] = {sizeof(step_1_wav),
+                      sizeof(step_2_wav),
+                      sizeof(step_3_wav),
+                      sizeof(step_4_wav),
+                      sizeof(step_5_wav)};
+    for (int i = 0; i < STEP_SFX_TOTAL; i++)
+        step_sfx[i] = AUDIO_create_wav(
+            "step", SDL_IOFromConstMem(mems[i], sizes[i]), true);
+}
+
 void PLAYER_PRESENTATION_start(void) {
     char csv[] = {
 #embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
@@ -608,7 +667,9 @@ void PLAYER_PRESENTATION_start(void) {
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     load_hair_pins(&parsed);
     load_cloak_pins(&parsed);
+    load_steps(&parsed);
     CSV_free(&parsed);
+    load_step_sfx();
 
     d->idle_anim.looped = true;
     d->moving_anim.looped = true;
@@ -638,6 +699,8 @@ void PLAYER_PRESENTATION_create(player_state player) {
     state.cloak_pins = data.cloak_pins[data.coords_x][data.coords_y];
     create_hair(player);
     create_cloak(player);
+    for (Uint8 i = 0; i < STEP_VOICES_TOTAL; i++)
+        SFX_new_voice(sfx_bus_gameplay, &state.step_voices[i]);
     state.created = true;
     state_changed(state.state);
 }
@@ -646,6 +709,8 @@ void PLAYER_PRESENTATION_destroy(void) {
     SPRITES_del_sprite(state.sprite_id);
     delete_hair();
     delete_cloak();
+    for (Uint8 i = 0; i < STEP_VOICES_TOTAL; i++)
+        SFX_del_voice(state.step_voices[i]);
     state.created = false;
 }
 

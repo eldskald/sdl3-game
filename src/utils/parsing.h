@@ -17,6 +17,7 @@
 //     parsing_tile,   // tile_type, from its name
 //     parsing_particle, // particle_type, from its name, particle_none if empty
 //     parsing_particle_shader, // particle_shader, from its name, base if empty
+//     parsing_bgs_track, // bgs_track, from its name, bgs_track_none if empty
 //     parsing_color,  // SDL_FColor, from 4 values from 0 to 255
 // };
 // ```
@@ -32,6 +33,7 @@ typedef enum {
     parsing_tile,
     parsing_particle,
     parsing_particle_shader,
+    parsing_bgs_track,
     parsing_color,
 } parsing_type;
 

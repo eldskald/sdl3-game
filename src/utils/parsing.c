@@ -1,6 +1,7 @@
 #include "utils/parsing.h"
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
+#include "engine/bgs.h"
 #include "engine/fluids.h"
 #include "engine/particles.h"
 #include "engine/tilemap.h"
@@ -31,6 +32,8 @@ static size_t get_size(parsing_type type) {
         return sizeof(particle_type);
     case parsing_particle_shader:
         return sizeof(particle_shader);
+    case parsing_bgs_track:
+        return sizeof(bgs_track);
     case parsing_color:
         return sizeof(SDL_FColor);
     }
@@ -93,6 +96,9 @@ static void read_value(char** cells, parsing_type type, void* dst) {
         break;
     case parsing_particle_shader:
         read_name(PARTICLES_get_string_particle_shaders_map(), cells[0], dst);
+        break;
+    case parsing_bgs_track:
+        read_name(BGS_get_string_tracks_map(), cells[0], dst);
         break;
     case parsing_color:
         *(SDL_FColor*)dst = (SDL_FColor){SDL_strtod(cells[0], NULL) / 255.0f,

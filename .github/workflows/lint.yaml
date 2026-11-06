@@ -56,6 +56,9 @@ jobs:
           version: 23
           style: "file" # Use .clang-format config file
           tidy-checks: "" # Use .clang-tidy config file
+          # Third party code isn't ours to lint or format. Where it's included
+          # by our files, `ExcludeHeaderFilterRegex` on `.clang-tidy` skips it.
+          ignore: ".github|vendor"
           # only 'update' a single comment in a pull request thread.
           thread-comments: ${{ github.event_name == 'pull_request' && 'update' }}
 

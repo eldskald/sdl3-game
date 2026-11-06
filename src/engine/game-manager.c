@@ -1,23 +1,25 @@
 #include "engine/game-manager.h"
 #include "defs.h"
 #include "dev/profiler.h"
+#include "engine/bgs.h"
 #include "engine/chunks.h"
 #include "engine/fluids.h"
 #include "engine/inputs.h"
 #include "engine/physics.h"
 #include "engine/reactions.h"
 #include "engine/renderer.h"
+#include "engine/sfx.h"
 #include "engine/sprites.h"
 #include "engine/text.h"
 #include "engine/tilemap.h"
 #include "player/player-core.h"
 #include "props/vines.h"
+#include "utils/logger.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_thread.h>
 
 #ifdef DEV
 #include "dev/dev.h"
-#include "utils/logger.h"
 #endif
 
 #undef SDL_HINT_MAIN_CALLBACK_RATE
@@ -86,6 +88,14 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
         SPRITES_update();
 #if DEV && !TEST
         PROFILER_finish_timer("sprites");
+#endif
+
+#if DEV && !TEST
+        PROFILER_setup_timer("bgs");
+#endif
+        BGS_update();
+#if DEV && !TEST
+        PROFILER_finish_timer("bgs");
 #endif
 
 #if DEV && !TEST
@@ -159,6 +169,8 @@ int GAME_MANAGER_start(void) {
     if (INPUTS_start()) return 1;
     if (RENDERER_start()) return 1;
     if (TEXT_start()) return 1;
+    SFX_start();
+    BGS_start();
     SPRITES_start();
     TILEMAP_start();
     CHUNKS_start();
@@ -200,6 +212,8 @@ void GAME_MANAGER_stop(void) {
     VINES_stop();
     FLUIDS_stop();
     REACTIONS_stop();
+    SFX_stop();
+    BGS_stop();
 
 #if DEV && !TEST
     PROFILER_stop();

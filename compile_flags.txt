@@ -3,5 +3,6 @@
 -g
 -DDEV
 -Isrc
+-Ivendor
 -Itests
 --embed-dir=./

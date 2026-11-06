@@ -84,6 +84,15 @@
 // Player
 #define PLAYER_BASE_CSV_PATH "data/player/core.csv"
 #define PLAYER_PRESENTATION_CSV_PATH "data/player/presentation.csv"
+#define PLAYER_STEP_1_SFX_PATH "res/sfx/Footsteps/Dirt/Dirt Walk 1.wav"
+#define PLAYER_STEP_2_SFX_PATH "res/sfx/Footsteps/Dirt/Dirt Walk 2.wav"
+#define PLAYER_STEP_3_SFX_PATH "res/sfx/Footsteps/Dirt/Dirt Walk 3.wav"
+#define PLAYER_STEP_4_SFX_PATH "res/sfx/Footsteps/Dirt/Dirt Walk 4.wav"
+#define PLAYER_STEP_5_SFX_PATH "res/sfx/Footsteps/Dirt/Dirt Walk 5.wav"
+
+// Background sounds
+#define BGS_TRACKS_CSV_PATH "data/audio/tracks.csv"
+#define BGS_CAVE_PATH "res/bgs/Cave/Cave.ogg"
 
 // Camera
 #define CAMERA_CSV_PATH "data/player/camera.csv"

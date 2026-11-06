@@ -3,15 +3,13 @@
 #include <SDL3/SDL.h>
 #include <stddef.h>
 
-// How what's drawn is blended with what's already on the target, the same as
-// SDL's blend modes of the same names.
+// Blend modes.
 //
 // ```
 // enum graphics_blend {
-//     graphics_blend_none,  // dstRGBA = srcRGBA
-//     graphics_blend_blend, // dstRGB = srcRGB * srcA + dstRGB * (1 - srcA)
-//                           // dstA = srcA + dstA * (1 - srcA)
-//     graphics_blend_add,   // dstRGB = srcRGB * srcA + dstRGB, dstA = dstA
+//     graphics_blend_none,
+//     graphics_blend_blend,
+//     graphics_blend_add,
 // };
 // ```
 typedef enum {
@@ -20,7 +18,7 @@ typedef enum {
     graphics_blend_add,
 } graphics_blend;
 
-// A texture that can be sampled and drawn on, sampled with `sampler`.
+// A texture that can be sampled and drawn on.
 //
 // ```
 // struct graphics_texture {
@@ -37,9 +35,8 @@ typedef struct {
     Uint32 w, h;
 } graphics_texture;
 
-// A vertex of the base vertex shader, `src/gpu/base.vert.hlsl`. `x,y` is in
-// pixels on the target from its top left, `u,v` is from `0.0` to `1.0` on the
-// texture being drawn and `col` multiplies its color.
+// Vertex data, meant for the base vertex shader that passes on only position,
+// UVs and color to the fragment.
 //
 // ```
 // struct graphics_vertex {
