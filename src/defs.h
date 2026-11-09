@@ -107,14 +107,16 @@ typedef enum {
 
 
 
+// Audio
+#define AUDIO_STARTING_VOLUME 1.0f // Of every bus
+
 // SFX
 #define SFX_STARTING_POOL_CAP 64
-#define SFX_STARTING_VOLUME 1.0f
 
 // BGS
-#define BGS_TRACKS bgs_track_cave,
-#define BGS_TRACKS_TOTAL 2
-#define BGS_STARTING_VOLUME 1.0f
+#define BGS_TRACKS                                                             \
+    bgs_track_cave, bgs_track_water_streaming, bgs_track_lava_bubbling,
+#define BGS_TRACKS_TOTAL 4
 #define BGS_BUFFER_MS 500   // How far ahead of what's heard tracks are decoded
 #define BGS_MAX_FILL_MS 100 // Most a track decodes per tick to get there
 #define BGS_DECODE_CHUNK_SAMPLES 4096 // Floats decoded at a time
@@ -122,7 +124,7 @@ typedef enum {
 
 
 // Chunks
-#define CHUNKS_TOTAL 4
+#define CHUNKS_TOTAL 5
 #define CHUNKS_HELPER_TILESET_NAME "helper-tiles.tsx"
 #define CHUNKS_HELPER_TILES_TOTAL 64
 
@@ -132,6 +134,7 @@ typedef enum {
 #define TILEMAP_SIZE_X 1024
 #define TILEMAP_SIZE_Y 1024
 #define TILEMAP_TILE_TYPES tile_dirt = 1, tile_stone, tile_wood, tile_metal,
+#define TILEMAP_TILE_TYPES_TOTAL 5     // Counting the empty tile
 #define TILEMAP_AUTOMAP_NON_EMPTY_ID 2 // On Tiled's automap-tiles.tsx
 #define TILEMAP_Z_INDEX 20
 #define TILEMAP_PLATFORMS_Z_INDEX (-20)
@@ -148,14 +151,19 @@ typedef enum {
 #define FLUIDS_SHADER_IDX_STEP 8
 #define FLUIDS_WALL_COLOR 255, 0, 0, 255
 #define FLUIDS_STARTING_PARTICLES_DYNARR_CAP 1024
+#define FLUIDS_STARTING_BODIES_POOL_CAP 32
 #define FLUIDS_SPLASH_SURFACE_RANGE 2
 #define FLUIDS_STAGGER_SECONDS 10
 #define FLUIDS_INTERACTION_VOL_THRESHOLD 0.5f
-#define FLUIDS_Z_INDEX 10 // Lower z_indexes are drawn under the fluids
+#define FLUIDS_RIPPLE_SFX_VOL_THRESHOLD 0.5
+#define FLUIDS_BODIES_BGS_FADE_RATE 1.0f
+#define FLUIDS_Z_INDEX 10
 
 // Particles
-#define PARTICLES_TYPES particle_firework, particle_spark,
-#define PARTICLES_TOTAL 3
+#define PARTICLES_TYPES                                                        \
+    particle_tile_dirt, particle_tile_stone, particle_tile_wood,               \
+        particle_tile_metal
+#define PARTICLES_TOTAL 5
 #define PARTICLES_SPLIT_X 2
 #define PARTICLES_SPLIT_Y 2
 #define PARTICLES_CELL_W (SPRITESHEET_CELL_X / PARTICLES_SPLIT_X)

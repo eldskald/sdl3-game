@@ -1,4 +1,5 @@
 #pragma once
+#include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
 #include "engine/graphics.h"
@@ -21,6 +22,42 @@ typedef struct {
     double volume[FLUIDS_TOTAL];
     bool solid;
 } fluid_cell;
+
+// Coords of a fluid cell on the grid.
+//
+// ```
+// struct fluid_coords {
+//     Uint32 x, y;
+// };
+// ```
+typedef struct {
+    Uint32 x, y;
+} fluid_coords;
+
+// A body of fluid of `type`, the cells with it on the simulated rect connected
+// to each other by their sides. `cells` is a `fluid_coords` dynarr of them,
+// `total_volume` the volume of `type` on all of them and `rect` the smallest
+// rect around them, in fluid cell coords. `moving_cells` counts the cells
+// moving down or diagonally down on their next moves, plus the ones over each
+// cell moving down, since they fall along with it, so some cells are counted
+// twice.
+//
+// ```
+// struct fluid_body {
+//     fluid_type type;
+//     dynarr cells;
+//     double total_volume;
+//     SDL_Rect rect;
+//     Uint16 moving_cells;
+// };
+// ```
+typedef struct {
+    fluid_type type;
+    dynarr cells;
+    double total_volume;
+    SDL_Rect rect;
+    Uint16 moving_cells;
+} fluid_body;
 
 // Textures and shaders the fluids are drawn with, owned by `renderer.c`.
 // `texture` is what the fluid cells are drawn into, and it's drawn with
@@ -68,7 +105,7 @@ void FLUIDS_set_at(
 void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type);
 
 // Sets `cells` to be the rect `(x,y,w,h)`. Cells outside range are treated as
-// solids.
+// solids. Thread safe.
 void FLUIDS_get_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_cell (*cells)[w][h]);
 
@@ -81,13 +118,21 @@ void FLUIDS_get_at(
 // rest of the splash's settings are on `FLUIDS_PARTICLES_CSV_PATH`. Volume that
 // doesn't make a whole particle is put back. A column with no surface within
 // `FLUIDS_SPLASH_SURFACE_RANGE` cells of `y`, or with a wall over its surface,
-// is skipped.
+// is skipped. If any column has at least a tile tall body of fluid within that
+// range, `FLUIDS_SPLIT_Y` cells in a row with
+// `FLUIDS_INTERACTION_VOL_THRESHOLD` volume or more each, it also plays a
+// splash sound of the fluid with the most volume there, unless it's within
+// `FLUIDS_SPLASH_SFX_COOLDOWN` seconds of the last one.
 void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed);
 
 // Queues a ripple on the `size` square of pixels centered on pixel `(x,y)`,
 // applied on the next ripples tick. It adds `strength` to their height, on top
 // of any ripples already there, then spreads around the body of fluid it's in
-// and fades out over time.
+// and fades out over time. If the fluid cell on `(x,y)` and the one under it
+// have `FLUIDS_RIPPLE_SFX_VOL_THRESHOLD` volume or more together, it also plays
+// a slosh sound of the fluid with the most volume under the ripple, as heard
+// from `(x,y)` and with `strength` as its max volume, unless it's within
+// `FLUIDS_RIPPLE_SFX_COOLDOWN` seconds of the last one.
 void FLUIDS_ripple_at(Uint32 x, Uint32 y, Uint32 size, double strength);
 
 // Adds a particle of fluid of type `type` at `(x,y)` in world coords, moving
@@ -135,6 +180,10 @@ SDL_Rect FLUIDS_get_codes(Uint8* codes);
 // space from `CAMERA_get_simulation_rect()`, updated on each `FLUIDS_update()`.
 // Cells outside it are treated as walls by the simulation.
 SDL_Rect FLUIDS_get_simulated_rect(void);
+
+// Plays the BGS tracks of large bodies of fluid around the camera, louder the
+// closer they are to it. Call it from one thread only, the fixed one for now.
+void FLUIDS_play_bgs(void);
 
 
 

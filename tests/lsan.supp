@@ -1,5 +1,0 @@
-# Leaks the sanitizer reports that aren't ours, suppressed by `bin/test`.
-
-# Starting video and the GPU device on the graphics tests connects to D-Bus,
-# which keeps some of its memory until the process exits.
-leak:libdbus-1.so

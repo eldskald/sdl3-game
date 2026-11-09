@@ -91,9 +91,8 @@ typedef struct {
     Uint32 type;
     Uint32 count;
     Uint32 seed;
-    int pad0;
-    int pad1;
-    int pad2;
+    Uint32 shape;
+    float size[2];
 } request;
 ASSERT_SIZE_16(request);
 ASSERT_OFFSETOF(request, pos, 0);
@@ -103,6 +102,8 @@ ASSERT_OFFSETOF(request, spread, 20);
 ASSERT_OFFSETOF(request, type, 24);
 ASSERT_OFFSETOF(request, count, 28);
 ASSERT_OFFSETOF(request, seed, 32);
+ASSERT_OFFSETOF(request, shape, 36);
+ASSERT_OFFSETOF(request, size, 40);
 
 // Matches `DrawArgs` on `src/gpu/includes/particles-common.hlsli`.
 static_assert(sizeof(SDL_GPUIndirectDrawCommand) == 16);
@@ -507,23 +508,28 @@ void PARTICLES_stop(void) {
 
 
 
-void PARTICLES_emit(particle_type type,
-                    float x,
-                    float y,
-                    float vel_x,
-                    float vel_y,
-                    float speed_jitter,
-                    float spread,
-                    Uint32 count) {
+void PARTICLES_emit(particle_type type, particles_emit_settings settings) {
     request r = {
-        .pos = {x, y},
-        .vel = {vel_x, vel_y},
-        .speed_jitter = speed_jitter,
-        .spread = spread,
+        .vel = {settings.vel.x, settings.vel.y},
+        .speed_jitter = settings.speed_jitter,
+        .spread = settings.spread,
         .type = type,
-        .count = count,
+        .count = settings.count,
         .seed = SDL_rand_bits(),
+        .shape = settings.shape,
     };
+    switch (settings.shape) {
+    case particles_emit_point:
+        r.pos[0] = settings.pos.x;
+        r.pos[1] = settings.pos.y;
+        break;
+    case particles_emit_rect:
+        r.pos[0] = settings.rect.x;
+        r.pos[1] = settings.rect.y;
+        r.size[0] = settings.rect.w;
+        r.size[1] = settings.rect.h;
+        break;
+    }
     SDL_LockMutex(requests_mutex);
     push_to_dynarr(&r, &requests);
     SDL_UnlockMutex(requests_mutex);
@@ -633,8 +639,10 @@ void PARTICLES_draw(graphics_texture* spritesheet) {
 hashmap PARTICLES_get_string_particle_types_map(void) {
     hashmap map;
     init_hashmap(&map, sizeof(particle_type));
-    set_on_hashmap(&(particle_type){particle_firework}, "firework", &map);
-    set_on_hashmap(&(particle_type){particle_spark}, "spark", &map);
+    set_on_hashmap(&(particle_type){particle_tile_dirt}, "dirt", &map);
+    set_on_hashmap(&(particle_type){particle_tile_stone}, "stone", &map);
+    set_on_hashmap(&(particle_type){particle_tile_wood}, "wood", &map);
+    set_on_hashmap(&(particle_type){particle_tile_metal}, "metal", &map);
     return map;
 }
 

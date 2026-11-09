@@ -63,7 +63,7 @@ output main(uint vertex: SV_VertexID, uint instance: SV_InstanceID) {
     rot = float2x2(c, -s, s, c);
     corner_vec = t.face_vel > 0 ? mul(corner_vec, rot) : corner_vec;
 
-    float2 pos = p.pos + slither + corner_vec;
+    float2 pos = p.pos - _CamPos + slither + corner_vec;
 
     // A copy, since `random()` advances it.
     uint seed = p.seed;

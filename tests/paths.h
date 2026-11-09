@@ -20,6 +20,8 @@
 #undef TEXT_ABLE_5_PATH
 #undef BGS_TRACKS_CSV_PATH
 #undef BGS_CAVE_PATH
+#undef BGS_WATER_STREAMING_PATH
+#undef BGS_LAVA_BUBBLING_PATH
 
 // Chunks
 #define CHUNKS_PLATFORMS_CSV_PATH "tests/mocks/tiles/platforms.csv"
@@ -57,6 +59,9 @@
 // the buffer so filling it has to loop.
 #define BGS_TRACKS_CSV_PATH "tests/mocks/audio/tracks.csv"
 #define BGS_CAVE_PATH "tests/mocks/audio/track.ogg"
+// The fluids' tracks are the same mock, so they don't bloat the tests.
+#define BGS_WATER_STREAMING_PATH BGS_CAVE_PATH
+#define BGS_LAVA_BUBBLING_PATH BGS_CAVE_PATH
 
 // Graphics
 // Shaders only the graphics tests use, compiled by `bin/compile-shaders`.

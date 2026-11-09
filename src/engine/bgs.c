@@ -14,7 +14,7 @@ typedef struct {
     const char* name;
     const Uint8* data;
     size_t size;
-    bgs_bus bus;
+    audio_bus bus;
 } track_source;
 
 typedef struct {
@@ -25,10 +25,10 @@ typedef struct {
     Uint32 position;
     Uint32 loop_start, loop_end;
     float volume;
+    bool stop_when_silent;
     bool fading;
     float fade_target;
     float fade_rate;
-    bool fade_stop;
 } track_data;
 
 
@@ -36,33 +36,51 @@ typedef struct {
 static const Uint8 cave_ogg[] = {
 #embed BGS_CAVE_PATH
 };
+static const Uint8 water_streaming_ogg[] = {
+#embed BGS_WATER_STREAMING_PATH
+};
+static const Uint8 lava_bubbling_ogg[] = {
+#embed BGS_LAVA_BUBBLING_PATH
+};
 static const char tracks_csv[] = {
 #embed BGS_TRACKS_CSV_PATH suffix(, '\0')
 };
 
+// Fluids' tracks are sounds of the gameplay, so they're on the same bus as the
+// SFX and follow their volume instead of the ambience's.
 static const track_source sources[BGS_TRACKS_TOTAL] = {
-    [bgs_track_cave] = {"cave", cave_ogg, sizeof(cave_ogg), bgs_bus_ambience},
+    [bgs_track_cave] = {"cave",
+                        cave_ogg,
+                        sizeof(cave_ogg),
+                        audio_bus_ambience_tracks},
+    [bgs_track_water_streaming] = {"water_streaming",
+                                   water_streaming_ogg,
+                                   sizeof(water_streaming_ogg),
+                                   audio_bus_gameplay_sounds},
+    [bgs_track_lava_bubbling] = {"lava_bubbling",
+                                 lava_bubbling_ogg,
+                                 sizeof(lava_bubbling_ogg),
+                                 audio_bus_gameplay_sounds},
 };
 static track_data tracks[BGS_TRACKS_TOTAL] = {0};
 static SDL_Mutex* tracks_mutex = NULL;
-static SDL_AudioDeviceID devices[BGS_BUSES_TOTAL] = {0};
-static float bus_volumes[BGS_BUSES_TOTAL] = {0};
-static bool audio_started = false;
 static float scratch[BGS_DECODE_CHUNK_SAMPLES] = {0};
 
 static bool is_track(bgs_track track) {
     return track > bgs_track_none && track < BGS_TRACKS_TOTAL;
 }
 
-static void set_volume(track_data* t, float volume) {
-    t->volume = volume;
-    SDL_SetAudioStreamGain(t->stream, volume);
-}
-
 static void stop(track_data* t) {
     SDL_ClearAudioStream(t->stream);
     t->playing = false;
     t->fading = false;
+}
+
+// Stops `t` once it's silent if it's set to.
+static void set_volume(track_data* t, float volume) {
+    t->volume = volume;
+    SDL_SetAudioStreamGain(t->stream, volume);
+    if (volume <= 0.0f && t->stop_when_silent) stop(t);
 }
 
 static Uint32 ms_to_frames(const track_data* t, Uint32 ms) {
@@ -127,39 +145,41 @@ static void fade(track_data* t, double dt) {
     float step = (float)(t->fade_rate * dt);
     float diff = t->fade_target - t->volume;
     if (t->fade_rate <= 0.0f || SDL_fabsf(diff) <= step) {
-        set_volume(t, t->fade_target);
         t->fading = false;
-        if (t->fade_stop) stop(t);
+        set_volume(t, t->fade_target);
         return;
     }
     set_volume(t, t->volume + (diff > 0.0f ? step : -step));
 }
 
-static void set_loop(bgs_track track, Uint32 loop_start, Uint32 loop_end) {
-    track_data* t = &tracks[track];
-    if (!t->ogg) return;
-    t->loop_start = loop_start;
-    t->loop_end = loop_end ? loop_end : t->ogg->frames;
-}
-
 typedef struct {
     bgs_track track;
     Uint32 loop_start, loop_end;
-} loop_row;
+    bool stop_when_silent;
+} track_row;
 
-static void load_loops(void) {
+static void set_row(const track_row* row) {
+    track_data* t = &tracks[row->track];
+    t->stop_when_silent = row->stop_when_silent;
+    if (!t->ogg) return;
+    t->loop_start = row->loop_start;
+    t->loop_end = row->loop_end ? row->loop_end : t->ogg->frames;
+}
+
+static void load_rows(void) {
     dynarr parsed = CSV_parse(tracks_csv);
-    loop_row* rows = SDL_calloc(count_csv_entries(&parsed), sizeof(loop_row));
+    track_row* rows = SDL_calloc(count_csv_entries(&parsed), sizeof(track_row));
     parsing_field fields[] = {
         {"track", parsing_bgs_track, &rows->track},
         {"loop_start", parsing_uint32, &rows->loop_start},
         {"loop_end", parsing_uint32, &rows->loop_end},
+        {"stop_when_silent", parsing_bool, &rows->stop_when_silent},
     };
     size_t n = read_csv_table(
-        &parsed, fields, SDL_arraysize(fields), sizeof(loop_row));
+        &parsed, fields, SDL_arraysize(fields), sizeof(track_row));
     CSV_free(&parsed);
     for (size_t i = 0; i < n; i++)
-        set_loop(rows[i].track, rows[i].loop_start, rows[i].loop_end);
+        set_row(&rows[i]);
     SDL_free(rows);
 }
 
@@ -171,11 +191,12 @@ static void load_track(bgs_track track) {
     t->ogg = AUDIO_create_ogg_from_mem(s->name, s->data, s->size);
     if (!t->ogg) return;
     t->loop_end = t->ogg->frames;
-    if (!devices[s->bus]) return;
+    SDL_AudioDeviceID device = AUDIO_get_bus_device(s->bus);
+    if (!device) return;
     t->stream = SDL_CreateAudioStream(&t->ogg->spec, NULL);
     if (!log_creation(SDL_LOG_CATEGORY_AUDIO, t->stream, "%s stream", s->name))
         return;
-    SDL_BindAudioStream(devices[s->bus], t->stream);
+    SDL_BindAudioStream(device, t->stream);
 }
 
 
@@ -235,40 +256,18 @@ float BGS_get_track_volume(bgs_track track) {
     return volume;
 }
 
-void BGS_fade_track(bgs_track track,
-                    float volume,
-                    double seconds,
-                    bool stop_at_end) {
+void BGS_fade_track(bgs_track track, float volume, float rate) {
     if (!is_track(track)) return;
     SDL_LockMutex(tracks_mutex);
     track_data* t = &tracks[track];
     t->fade_target = volume > 0.0f ? volume : 0.0f;
-    float diff = SDL_fabsf(t->fade_target - t->volume);
-    t->fade_rate = seconds > 0.0 ? (float)(diff / seconds) : 0.0f;
-    t->fade_stop = stop_at_end;
+    t->fade_rate = rate;
     t->fading = true;
     SDL_UnlockMutex(tracks_mutex);
 }
 
-void BGS_pause_bus(bgs_bus bus) {
-    if (devices[bus]) SDL_PauseAudioDevice(devices[bus]);
-}
-
-void BGS_resume_bus(bgs_bus bus) {
-    if (devices[bus]) SDL_ResumeAudioDevice(devices[bus]);
-}
-
-bool BGS_is_bus_paused(bgs_bus bus) {
-    return devices[bus] && SDL_AudioDevicePaused(devices[bus]);
-}
-
-void BGS_set_bus_volume(bgs_bus bus, float volume) {
-    bus_volumes[bus] = volume > 0.0f ? volume : 0.0f;
-    if (devices[bus]) SDL_SetAudioDeviceGain(devices[bus], bus_volumes[bus]);
-}
-
-float BGS_get_bus_volume(bgs_bus bus) {
-    return bus_volumes[bus];
+bool BGS_get_track_stops_when_silent(bgs_track track) {
+    return is_track(track) && tracks[track].stop_when_silent;
 }
 
 hashmap BGS_get_string_tracks_map(void) {
@@ -285,32 +284,10 @@ hashmap BGS_get_string_tracks_map(void) {
 void BGS_start(void) {
     tracks_mutex = SDL_CreateMutex();
     log_creation(SDL_LOG_CATEGORY_AUDIO, tracks_mutex, "bgs tracks mutex");
-    for (int b = 0; b < BGS_BUSES_TOTAL; b++)
-        bus_volumes[b] = BGS_STARTING_VOLUME;
-
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-        audio_started = true;
-        const char* names[BGS_BUSES_TOTAL] = {"music", "ambience"};
-        for (int b = 0; b < BGS_BUSES_TOTAL; b++) {
-            devices[b] =
-                SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
-            if (log_creation(SDL_LOG_CATEGORY_AUDIO,
-                             devices[b] ? &devices[b] : NULL,
-                             "bgs bus %s",
-                             names[b]))
-                SDL_SetAudioDeviceGain(devices[b], bus_volumes[b]);
-        }
-    } else {
-        SDL_LogError(SDL_LOG_CATEGORY_AUDIO,
-                     "Couldn't init audio, background sounds will be silent: "
-                     "%s",
-                     SDL_GetError());
-    }
-
     for (bgs_track track = bgs_track_none + 1; track < BGS_TRACKS_TOTAL;
          track++)
         load_track(track);
-    load_loops();
+    load_rows();
 }
 
 void BGS_update(void) {
@@ -335,24 +312,14 @@ void BGS_stop(void) {
         AUDIO_destroy_ogg(tracks[track].ogg);
         tracks[track] = (track_data){0};
     }
-    for (int b = 0; b < BGS_BUSES_TOTAL; b++) {
-        if (devices[b]) SDL_CloseAudioDevice(devices[b]);
-        devices[b] = 0;
-    }
     SDL_DestroyMutex(tracks_mutex);
     tracks_mutex = NULL;
-    if (audio_started) SDL_QuitSubSystem(SDL_INIT_AUDIO);
-    audio_started = false;
 }
 
 
 
 SDL_AudioStream* BGS_get_track_stream(bgs_track track) {
     return is_track(track) ? tracks[track].stream : NULL;
-}
-
-SDL_AudioDeviceID BGS_get_bus_device(bgs_bus bus) {
-    return devices[bus];
 }
 
 void BGS_get_track_loop(bgs_track track, Uint32* loop_start, Uint32* loop_end) {

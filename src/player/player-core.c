@@ -1,6 +1,7 @@
 #include "player/player-core.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
+#include "engine/camera.h"
 #include "engine/fluids.h"
 #include "engine/game-manager.h"
 #include "engine/inputs.h"
@@ -187,6 +188,9 @@ static void update_body(Sint8 dir) {
     if (new_y >= mfll) new_y = mfll;
 
     PHYSICS_set_body_velocity(state.body_id, new_x, new_y);
+
+    // Camera
+    CAMERA_target_at(b.x, b.y);
 }
 
 void PLAYER_update(void) {

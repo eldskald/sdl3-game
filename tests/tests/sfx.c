@@ -1,6 +1,7 @@
 #include "engine/sfx.h"
 #include "defs.h"
 #include "engine/audio.h"
+#include "engine/camera.h"
 #include "tests.h"
 #include "tests/sfx.h"
 #include <SDL3/SDL.h>
@@ -13,6 +14,7 @@
 // The dummy driver plays in real time, so sounds take as long as they are.
 #define WAIT_TIMEOUT_MS 1000
 #define WAIT_STEP_MS 5
+#define FALLOFF 160.0 // Of the 2D sounds, in pixels
 
 static const Uint8 wav_bytes[] = {
 #embed MOCK_WAV_PATH
@@ -38,22 +40,24 @@ static bool is_near(float a, float b) {
 void test_sfx(void) {
     printf(YELLOW "\nTesting SFX...\n" RESET);
 
+    size_t early_id = 0;
+    int early = SFX_new_voice(audio_bus_gameplay_sounds, &early_id);
+    expect("Created a voice before starting SFX, checking the error...",
+           1,
+           (bool[]){early == 2});
+
     // The dummy driver has no hardware behind it but consumes what's played
     // on it as a real device would.
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    AUDIO_start();
     SFX_start();
-    SDL_AudioDeviceID gameplay = SFX_get_bus_device(sfx_bus_gameplay);
-    SDL_AudioDeviceID gui = SFX_get_bus_device(sfx_bus_gui);
-    expect("Started SFX on the dummy driver, checking if each bus got its own "
-           "logical device, unpaused and at full volume...",
-           7,
-           (bool[]){gameplay != 0,
-                    gui != 0,
-                    gameplay != gui,
-                    !SFX_is_bus_paused(sfx_bus_gameplay),
-                    !SFX_is_bus_paused(sfx_bus_gui),
-                    is_near(SDL_GetAudioDeviceGain(gameplay), 1.0f),
-                    is_near(SDL_GetAudioDeviceGain(gui), 1.0f)});
+    SDL_AudioDeviceID gameplay =
+        AUDIO_get_bus_device(audio_bus_gameplay_sounds);
+    SDL_AudioDeviceID gui = AUDIO_get_bus_device(audio_bus_gui_sounds);
+    expect("Started audio and SFX on the dummy driver, checking if the "
+           "gameplay and GUI sounds buses got their devices...",
+           3,
+           (bool[]){gameplay != 0, gui != 0, gameplay != gui});
 
     audio_wav* wav = AUDIO_create_wav(
         "test", SDL_IOFromConstMem(wav_bytes, sizeof(wav_bytes)), true);
@@ -66,13 +70,14 @@ void test_sfx(void) {
                     wav && wav->len == 2205 * 4});
     if (!wav) {
         SFX_stop();
+        AUDIO_stop();
         return;
     }
 
     size_t a = 0;
     size_t b = 0;
-    int new_a = SFX_new_voice(sfx_bus_gameplay, &a);
-    int new_b = SFX_new_voice(sfx_bus_gui, &b);
+    int new_a = SFX_new_voice(audio_bus_gameplay_sounds, &a);
+    int new_b = SFX_new_voice(audio_bus_gui_sounds, &b);
     SDL_AudioStream* stream_a = SFX_get_voice_stream(a);
     SDL_AudioStream* stream_b = SFX_get_voice_stream(b);
     expect("Created a voice on each bus, checking if their streams are bound "
@@ -99,15 +104,15 @@ void test_sfx(void) {
 
 
 
-    SFX_pause_bus(sfx_bus_gameplay);
+    AUDIO_pause_bus(audio_bus_gameplay_sounds);
     SFX_play_voice(a, wav);
     SFX_play_voice(b, wav);
     expect("Paused the gameplay bus and played the WAV on both voices, "
            "checking if only the gameplay device got paused and the gameplay "
            "voice got the whole WAV queued...",
            5,
-           (bool[]){SFX_is_bus_paused(sfx_bus_gameplay),
-                    !SFX_is_bus_paused(sfx_bus_gui),
+           (bool[]){AUDIO_is_bus_paused(audio_bus_gameplay_sounds),
+                    !AUDIO_is_bus_paused(audio_bus_gui_sounds),
                     SDL_AudioDevicePaused(gameplay),
                     !SDL_AudioDevicePaused(gui),
                     SDL_GetAudioStreamQueued(stream_a) == (int)wav->len});
@@ -121,20 +126,20 @@ void test_sfx(void) {
                     playing_a,
                     SDL_GetAudioStreamQueued(stream_a) == (int)wav->len});
 
-    SFX_resume_bus(sfx_bus_gameplay);
+    AUDIO_resume_bus(audio_bus_gameplay_sounds);
     finished_a = wait_for_voice(a);
     expect("Resumed the gameplay bus, checking if it's unpaused and its voice "
            "finished playing...",
            3,
-           (bool[]){!SFX_is_bus_paused(sfx_bus_gameplay),
+           (bool[]){!AUDIO_is_bus_paused(audio_bus_gameplay_sounds),
                     !SDL_AudioDevicePaused(gameplay),
                     finished_a});
 
-    SFX_pause_bus(sfx_bus_gameplay);
+    AUDIO_pause_bus(audio_bus_gameplay_sounds);
     SFX_play_voice(a, wav);
     int stop_a = SFX_stop_voice(a);
     SFX_is_voice_playing(a, &playing_a);
-    SFX_resume_bus(sfx_bus_gameplay);
+    AUDIO_resume_bus(audio_bus_gameplay_sounds);
     expect("Played the WAV on a paused bus and stopped it, checking if it's "
            "not playing with nothing queued...",
            3,
@@ -182,24 +187,15 @@ void test_sfx(void) {
 
 
 
-    SFX_set_volume(0.5f);
-    expect("Set the global SFX volume, checking if every bus's device got it "
-           "while the voices' streams kept theirs...",
-           5,
-           (bool[]){is_near(SFX_get_volume(), 0.5f),
-                    is_near(SDL_GetAudioDeviceGain(gameplay), 0.5f),
-                    is_near(SDL_GetAudioDeviceGain(gui), 0.5f),
+    AUDIO_set_bus_volume(audio_bus_gameplay_sounds, 0.5f);
+    expect("Set the gameplay sounds bus's volume, checking if only its device "
+           "got it while the voices' streams kept theirs...",
+           4,
+           (bool[]){is_near(SDL_GetAudioDeviceGain(gameplay), 0.5f),
+                    is_near(SDL_GetAudioDeviceGain(gui), 1.0f),
                     is_near(SDL_GetAudioStreamGain(stream_a), 0.25f),
                     is_near(SDL_GetAudioStreamGain(stream_b), 0.0f)});
-
-    SFX_set_volume(-1.0f);
-    expect("Set a negative global SFX volume, checking if it's taken as "
-           "silence...",
-           3,
-           (bool[]){is_near(SFX_get_volume(), 0.0f),
-                    is_near(SDL_GetAudioDeviceGain(gameplay), 0.0f),
-                    is_near(SDL_GetAudioDeviceGain(gui), 0.0f)});
-    SFX_set_volume(1.0f);
+    AUDIO_set_bus_volume(audio_bus_gameplay_sounds, 1.0f);
 
 
 
@@ -224,8 +220,53 @@ void test_sfx(void) {
                     SFX_set_voice_volume(out, 1.0f) == 3,
                     unchanged && is_near(unchanged_vol, 0.0f)});
 
+    size_t d = 0;
+    SFX_new_voice(audio_bus_gameplay_sounds, &d);
+    CAMERA_center_at(WINDOW_SIZE_X, WINDOW_SIZE_Y);
+    SDL_FRect cam = CAMERA_get_rect();
+    float vol_inside = 0.0f;
+    float vol_edge = 0.0f;
+    float vol_half = 0.0f;
+    float vol_corner = 0.0f;
+    float vol_far = 0.0f;
+    bool playing_far = true;
+    int inside = SFX_play_voice_2d(
+        d, wav, cam.x + cam.w / 2, cam.y + cam.h / 2, 0.5f, FALLOFF);
+    SFX_get_voice_volume(d, &vol_inside);
+    SFX_play_voice_2d(d, wav, cam.x + cam.w, cam.y, 0.5f, FALLOFF);
+    SFX_get_voice_volume(d, &vol_edge);
+    SFX_play_voice_2d(
+        d, wav, cam.x - FALLOFF / 2, cam.y + cam.h / 2, 0.5f, FALLOFF);
+    SFX_get_voice_volume(d, &vol_half);
+    // 3-4-5 triangle off the bottom right corner, 5 tenths of the falloff away
+    SFX_play_voice_2d(d,
+                      wav,
+                      cam.x + cam.w + FALLOFF * 0.3,
+                      cam.y + cam.h + FALLOFF * 0.4,
+                      1.0f,
+                      FALLOFF);
+    SFX_get_voice_volume(d, &vol_corner);
+    SFX_stop_voice(d);
+    int far = SFX_play_voice_2d(
+        d, wav, cam.x + cam.w / 2, cam.y - FALLOFF * 2, 1.0f, FALLOFF);
+    SFX_get_voice_volume(d, &vol_far);
+    SFX_is_voice_playing(d, &playing_far);
+    expect("Played 2D sounds inside, on the edge, outside and far from the "
+           "camera, checking their volumes and if the far one was skipped...",
+           9,
+           (bool[]){inside == 0,
+                    is_near(vol_inside, 0.5f),
+                    is_near(vol_edge, 0.5f),
+                    is_near(vol_half, 0.25f),
+                    is_near(vol_corner, 0.5f),
+                    far == 0,
+                    is_near(vol_far, 0.0f),
+                    !playing_far,
+                    SFX_play_voice_2d(out, wav, 0.0, 0.0, 1.0f, FALLOFF) == 3});
+    SFX_del_voice(d);
+
     size_t c = 0;
-    SFX_new_voice(sfx_bus_gameplay, &c);
+    SFX_new_voice(audio_bus_gameplay_sounds, &c);
     expect("Created a voice after deleting one, checking if it reused the "
            "freed slot on the gameplay bus...",
            2,
@@ -234,9 +275,14 @@ void test_sfx(void) {
                         gameplay});
 
     SFX_stop();
+    size_t late_id = 0;
+    int late = SFX_new_voice(audio_bus_gameplay_sounds, &late_id);
+    expect("Stopped SFX, checking if its voices are gone and new ones can't "
+           "be created...",
+           3,
+           (bool[]){SFX_get_voice_stream(a) == NULL,
+                    SFX_get_voice_stream(c) == NULL,
+                    late == 2});
+    AUDIO_stop();
     AUDIO_destroy_wav(wav);
-    expect("Stopped SFX, checking if the buses' devices were closed...",
-           2,
-           (bool[]){SFX_get_bus_device(sfx_bus_gameplay) == 0,
-                    SFX_get_bus_device(sfx_bus_gui) == 0});
 }

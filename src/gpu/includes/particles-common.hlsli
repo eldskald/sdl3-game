@@ -63,9 +63,8 @@ struct Request {
     uint type;
     uint count;
     uint seed;
-    int pad0;
-    int pad1;
-    int pad2;
+    uint shape; // One of the `SHAPE_` defines
+    float2 size; // Of the rect, when `shape` is `SHAPE_RECT`
 };
 
 // Matches `SDL_GPUIndirectDrawCommand`, one per group on the draw arguments'
@@ -82,6 +81,10 @@ struct DrawArgs {
 #define PI 3.14159265
 #define TAU (PI * 2)
 #define DEG2RAD (PI / 180)
+
+// Matches `particles_emit_shape` on `src/engine/particles.h`.
+#define SHAPE_POINT 0
+#define SHAPE_RECT 1
 
 #define COUNTER_REQUESTS 0
 #define COUNTER_NEXT_SLOT 1

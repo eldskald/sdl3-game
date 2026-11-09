@@ -51,6 +51,8 @@ void trail(inout Particle p, ParticleType t) {
             r.vel = -dir * t.trail_speed;
 
             r.pos = p.pos;
+            r.shape = SHAPE_POINT;
+            r.size = float2(0.0, 0.0);
             r.spread = t.trail_spread;
             r.speed_jitter = t.trail_speed_jitter;
             r.type = t.trail_particles;
@@ -84,6 +86,8 @@ void die(inout Particle p, ParticleType t, float2 normal) {
             r.vel = bounce(dir, normal) * t.death_speed;
 
             r.pos = p.pos;
+            r.shape = SHAPE_POINT;
+            r.size = float2(0.0, 0.0);
             r.spread = t.death_spread;
             r.speed_jitter = t.death_speed_jitter;
             r.type = t.death_particles;
@@ -124,7 +128,7 @@ void main(uint3 id: SV_DispatchThreadID) {
             } else {
                 die(p, t, normal);
             }
-        } else if (code == CODE_OUTSIDE || (code > 0 && t.ignore_fluids != 0)) {
+        } else if (code == CODE_OUTSIDE || (code > 0 && t.ignore_fluids == 0)) {
             p.type = 0;
         } else {
             p.pos = next;

@@ -15,3 +15,17 @@ Lastly, for the level editor we are using [Tiled](https://www.mapeditor.org/). A
 After everything is setup, run a dev build with `bin/dev`, which also compiles the shaders. You can also run `bin/test` to run tests.
 
 You can lint with `bin/lint` and format with `bin/format` if you have clang-tidy and clang-format.
+
+# Credits
+
+All of the code and art was done by me. The sound effects and fonts were not. Most of it is creative commons by attribution, some is CC0 but I'm listing here all the attributions for everyone:
+
+- [Nox Sound](https://nox-sound-design.itch.io/essentials-series-sfx-nox-sound) for a bunch of sound effects, from most of the water sounds and all the walking and jumping sounds
+- [StormwaveAudio](https://freesound.org/people/StormwaveAudio/) for the water stream SFX
+- [Audionautics](https://freesound.org/people/Audionautics/) for the bubbling lava sound
+- [pengo_au](https://freesound.org/people/pengo_au/sounds/90143/) for this steam sound
+- [magnuswaker](https://freesound.org/people/magnuswaker/sounds/540080/) for this sizzling sound
+- [Tom Music](https://tommusic.itch.io/) for the cave ambiance sounds
+- [stormgold](https://stormgold.itch.io/able-font) for the Able font
+- [quiple](https://github.com/quiple/galmuri) for the Galmuri font
+- [TakWolf](https://github.com/TakWolf/fusion-pixel-font) for the Fusion Pixel Font

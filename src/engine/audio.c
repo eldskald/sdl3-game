@@ -1,4 +1,5 @@
 #include "engine/audio.h"
+#include "defs.h"
 #include "utils/logger.h"
 #include <SDL3/SDL.h>
 
@@ -18,6 +19,15 @@
 #elif defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+
+static SDL_AudioDeviceID devices[AUDIO_BUSES_TOTAL] = {0};
+static float bus_volumes[AUDIO_BUSES_TOTAL] = {
+    [audio_bus_gui_sounds] = AUDIO_STARTING_VOLUME,
+    [audio_bus_gameplay_sounds] = AUDIO_STARTING_VOLUME,
+    [audio_bus_ambience_tracks] = AUDIO_STARTING_VOLUME,
+    [audio_bus_music_tracks] = AUDIO_STARTING_VOLUME,
+};
+static bool audio_started = false;
 
 
 
@@ -109,4 +119,67 @@ bool AUDIO_seek_ogg(audio_ogg* ogg, Uint32 frame) {
     if (stb_vorbis_seek(ogg->vorbis, frame)) return true;
     SDL_SetError("stb_vorbis error %d.", stb_vorbis_get_error(ogg->vorbis));
     return false;
+}
+
+
+
+void AUDIO_pause_bus(audio_bus bus) {
+    if (devices[bus]) SDL_PauseAudioDevice(devices[bus]);
+}
+
+void AUDIO_resume_bus(audio_bus bus) {
+    if (devices[bus]) SDL_ResumeAudioDevice(devices[bus]);
+}
+
+bool AUDIO_is_bus_paused(audio_bus bus) {
+    return devices[bus] && SDL_AudioDevicePaused(devices[bus]);
+}
+
+void AUDIO_set_bus_volume(audio_bus bus, float volume) {
+    bus_volumes[bus] = volume > 0.0f ? volume : 0.0f;
+    if (devices[bus]) SDL_SetAudioDeviceGain(devices[bus], bus_volumes[bus]);
+}
+
+float AUDIO_get_bus_volume(audio_bus bus) {
+    return bus_volumes[bus];
+}
+
+SDL_AudioDeviceID AUDIO_get_bus_device(audio_bus bus) {
+    return devices[bus];
+}
+
+
+
+void AUDIO_start(void) {
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        SDL_LogError(SDL_LOG_CATEGORY_AUDIO,
+                     "Couldn't init audio, the game will be silent: %s",
+                     SDL_GetError());
+        return;
+    }
+    audio_started = true;
+    const char* names[AUDIO_BUSES_TOTAL] = {
+        [audio_bus_gui_sounds] = "gui sounds",
+        [audio_bus_gameplay_sounds] = "gameplay sounds",
+        [audio_bus_ambience_tracks] = "ambience tracks",
+        [audio_bus_music_tracks] = "music tracks",
+    };
+    for (int b = 0; b < AUDIO_BUSES_TOTAL; b++) {
+        devices[b] =
+            SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
+        if (log_creation(SDL_LOG_CATEGORY_AUDIO,
+                         devices[b] ? &devices[b] : NULL,
+                         "%s bus",
+                         names[b]))
+            SDL_SetAudioDeviceGain(devices[b], bus_volumes[b]);
+    }
+}
+
+void AUDIO_stop(void) {
+    for (int b = 0; b < AUDIO_BUSES_TOTAL; b++) {
+        if (devices[b]) SDL_CloseAudioDevice(devices[b]);
+        devices[b] = 0;
+    }
+    if (audio_started) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    audio_started = false;
 }

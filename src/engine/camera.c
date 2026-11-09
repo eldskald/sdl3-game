@@ -12,6 +12,7 @@
 typedef struct {
     double speed;
     double smoothing_range;
+    double smoothing_min_speed;
 } camera_data;
 
 static const char camera_csv[] = {
@@ -78,6 +79,7 @@ void CAMERA_start(void) {
     parsing_field fields[] = {
         {"speed", parsing_double, &data.speed},
         {"smoothing_range", parsing_double, &data.smoothing_range},
+        {"smoothing_min_speed", parsing_double, &data.smoothing_min_speed},
     };
     dynarr parsed = CSV_parse(camera_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
@@ -86,13 +88,15 @@ void CAMERA_start(void) {
 
 
 
-void CAMERA_step(void) {
+void CAMERA_update(void) {
     double center_x = pos_x + WINDOW_SIZE_X / 2;
     double center_y = pos_y + WINDOW_SIZE_Y / 2;
     double d = SDL_sqrt((center_x - target_x) * (center_x - target_x) +
                         (center_y - target_y) * (center_y - target_y));
     double v = data.speed;
-    if (d < data.smoothing_range) v *= d / data.smoothing_range;
+    if (d < data.smoothing_range)
+        v = data.smoothing_min_speed +
+            (data.speed - data.smoothing_min_speed) * d / data.smoothing_range;
 
     double step = v * GAME_MANAGER_get_current_dt();
     if (step >= d) {

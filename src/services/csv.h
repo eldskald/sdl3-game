@@ -6,6 +6,14 @@
 // `CSV_cell()`.
 dynarr CSV_parse(const char* data);
 
+// Parses section `n` of a CSV string like `CSV_parse()`, sections being
+// separated by blank lines, from `0`. Lines with only empty cells, like
+// `,,,`, are blank too, as spreadsheet editors save empty rows like that. A
+// file can then hold, for example, a few key/value rows on its first section
+// and a table on its second, each read with its own parsing utils. Past the
+// last section, it has no rows. Free it with `CSV_free()`.
+dynarr CSV_parse_section(const char* data, size_t n);
+
 // Iterates through each row freeing the cell strings, then deinits the row and
 // finally deinits the data. Call after you're done with the CSV.
 void CSV_free(dynarr* data);

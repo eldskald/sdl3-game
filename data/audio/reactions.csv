@@ -1,0 +1,5 @@
+sfx_cooldown,0.05
+falloff_range,160
+
+fluid A,fluid B,resulting tile,vol
+water,lava,stone,1

@@ -223,7 +223,26 @@ static bool are_intersecting(double ax,
 
 
 
+// Cuts `d` short so a body at `pos` with `size` ends up within `[0, level]`,
+// the level's edges being walls for every body type. Returns whether it did.
+static bool clamp_to_level(double pos, double size, double level, double* d) {
+    double to = SDL_clamp(pos + *d, 0.0, level - size);
+    bool hit = to != pos + *d;
+    *d = to - pos;
+    return hit;
+}
+
+static bool clamp_to_level_x(const body* b, double* d) {
+    return clamp_to_level(b->x, b->w, TILEMAP_SIZE_X * SPRITESHEET_CELL_X, d);
+}
+
+static bool clamp_to_level_y(const body* b, double* d) {
+    return clamp_to_level(b->y, b->h, TILEMAP_SIZE_Y * SPRITESHEET_CELL_Y, d);
+}
+
+// Tile loops use `int`s, so going left or up past tile `0` doesn't wrap around.
 static void move_body_horizontally(body_data* b, double d) {
+    bool edge = clamp_to_level_x(&b->body, &d);
 
     // tiles the corners of the body is in, snapped to pixels
     double tl_x = SDL_round(b->body.x);
@@ -238,8 +257,8 @@ static void move_body_horizontally(body_data* b, double d) {
         Uint16 to_x = pos_to_tile_x(tr_x + d);
         Uint16 from_y = pos_to_tile_y(tl_y);
         Uint16 to_y = pos_to_tile_y(bl_y);
-        for (Uint16 i = from_x; i <= to_x; i++) {
-            for (Uint16 j = from_y; j <= to_y; j++) {
+        for (int i = from_x; i <= to_x; i++) {
+            for (int j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
                 if (r == 1 || (data.type && !data.platform)) {
@@ -256,7 +275,10 @@ static void move_body_horizontally(body_data* b, double d) {
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->body.x += d;
+        if (!found) {
+            b->body.x += d;
+            if (edge) b->body.vel_x = 0.0f;
+        }
     }
     // when moving left
     else {
@@ -265,8 +287,8 @@ static void move_body_horizontally(body_data* b, double d) {
         Uint16 to_x = pos_to_tile_x(tl_x + d);
         Uint16 from_y = pos_to_tile_y(tl_y);
         Uint16 to_y = pos_to_tile_y(bl_y);
-        for (Uint16 i = from_x; i >= to_x; i--) {
-            for (Uint16 j = from_y; j <= to_y; j++) {
+        for (int i = from_x; i >= to_x; i--) {
+            for (int j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
                 if (r == 1 || (data.type && !data.platform)) {
@@ -283,11 +305,15 @@ static void move_body_horizontally(body_data* b, double d) {
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->body.x += d;
+        if (!found) {
+            b->body.x += d;
+            if (edge) b->body.vel_x = 0.0f;
+        }
     }
 }
 
 static void move_body_vertically(body_data* b, double d) {
+    bool edge = clamp_to_level_y(&b->body, &d);
 
     // tiles the corners of the body is in
     double tl_x = SDL_round(b->body.x);
@@ -303,8 +329,8 @@ static void move_body_vertically(body_data* b, double d) {
         Uint16 to_y = pos_to_tile_y(bl_y + d);
         Uint16 from_x = pos_to_tile_x(tl_x);
         Uint16 to_x = pos_to_tile_x(tr_x);
-        for (Uint16 i = from_x; i <= to_x; i++) {
-            for (Uint16 j = from_y; j <= to_y; j++) {
+        for (int i = from_x; i <= to_x; i++) {
+            for (int j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
                 if (r == 1 || data.type) {
@@ -324,7 +350,10 @@ static void move_body_vertically(body_data* b, double d) {
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->body.y += d;
+        if (!found) {
+            b->body.y += d;
+            if (edge) b->body.vel_y = 0.0f;
+        }
     }
     // when moving up
     else {
@@ -333,8 +362,8 @@ static void move_body_vertically(body_data* b, double d) {
         Uint16 to_y = pos_to_tile_y(tl_y + d);
         Uint16 from_x = pos_to_tile_x(tl_x);
         Uint16 to_x = pos_to_tile_x(tr_x);
-        for (Uint16 i = from_x; i <= to_x; i++) {
-            for (Uint16 j = from_y; j >= to_y; j--) {
+        for (int i = from_x; i <= to_x; i++) {
+            for (int j = from_y; j >= to_y; j--) {
                 tile data = (tile){0};
                 int r = TILEMAP_get_at(i, j, &data);
                 if (r == 1 || (data.type && !data.platform)) {
@@ -351,7 +380,10 @@ static void move_body_vertically(body_data* b, double d) {
             if (found) break;
         }
         // When no collisions were detected, move the full length
-        if (!found) b->body.y += d;
+        if (!found) {
+            b->body.y += d;
+            if (edge) b->body.vel_y = 0.0f;
+        }
     }
 }
 
@@ -781,7 +813,8 @@ static void move_bodies(void) {
         double dy = dt * vel_y0;
 
         // `physics_actor` types collide only with the tilemap,
-        // `physics_intangible` don't collide at all.
+        // `physics_intangible` don't collide at all. Both stop at the level's
+        // edges.
         nbcoords nbc0 = get_body_nbcoords(b->body);
         double x0 = b->body.x;
         double y0 = b->body.y;
@@ -789,6 +822,8 @@ static void move_bodies(void) {
             move_body_horizontally(b, dx);
             move_body_vertically(b, dy);
         } else {
+            if (clamp_to_level_x(&b->body, &dx)) b->body.vel_x = 0.0f;
+            if (clamp_to_level_y(&b->body, &dy)) b->body.vel_y = 0.0f;
             b->body.x += dx;
             b->body.y += dy;
         }
@@ -1451,8 +1486,11 @@ int PHYSICS_is_body_on_floor(size_t body_id, bool* check) {
         tile data = (tile){0};
         int r = TILEMAP_get_at(i, ytile, &data);
 
-        // Dropping bodies go through platforms, so they aren't floor
-        if (data.platform && get_body(body_id)->drop_timer > 0.0f) continue;
+        // Dropping bodies and bodies going up go through platforms, so they
+        // aren't floor
+        if (data.platform &&
+            (get_body(body_id)->drop_timer > 0.0f || b.vel_y < 0.0f))
+            continue;
         if (r == 1 || data.type) {
             *check = true;
             return 0;
@@ -1476,11 +1514,11 @@ int PHYSICS_is_body_on_platform(size_t body_id, bool* check) {
                     body_id);
         return 1;
     }
-    if (get_body(body_id)->drop_timer > 0.0f) {
+    body b = get_body(body_id)->body;
+    if (get_body(body_id)->drop_timer > 0.0f || b.vel_y < 0.0f) {
         *check = false;
         return 0;
     }
-    body b = get_body(body_id)->body;
     double by = SDL_round(b.y + b.h);
     if ((int)by % SPRITESHEET_CELL_Y != 0) {
         *check = false;

@@ -72,7 +72,7 @@ typedef struct {
 // };
 // ```
 typedef struct {
-    Uint32 pos_x, pos_y;
+    Sint32 pos_x, pos_y;
     Uint8 coords_x, coords_y, coords_w, coords_h;
     Sint8 z_index;
     SDL_FlipMode flip_mode;

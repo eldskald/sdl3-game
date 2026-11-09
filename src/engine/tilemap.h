@@ -53,8 +53,23 @@ int TILEMAP_get_at(Uint16 x, Uint16 y, tile* data);
 // on renderer update.
 void TILEMAP_draw(void);
 
-// Clears the tilemap. Need to call this when quitting the game.
+// Clears the tilemap. Need to call this when quitting the game or when
+// regenerating a level.
 void TILEMAP_clear(void);
+
+
+
+// Plays a sound effect and emits particles associated with the tile type being
+// stepped on. `rect` is the body's rect stepping on the tile. If `rect` is
+// standing on a tile, checks which tile it is and then plays the SFX and emits
+// the particles. `dir` is `1` if the body is going right, `-1` if it's going
+// left.
+void TILEMAP_step_on(SDL_FRect rect, Sint8 dir);
+
+// Plays a sound effect and emits particles associated with the tile type being
+// landed on. Similar to `TILEMAP_step_on()`, except the particles come from the
+// entire segment touching the tile.
+void TILEMAP_land_on(SDL_FRect rect);
 
 
 

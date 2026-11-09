@@ -1,0 +1,8 @@
+sfx_cooldown,0.05
+falloff_range,160
+
+tile,step_vol,land_vol
+dirt,1,1
+stone,1,1
+wood,1,1
+metal,1,1

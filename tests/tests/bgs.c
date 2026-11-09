@@ -2,13 +2,15 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/audio.h"
 #include "tests.h"
 #include "tests/bgs.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
-// On tests, `bgs_track_cave` is the mock on `tests/paths.h`, 1s long and
-// looping from 50ms to 100ms.
+// On tests, every track is the mock on `tests/paths.h`, 1s long. Per the mock
+// CSV, `bgs_track_cave` loops from 50ms to 100ms and stops when silent, and
+// `bgs_track_water_streaming` loops its whole file and doesn't.
 #define CAVE_LOOP_START 2205
 #define CAVE_LOOP_END 4410
 #define TICK_MS 16
@@ -42,21 +44,24 @@ void test_bgs(void) {
     printf(YELLOW "\nTesting BGS...\n" RESET);
 
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    AUDIO_start();
     BGS_start();
-    SDL_AudioDeviceID music = BGS_get_bus_device(bgs_bus_music);
-    SDL_AudioDeviceID ambience = BGS_get_bus_device(bgs_bus_ambience);
+    SDL_AudioDeviceID ambience =
+        AUDIO_get_bus_device(audio_bus_ambience_tracks);
+    SDL_AudioDeviceID gameplay =
+        AUDIO_get_bus_device(audio_bus_gameplay_sounds);
     SDL_AudioStream* cave = BGS_get_track_stream(bgs_track_cave);
-    expect("Started BGS on the dummy driver, checking if each bus got its own "
-           "logical device at full volume and the cave track's stream is on "
-           "the ambience one...",
-           7,
-           (bool[]){music != 0,
-                    ambience != 0,
-                    music != ambience,
-                    is_near(SDL_GetAudioDeviceGain(music), 1.0f),
-                    is_near(SDL_GetAudioDeviceGain(ambience), 1.0f),
-                    cave != NULL,
-                    SDL_GetAudioStreamDevice(cave) == ambience});
+    SDL_AudioStream* water = BGS_get_track_stream(bgs_track_water_streaming);
+    SDL_AudioStream* lava = BGS_get_track_stream(bgs_track_lava_bubbling);
+    expect("Started audio and BGS on the dummy driver, checking if the cave "
+           "track's stream is on the ambience tracks bus and the fluids' ones "
+           "on the gameplay sounds bus...",
+           5,
+           (bool[]){ambience != 0,
+                    gameplay != 0,
+                    cave && SDL_GetAudioStreamDevice(cave) == ambience,
+                    water && SDL_GetAudioStreamDevice(water) == gameplay,
+                    lava && SDL_GetAudioStreamDevice(lava) == gameplay});
 
     Uint32 loop_start = 0;
     Uint32 loop_end = 0;
@@ -64,11 +69,13 @@ void test_bgs(void) {
     hashmap names = BGS_get_string_tracks_map();
     bgs_track* named_cave = get_from_hashmap("cave", &names);
     bgs_track* named_bad = get_from_hashmap("not a track", &names);
-    expect("Checking if the cave track's loop points were loaded from its CSV "
-           "and its name maps to it...",
-           5,
+    expect("Checking if the cave track's loop points and stopping when silent "
+           "were loaded from its CSV and its name maps to it...",
+           7,
            (bool[]){loop_start == CAVE_LOOP_START,
                     loop_end == CAVE_LOOP_END,
+                    BGS_get_track_stops_when_silent(bgs_track_cave),
+                    !BGS_get_track_stops_when_silent(bgs_track_water_streaming),
                     named_cave && *named_cave == bgs_track_cave,
                     named_bad == NULL,
                     names.len == BGS_TRACKS_TOTAL - 1});
@@ -81,7 +88,7 @@ void test_bgs(void) {
 
     // With the bus paused nothing is heard, so what's queued is exactly what
     // was decoded.
-    BGS_pause_bus(bgs_bus_ambience);
+    AUDIO_pause_bus(audio_bus_ambience_tracks);
     bool none_before = are_playing(0, NULL);
     BGS_play_track(bgs_track_cave);
     bool playing = BGS_is_track_playing(bgs_track_cave);
@@ -119,7 +126,7 @@ void test_bgs(void) {
            (bool[]){!BGS_is_track_playing(bgs_track_cave),
                     are_playing(0, NULL),
                     queued_frames(bgs_track_cave) == 0});
-    BGS_resume_bus(bgs_bus_ambience);
+    AUDIO_resume_bus(audio_bus_ambience_tracks);
 
 
 
@@ -148,7 +155,7 @@ void test_bgs(void) {
     BGS_play_track(bgs_track_none);
     BGS_stop_track(bgs_track_none);
     BGS_set_track_volume(bgs_track_none, 0.5f);
-    BGS_fade_track(bgs_track_none, 0.5f, 1.0, true);
+    BGS_fade_track(bgs_track_none, 0.5f, 1.0f);
     expect("Called every track function with no track, checking if they did "
            "nothing...",
            3,
@@ -158,7 +165,7 @@ void test_bgs(void) {
 
 
 
-    BGS_pause_bus(bgs_bus_ambience);
+    AUDIO_pause_bus(audio_bus_ambience_tracks);
     float initial = BGS_get_track_volume(bgs_track_cave);
     BGS_set_track_volume(bgs_track_cave, 0.25f);
     float set = BGS_get_track_volume(bgs_track_cave);
@@ -175,14 +182,14 @@ void test_bgs(void) {
     // Tests update at 60 ticks per second.
     BGS_set_track_volume(bgs_track_cave, 1.0f);
     BGS_play_track(bgs_track_cave);
-    BGS_fade_track(bgs_track_cave, 0.0f, 0.5, true);
+    BGS_fade_track(bgs_track_cave, 0.0f, 2.0f);
     update_times(15);
     float halfway = BGS_get_track_volume(bgs_track_cave);
     bool halfway_playing = BGS_is_track_playing(bgs_track_cave);
     update_times(16);
-    expect("Faded the playing track out over 0.5s, stopping at the end, "
-           "checking its volume halfway through and if it stopped once "
-           "silent...",
+    expect("Faded the playing track out at 2 per second, checking its volume "
+           "halfway through and if it stopped once silent, since it's set "
+           "to...",
            5,
            (bool[]){halfway_playing,
                     is_near(halfway, 0.5f),
@@ -191,59 +198,77 @@ void test_bgs(void) {
                     !BGS_is_track_playing(bgs_track_cave)});
 
     BGS_play_track(bgs_track_cave);
-    BGS_fade_track(bgs_track_cave, 0.75f, 0.0, false);
+    BGS_fade_track(bgs_track_cave, 0.75f, 0.0f);
     BGS_update();
-    expect("Faded the track in over 0s without stopping, checking if it got "
-           "there on the next update and kept playing...",
+    expect("Faded the track in at a rate of 0, checking if it got there on the "
+           "next update and kept playing...",
            2,
            (bool[]){is_near(BGS_get_track_volume(bgs_track_cave), 0.75f),
                     BGS_is_track_playing(bgs_track_cave)});
 
-    BGS_fade_track(bgs_track_cave, 0.0f, 1.0, true);
+    BGS_fade_track(bgs_track_cave, 0.0f, 1.5f);
+    update_times(15);
+    BGS_fade_track(bgs_track_cave, 1.0f, 1.5f);
+    update_times(10);
+    float turned = BGS_get_track_volume(bgs_track_cave);
+    update_times(60);
+    expect("Faded the track out and retargeted it to full volume midway, "
+           "checking if it turned around from where it was at the same rate "
+           "and stopped at its target...",
+           3,
+           (bool[]){is_near(turned, 0.625f),
+                    is_near(BGS_get_track_volume(bgs_track_cave), 1.0f),
+                    BGS_is_track_playing(bgs_track_cave)});
+
+    BGS_fade_track(bgs_track_cave, 0.0f, 1.0f);
     update_times(10);
     BGS_set_track_volume(bgs_track_cave, 0.5f);
     update_times(60);
     expect("Set the track's volume mid fade out, checking if it cancelled the "
-           "fade and its stop...",
+           "fade...",
            2,
            (bool[]){is_near(BGS_get_track_volume(bgs_track_cave), 0.5f),
                     BGS_is_track_playing(bgs_track_cave)});
+
+    BGS_set_track_volume(bgs_track_cave, 0.0f);
+    expect("Set the track's volume to 0, checking if it stopped, since it's "
+           "set to...",
+           1,
+           (bool[]){!BGS_is_track_playing(bgs_track_cave)});
+    BGS_set_track_volume(bgs_track_cave, 0.5f);
+
+    BGS_set_track_volume(bgs_track_water_streaming, 1.0f);
+    BGS_play_track(bgs_track_water_streaming);
+    BGS_fade_track(bgs_track_water_streaming, 0.0f, 4.0f);
+    update_times(30);
+    bool silent_playing = BGS_is_track_playing(bgs_track_water_streaming);
+    BGS_set_track_volume(bgs_track_water_streaming, 0.0f);
+    expect(
+        "Faded and set to 0 the water streaming track, checking if it kept "
+        "playing silently, since it's not set to stop...",
+        3,
+        (bool[]){silent_playing,
+                 is_near(BGS_get_track_volume(bgs_track_water_streaming), 0.0f),
+                 BGS_is_track_playing(bgs_track_water_streaming)});
+    BGS_stop_track(bgs_track_water_streaming);
     BGS_stop_track(bgs_track_cave);
-    BGS_resume_bus(bgs_bus_ambience);
+    AUDIO_resume_bus(audio_bus_ambience_tracks);
 
 
 
-    BGS_pause_bus(bgs_bus_music);
-    expect("Paused the music bus, checking if only its device got paused...",
-           4,
-           (bool[]){BGS_is_bus_paused(bgs_bus_music),
-                    !BGS_is_bus_paused(bgs_bus_ambience),
-                    SDL_AudioDevicePaused(music),
-                    !SDL_AudioDevicePaused(ambience)});
-    BGS_resume_bus(bgs_bus_music);
-
-    BGS_set_bus_volume(bgs_bus_ambience, 0.5f);
-    expect("Set the ambience bus's volume, checking if only its device's gain "
-           "changed and the track's stream kept its own...",
-           5,
-           (bool[]){is_near(BGS_get_bus_volume(bgs_bus_ambience), 0.5f),
-                    is_near(BGS_get_bus_volume(bgs_bus_music), 1.0f),
-                    is_near(SDL_GetAudioDeviceGain(ambience), 0.5f),
-                    is_near(SDL_GetAudioDeviceGain(music), 1.0f),
-                    is_near(SDL_GetAudioStreamGain(cave), 0.5f)});
-
-    BGS_set_bus_volume(bgs_bus_music, -1.0f);
-    expect("Set a negative volume on the music bus, checking if it's taken as "
-           "silence...",
+    AUDIO_set_bus_volume(audio_bus_ambience_tracks, 0.5f);
+    expect("Set the ambience tracks bus's volume, checking if the cave "
+           "track's stream kept its own...",
            2,
-           (bool[]){is_near(BGS_get_bus_volume(bgs_bus_music), 0.0f),
-                    is_near(SDL_GetAudioDeviceGain(music), 0.0f)});
+           (bool[]){is_near(SDL_GetAudioDeviceGain(ambience), 0.5f),
+                    is_near(SDL_GetAudioStreamGain(cave), 0.5f)});
+    AUDIO_set_bus_volume(audio_bus_ambience_tracks, 1.0f);
 
     BGS_stop();
-    expect("Stopped BGS, checking if the buses' devices were closed and the "
-           "track's stream destroyed...",
+    expect("Stopped BGS, checking if the tracks' streams were destroyed...",
            3,
-           (bool[]){BGS_get_bus_device(bgs_bus_music) == 0,
-                    BGS_get_bus_device(bgs_bus_ambience) == 0,
-                    BGS_get_track_stream(bgs_track_cave) == NULL});
+           (bool[]){BGS_get_track_stream(bgs_track_cave) == NULL,
+                    BGS_get_track_stream(bgs_track_water_streaming) == NULL,
+                    BGS_get_track_stream(bgs_track_lava_bubbling) == NULL});
+    AUDIO_stop();
 }

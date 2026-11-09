@@ -97,6 +97,47 @@ dynarr CSV_parse(const char* data) {
     return res;
 }
 
+// Length of the line at `p`, its line break included, if it's blank, only
+// having empty cells, or `0` if it's not or it's the end of `data`.
+static size_t blank_line_len(const char* p) {
+    const char* q = p;
+    while (*q == ',' || *q == '\r')
+        q++;
+    return *q == '\n' ? (size_t)(q - p + 1) : 0;
+}
+
+static const char* skip_blank_lines(const char* p) {
+    for (size_t len = blank_line_len(p); len; len = blank_line_len(p))
+        p += len;
+    return p;
+}
+
+// Whether `p` is on a line break followed by a blank line.
+static bool is_section_end(const char* p) {
+    return p[0] == '\n' && blank_line_len(p + 1);
+}
+
+dynarr CSV_parse_section(const char* data, size_t n) {
+    const char* start = skip_blank_lines(data);
+    const char* end = start;
+    while (true) {
+        end = start;
+        while (*end && !is_section_end(end))
+            end++;
+        if (n == 0 || !*end) break;
+        start = skip_blank_lines(end + 1);
+        n--;
+    }
+    if (n > 0) start = end;
+    size_t len = end - start;
+    char* section = SDL_malloc(len + 1);
+    SDL_memcpy(section, start, len);
+    section[len] = '\0';
+    dynarr res = CSV_parse(section);
+    SDL_free(section);
+    return res;
+}
+
 void CSV_free(dynarr* data) {
     for (size_t i = 0; i < data->len; i++) {
         dynarr* row = CSV_row(i, data);
