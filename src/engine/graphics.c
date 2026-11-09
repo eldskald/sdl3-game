@@ -69,6 +69,15 @@ typedef struct {
     SDL_GPUGraphicsPipeline* pipeline;
 } pipeline_entry;
 
+// Matches `TargetUniforms` on `src/gpu/base.vert.hlsl`, the first uniform
+// buffer of every vertex shader, pushed on every pass.
+typedef struct {
+    float target_size[2];
+    // Named apart from other pads, since cbuffer fields share a namespace on
+    // HLSL and vertex shaders have other cbuffers with their own pads.
+    int target_pad0[2];
+} target_uniforms;
+
 static const Uint8 vert_spirv[] = {
 #embed GRAPHICS_BASE_VERT_SPIRV_PATH
 };
@@ -774,10 +783,11 @@ static SDL_GPURenderPass* begin_pass(const command* c, bool clear) {
     SDL_GPUTexture* texture =
         c->pass.target ? c->pass.target->texture : swapchain;
     if (!texture) return NULL;
-    float size[2] = {
-        c->pass.target ? c->pass.target->w : swapchain_w,
-        c->pass.target ? c->pass.target->h : swapchain_h,
-    };
+    target_uniforms uniforms = {
+        .target_size = {
+            c->pass.target ? c->pass.target->w : swapchain_w,
+            c->pass.target ? c->pass.target->h : swapchain_h,
+        }};
     SDL_FColor col = c->pass.clear_col;
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(
         cmd,
@@ -789,7 +799,7 @@ static SDL_GPURenderPass* begin_pass(const command* c, bool clear) {
         },
         1,
         NULL);
-    SDL_PushGPUVertexUniformData(cmd, 0, size, sizeof(size));
+    SDL_PushGPUVertexUniformData(cmd, 0, &uniforms, sizeof(uniforms));
     if (vertex_buffer)
         SDL_BindGPUVertexBuffers(
             pass, 0, &(SDL_GPUBufferBinding){.buffer = vertex_buffer}, 1);

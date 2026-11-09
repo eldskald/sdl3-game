@@ -9,6 +9,9 @@ cbuffer Uniforms : register(b0, space3) {
     // Multiplies the returned color. `1.0` when downsampling and set per level
     // when upsampling, to control how much each level contributes.
     float _Intensity;
+
+    int _Pad0;
+    int _Pad1;
 };
 
 struct input {

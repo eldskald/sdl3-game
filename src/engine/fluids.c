@@ -1525,6 +1525,15 @@ typedef struct {
     float refraction;
 } shader_uniforms;
 
+// Matches the uniforms on `src/gpu/ripples.frag.hlsl`, padded to 16 bytes.
+typedef struct {
+    // How much of their height ripples keep per tick.
+    float damping;
+    int pad0;
+    int pad1;
+    int pad2;
+} ripples_uniforms;
+
 static shader_uniforms get_shader_uniforms(SDL_FRect cam) {
     shader_uniforms uniforms = {.cam_pos = {cam.x / cam.w, cam.y / cam.h},
                                 .time = SDL_GetTicks() / 1000.0f,
@@ -1582,8 +1591,8 @@ static void step_ripples(fluids_canvas* canvas, SDL_FRect area) {
         .fragment = canvas->ripples_shader,
         .samplers = {GRAPHICS_binding(canvas->texture)},
         .num_samplers = 1,
-        .fragment_uniforms = &ripples_damping,
-        .fragment_uniforms_size = sizeof(ripples_damping),
+        .fragment_uniforms = &(ripples_uniforms){.damping = ripples_damping},
+        .fragment_uniforms_size = sizeof(ripples_uniforms),
     });
     for (int i = 0; i < ticks; i++) {
         graphics_texture* from = canvas->ripples[ripples_idx];

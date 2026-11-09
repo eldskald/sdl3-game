@@ -16,6 +16,7 @@
 #include "tests/pool.h"
 #include "tests/reactions.h"
 #include "tests/sfx.h"
+#include "tests/shader-buffers.h"
 #include "tests/text.h"
 #include "tests/tilemap.h"
 #include <SDL3/SDL.h>
@@ -69,6 +70,8 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "bgs") == 0) test_bgs();
     if (argc == 1 || SDL_strcmp(argv[1], "data-integrity") == 0)
         test_data_integrity();
+    if (argc == 1 || SDL_strcmp(argv[1], "shader-buffers") == 0)
+        test_shader_buffers();
 
     TILEMAP_stop();
 

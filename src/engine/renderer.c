@@ -23,12 +23,16 @@
 typedef struct {
     float threshold;
     float soft_threshold;
+    int pad0;
+    int pad1;
 } bloom_prefilter_uniforms;
 
 // Matches the uniforms on `src/gpu/box-sample.frag.hlsl`.
 typedef struct {
     float delta;
     float intensity;
+    int pad0;
+    int pad1;
 } box_sample_uniforms;
 
 static const char bloom_csv[] = {

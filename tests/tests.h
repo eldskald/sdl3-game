@@ -12,7 +12,27 @@
 #define NUM_TO_STR_MAX 16
 #define SUB_CALLS_MAX 256
 
+#define MAX_ERRORS 16
+
 void expect(const char* desc, size_t n, bool expectations[n]);
+
+// Checks of a single subject, like a file, passed to a single `expect()`,
+// along with messages of what failed to be printed after it.
+typedef struct {
+    bool checks[MAX_EXPECTATIONS];
+    size_t len;
+    char errors[MAX_ERRORS][FAIL_MESSAGE_MAX];
+    size_t errors_len;
+} report;
+
+// Adds a check to `r`, with a `printf()` style message of what failed when it
+// isn't `ok`. Past `MAX_EXPECTATIONS` checks, failures go on the last one, and
+// past `MAX_ERRORS` messages, they're dropped, so it still fails.
+void check(report* r, bool ok, const char* fmt, ...);
+
+// Passes the checks of `r` to `expect()` with `desc`, then prints the messages
+// of what failed.
+void finish_report(const char* desc, report* r);
 
 bool get_tests_result(void);
 

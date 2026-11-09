@@ -1,5 +1,6 @@
-cbuffer Uniforms : register(b0, space1) {
+cbuffer TargetUniforms : register(b0, space1) {
     float2 _TargetSize;
+    int2 _TargetPad0;
 };
 
 struct input {
