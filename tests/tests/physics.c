@@ -18,6 +18,68 @@ static void record_on_delete(size_t point_id, size_t arg) {
     on_delete_arg = arg;
 }
 
+// Moves a body of `type` into each edge of an empty level, faster than a tile
+// per tick, checking it stops flush against it as if it were a wall.
+static void test_level_edges(body_type type) {
+    const double level_w = TILEMAP_SIZE_X * SPRITESHEET_CELL_X;
+    const double level_h = TILEMAP_SIZE_Y * SPRITESHEET_CELL_Y;
+    const double speed = 20.0f * SPRITESHEET_CELL_X * 60.0f;
+    const char* name = type == physics_actor ? "actor" : "intangible";
+    struct {
+        const char* edge;
+        double x, y, vel_x, vel_y, end_x, end_y;
+    } cases[] = {
+        {"left", 30.0f, 40.0f, -speed, 0.0f, 0.0f, 40.0f},
+        {"top", 40.0f, 30.0f, 0.0f, -speed, 40.0f, 0.0f},
+        {"right",
+         level_w - 30.0f,
+         level_h - 40.0f,
+         speed,
+         0.0f,
+         level_w - SPRITESHEET_CELL_X,
+         level_h - 40.0f},
+        {"bottom",
+         level_w - 40.0f,
+         level_h - 30.0f,
+         0.0f,
+         speed,
+         level_w - 40.0f,
+         level_h - SPRITESHEET_CELL_Y},
+    };
+    for (size_t i = 0; i < SDL_arraysize(cases); i++) {
+        CAMERA_center_at(cases[i].x, cases[i].y);
+        size_t id = 0;
+        PHYSICS_new_body((body){.type = type,
+                                .x = cases[i].x,
+                                .y = cases[i].y,
+                                .w = SPRITESHEET_CELL_X,
+                                .h = SPRITESHEET_CELL_Y,
+                                .vel_x = cases[i].vel_x,
+                                .vel_y = cases[i].vel_y},
+                         &id);
+        for (int t = 0; t < 5; t++)
+            PHYSICS_update();
+        body data = (body){0};
+        PHYSICS_get_body(id, &data);
+        PHYSICS_del_body(id);
+        char msg[160];
+        SDL_snprintf(msg,
+                     sizeof(msg),
+                     "Moved an %s body into the %s edge of the level, checking "
+                     "if it stopped against it...",
+                     name,
+                     cases[i].edge);
+        expect(msg,
+               4,
+               (bool[]){
+                   SDL_fabs(data.x - cases[i].end_x) <= EPSILON,
+                   SDL_fabs(data.y - cases[i].end_y) <= EPSILON,
+                   SDL_fabs(data.vel_x) <= EPSILON || cases[i].vel_x == 0.0f,
+                   SDL_fabs(data.vel_y) <= EPSILON || cases[i].vel_y == 0.0f});
+    }
+    CAMERA_center_at(0.0f, 0.0f);
+}
+
 void test_physics(void) {
     printf(YELLOW "\nTesting physics...\n" RESET);
 
@@ -219,15 +281,19 @@ void test_physics(void) {
     for (int i = 0; i < 60; i++)
         PHYSICS_update();
     PHYSICS_get_body(new_id, &data);
-    expect("Created intangible body and moving it beyond walls, checking its "
-           "position and velocity...",
+    expect("Created intangible body and moving it beyond walls and into the "
+           "top of the level, checking if it went through the walls but "
+           "stopped at the top...",
            4,
-           (bool[]){data.x - 6.0f * SPRITESHEET_CELL_X <= EPSILON,
-                    data.y - -2.0f * SPRITESHEET_CELL_Y <= EPSILON,
-                    data.vel_x - 4.0f * SPRITESHEET_CELL_X <= EPSILON,
-                    data.vel_y - -4.0f * SPRITESHEET_CELL_Y <= EPSILON});
+           (bool[]){SDL_fabs(data.x - 6.0f * SPRITESHEET_CELL_X) <= EPSILON,
+                    SDL_fabs(data.y) <= EPSILON,
+                    SDL_fabs(data.vel_x - 4.0f * SPRITESHEET_CELL_X) <= EPSILON,
+                    SDL_fabs(data.vel_y) <= EPSILON});
+    PHYSICS_del_body(new_id);
 
     TILEMAP_clear();
+    test_level_edges(physics_actor);
+    test_level_edges(physics_intangible);
 
     tile map2[5][5] = {
         {
@@ -383,6 +449,15 @@ void test_physics(void) {
     expect("Checking is on floor and is on platform while on platforms...",
            2,
            (bool[]){check == true, on_platform == true});
+
+    PHYSICS_set_body_velocity(last_id, 0.0f, -4.0f * SPRITESHEET_CELL_Y);
+    PHYSICS_is_body_on_floor(last_id, &check);
+    PHYSICS_is_body_on_platform(last_id, &on_platform);
+    expect("Set the body going up while on platforms, checking is on floor and "
+           "is on platform...",
+           2,
+           (bool[]){check == false, on_platform == false});
+    PHYSICS_set_body_velocity(last_id, 0.0f, 0.0f);
 
     PHYSICS_set_body_position(
         last_id, 4.5f * SPRITESHEET_CELL_X, 2.0f * SPRITESHEET_CELL_Y);

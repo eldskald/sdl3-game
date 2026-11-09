@@ -27,8 +27,12 @@ void main(uint3 id : SV_DispatchThreadID) {
         float2x2 rot = float2x2(c, -s, s, c);
         float2 vel = mul(r.vel, rot) * (1.0 - speed_diff);
 
+        float2 pos = r.pos;
+        if (r.shape == SHAPE_RECT)
+            pos += float2(random(seed), random(seed)) * r.size;
+
         Particle p;
-        p.pos = r.pos;
+        p.pos = pos;
         p.vel = vel;
         p.age = random(seed) * t.lifetime * t.lifetime_jitter;
         p.remaining_bounces = t.bounce_count;

@@ -35,18 +35,55 @@ void PARTICLES_stop(void);
 
 
 
-// Queues spawning `count` particles of `type` at `(x,y)`, in world pixels, with
-// `(vel_x,vel_y)` initial velocity that can be angled randomly by `spread`
-// degrees. They spawn on the next `PARTICLES_draw()`. Spawns past
-// `PARTICLES_MAX_REQUESTS` a frame are dropped. Call in any thread.
-void PARTICLES_emit(particle_type type,
-                    float x,
-                    float y,
-                    float vel_x,
-                    float vel_y,
-                    float speed_jitter,
-                    float spread,
-                    Uint32 count);
+// Shapes particles are spawned from, see `particles_emit_settings`.
+//
+// ```
+// enum particles_emit_shape {
+//     particles_emit_point,
+//     particles_emit_rect,
+// };
+// ```
+typedef enum {
+    particles_emit_point,
+    particles_emit_rect,
+} particles_emit_shape;
+
+// How particles are spawned by `PARTICLES_emit()`. They spawn at `pos` when
+// `shape` is `particles_emit_point`, or at random positions inside `rect` when
+// it's `particles_emit_rect`, both in world pixels. Each spawns with `vel`
+// initial velocity, angled randomly by up to `spread` degrees and slowed by
+// a random fraction up to `speed_jitter` of its speed. `count` is how many
+// spawn.
+//
+// ```
+// struct particles_emit_settings {
+//     particles_emit_shape shape;
+//     union {
+//         SDL_FPoint pos;
+//         SDL_FRect rect;
+//     };
+//     SDL_FPoint vel;
+//     float speed_jitter;
+//     float spread;
+//     Uint32 count;
+// };
+// ```
+typedef struct {
+    particles_emit_shape shape;
+    union {
+        SDL_FPoint pos;
+        SDL_FRect rect;
+    };
+    SDL_FPoint vel;
+    float speed_jitter;
+    float spread;
+    Uint32 count;
+} particles_emit_settings;
+
+// Queues spawning particles of `type` as set by `settings`. They spawn on the
+// next `PARTICLES_draw()`. Spawns past `PARTICLES_MAX_REQUESTS` a frame are
+// dropped. Call in any thread.
+void PARTICLES_emit(particle_type type, particles_emit_settings settings);
 
 // Simulates the particles for a frame and draws them on the current render
 // target, relative to the camera, with their sprites from `spritesheet`. Does

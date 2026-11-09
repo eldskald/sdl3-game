@@ -1,0 +1,5 @@
+tile,particle,speed,spread,speed_jitter,count
+dirt,dirt,50,45,0.4,4
+stone,stone,50,45,0.4,3
+wood,wood,50,45,0.4,5
+metal,none,0,0,0,0

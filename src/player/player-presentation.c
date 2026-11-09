@@ -1,11 +1,10 @@
 #include "player/player-presentation.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
-#include "engine/audio.h"
 #include "engine/fluids.h"
 #include "engine/physics.h"
-#include "engine/sfx.h"
 #include "engine/sprites.h"
+#include "engine/tilemap.h"
 #include "paths.h"
 #include "player/player-core.h"
 #include "services/csv.h"
@@ -13,11 +12,6 @@
 #include <SDL3/SDL.h>
 
 #define HAIR_BASE_WIDTH 3
-
-// Each step plays one of `STEP_SFX_TOTAL` sounds at random, on the next of
-// `STEP_VOICES_TOTAL` voices, so a step doesn't cut the one before it.
-#define STEP_SFX_TOTAL 5
-#define STEP_VOICES_TOTAL 2
 
 typedef enum {
     state_idle,
@@ -90,41 +84,23 @@ typedef struct {
                           [PLAYER_CLOAK_MAX_HORIZ_SEGMENTS + 1];
     bool cloak_broken;
     cloak_pins cloak_pins;
-    size_t step_voices[STEP_VOICES_TOTAL];
-    Uint8 step_next_voice;
+    player_state player;
 } sprite_state;
 
 static const char presentation_csv[] = {
 #embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
 };
-static const Uint8 step_1_wav[] = {
-#embed PLAYER_STEP_1_SFX_PATH
-};
-static const Uint8 step_2_wav[] = {
-#embed PLAYER_STEP_2_SFX_PATH
-};
-static const Uint8 step_3_wav[] = {
-#embed PLAYER_STEP_3_SFX_PATH
-};
-static const Uint8 step_4_wav[] = {
-#embed PLAYER_STEP_4_SFX_PATH
-};
-static const Uint8 step_5_wav[] = {
-#embed PLAYER_STEP_5_SFX_PATH
-};
 
 static sprite_data data = (sprite_data){0};
 static sprite_state state = (sprite_state){0};
-static audio_wav* step_sfx[STEP_SFX_TOTAL] = {0};
 
 
 
 // Called by the sprite's animations on the frames on the `step_func` rows.
 static void on_step(size_t _sprite_id, size_t _arg) { // NOLINT
-    audio_wav* wav = step_sfx[SDL_rand(STEP_SFX_TOTAL)];
-    if (!wav) return;
-    SFX_play_voice(state.step_voices[state.step_next_voice], wav);
-    state.step_next_voice = (state.step_next_voice + 1) % STEP_VOICES_TOTAL;
+    body b = (body){0};
+    if (PHYSICS_get_body(state.player.body_id, &b)) return;
+    TILEMAP_step_on((SDL_FRect){b.x, b.y, b.w, b.h}, state.player.facing);
 }
 
 static void state_changed(states_machine_state new_state) {
@@ -503,6 +479,9 @@ static void update_states_machine(player_state player, body player_body) {
         new_state = state_airborne;
 
     if (new_state != state.state) {
+        if (state.state == state_airborne && is_on_floor && !player.swimming)
+            TILEMAP_land_on((SDL_FRect){
+                player_body.x, player_body.y, player_body.w, player_body.h});
         state.state = new_state;
         state_changed(new_state);
     }
@@ -605,19 +584,6 @@ static void load_steps(dynarr* parsed) {
     }
 }
 
-static void load_step_sfx(void) {
-    const Uint8* mems[] = {
-        step_1_wav, step_2_wav, step_3_wav, step_4_wav, step_5_wav};
-    size_t sizes[] = {sizeof(step_1_wav),
-                      sizeof(step_2_wav),
-                      sizeof(step_3_wav),
-                      sizeof(step_4_wav),
-                      sizeof(step_5_wav)};
-    for (int i = 0; i < STEP_SFX_TOTAL; i++)
-        step_sfx[i] = AUDIO_create_wav(
-            "step", SDL_IOFromConstMem(mems[i], sizes[i]), true);
-}
-
 void PLAYER_PRESENTATION_start(void) {
     sprite_data* d = &data;
     parsing_field fields[] = {
@@ -668,7 +634,6 @@ void PLAYER_PRESENTATION_start(void) {
     load_cloak_pins(&parsed);
     load_steps(&parsed);
     CSV_free(&parsed);
-    load_step_sfx();
 
     d->idle_anim.looped = true;
     d->moving_anim.looped = true;
@@ -698,8 +663,7 @@ void PLAYER_PRESENTATION_create(player_state player) {
     state.cloak_pins = data.cloak_pins[data.coords_x][data.coords_y];
     create_hair(player);
     create_cloak(player);
-    for (Uint8 i = 0; i < STEP_VOICES_TOTAL; i++)
-        SFX_new_voice(sfx_bus_gameplay, &state.step_voices[i]);
+    state.player = player;
     state.created = true;
     state_changed(state.state);
 }
@@ -708,8 +672,6 @@ void PLAYER_PRESENTATION_destroy(void) {
     SPRITES_del_sprite(state.sprite_id);
     delete_hair();
     delete_cloak();
-    for (Uint8 i = 0; i < STEP_VOICES_TOTAL; i++)
-        SFX_del_voice(state.step_voices[i]);
     state.created = false;
 }
 
@@ -717,14 +679,15 @@ void PLAYER_PRESENTATION_destroy(void) {
 
 void PLAYER_PRESENTATION_update(player_state player) {
     if (!state.created) return;
+    state.player = player;
 
     sprite s = (sprite){0};
     body b = (body){0};
     PHYSICS_get_body(player.body_id, &b);
     SPRITES_get_sprite(state.sprite_id, &s);
 
-    s.pos_x = (Uint32)SDL_roundf(b.x) + data.offset_x;
-    s.pos_y = (Uint32)SDL_roundf(b.y) + data.offset_y;
+    s.pos_x = (Sint32)SDL_roundf(b.x) + data.offset_x;
+    s.pos_y = (Sint32)SDL_roundf(b.y) + data.offset_y;
     s.flip_mode = player.facing == 1 ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
 
     SPRITES_edit_sprite(state.sprite_id, s);

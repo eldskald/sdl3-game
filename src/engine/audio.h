@@ -1,6 +1,28 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+// Buses everything is played on, each its own logical audio device on the
+// default output, so they can be paused or have their volume changed apart from
+// each other, like for a volume slider each. SFX voices and BGS tracks pick the
+// bus they play on, so a sound belongs on the bus whose slider should control
+// it, not the one of the system playing it.
+//
+// ```
+// enum audio_bus {
+//     audio_bus_gui_sounds,
+//     audio_bus_gameplay_sounds,
+//     audio_bus_ambience_tracks,
+//     audio_bus_music_tracks,
+// };
+// ```
+typedef enum {
+    audio_bus_gui_sounds,
+    audio_bus_gameplay_sounds,
+    audio_bus_ambience_tracks,
+    audio_bus_music_tracks,
+} audio_bus;
+#define AUDIO_BUSES_TOTAL 4
+
 // A WAV fully loaded to PCM, played straight from `buffer`.
 //
 // ```
@@ -82,3 +104,38 @@ int AUDIO_decode_ogg(audio_ogg* ogg, float* out, int frames);
 // Moves the decoder of `ogg` to sample frame `frame`, 0 being its beginning,
 // for rewinding and looping. Returns false on errors.
 bool AUDIO_seek_ogg(audio_ogg* ogg, Uint32 frame);
+
+
+
+// Pauses everything on `bus`, keeping where it was. What's played while it's
+// paused starts once it's resumed. Does nothing without an audio device.
+void AUDIO_pause_bus(audio_bus bus);
+
+// Resumes everything on `bus` from where it was paused.
+void AUDIO_resume_bus(audio_bus bus);
+
+// Whether `bus` is paused. Always false without an audio device.
+bool AUDIO_is_bus_paused(audio_bus bus);
+
+// Sets the volume of everything on `bus`, `1.0f` being their own volume and
+// `0.0f` silence. Negative values are taken as `0.0f`. It's kept across
+// `AUDIO_stop()` and `AUDIO_start()`, and starts at `AUDIO_STARTING_VOLUME`.
+void AUDIO_set_bus_volume(audio_bus bus, float volume);
+
+// The volume of `bus`, see `AUDIO_set_bus_volume()`.
+float AUDIO_get_bus_volume(audio_bus bus);
+
+// The logical device of `bus`, to bind streams to, `0` without one.
+SDL_AudioDeviceID AUDIO_get_bus_device(audio_bus bus);
+
+
+
+// Inits audio and opens a logical audio device for each bus. If audio can't be
+// started, it logs why and the game runs silent, with buses having no device.
+// Call on start of the game, before `SFX_start()` and `BGS_start()`.
+void AUDIO_start(void);
+
+// Closes the buses and quits audio. Call when quitting the game, after
+// `SFX_stop()` and `BGS_stop()`, since destroying their streams waits for
+// their devices to be done with them.
+void AUDIO_stop(void);

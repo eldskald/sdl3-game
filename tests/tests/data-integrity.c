@@ -90,6 +90,15 @@ static const char types_map_csv[] = {
 static const char particles_csv[] = {
 #embed PARTICLES_CSV_PATH suffix(, '\0')
 };
+static const char fluids_audio_csv[] = {
+#embed FLUIDS_AUDIO_CSV_PATH suffix(, '\0')
+};
+static const char tiles_audio_csv[] = {
+#embed TILEMAP_AUDIO_CSV_PATH suffix(, '\0')
+};
+static const char reactions_audio_csv[] = {
+#embed REACTIONS_AUDIO_CSV_PATH suffix(, '\0')
+};
 static const char tracks_csv[] = {
 #embed BGS_TRACKS_CSV_PATH suffix(, '\0')
 };
@@ -360,6 +369,7 @@ static void check_camera(void) {
     const key_spec specs[] = {
         {"speed", val_double, 1, 1},
         {"smoothing_range", val_double, 1, 1},
+        {"smoothing_min_speed", val_double, 1, 1},
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(camera_csv);
@@ -618,6 +628,39 @@ static void check_fluid_particles(void) {
     finish(FLUIDS_PARTICLES_CSV_PATH, &r);
 }
 
+// Checks the table has exactly one row for each of `names`, on its `column`,
+// like its loader reads it. `what` names them on the errors.
+static void check_each_name_once(report* r,
+                                 dynarr* parsed,
+                                 const char* column,
+                                 const hashmap* names,
+                                 const char* what) {
+    int h = get_header(parsed);
+    int col = get_column(parsed, column);
+    size_t rows = 0;
+    for (size_t j = h + 1; h >= 0 && j < parsed->len; j++)
+        if (CSV_row(j, parsed)->len >= 2) rows++;
+    for (size_t i = 0; i < names->len; i++) {
+        const char* name = hashmap_key_at(i, names);
+        size_t count = 0;
+        for (size_t j = h + 1; h >= 0 && j < parsed->len; j++) {
+            dynarr* row = CSV_row(j, parsed);
+            if (row->len < 2) continue;
+            if (col >= 0 && col < row->len &&
+                SDL_strcmp(CSV_cell(col, row), name) == 0)
+                count++;
+        }
+        check(r,
+              count == 1,
+              "%s \"%s\" found %lu times, expected once",
+              what,
+              name,
+              count);
+    }
+    check(
+        r, rows == names->len, "Has %lu rows, expected %lu", rows, names->len);
+}
+
 static void check_fluids(void) {
     const column_spec specs[] = {
         {"fluid", val_fluid},
@@ -636,34 +679,63 @@ static void check_fluids(void) {
     dynarr parsed = CSV_parse(fluids_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
 
-    // The loader reads exactly one row for each fluid.
-    int h = get_header(&parsed);
-    int col = get_column(&parsed, "fluid");
-    size_t fluids = 0;
-    for (size_t j = h + 1; h >= 0 && j < parsed.len; j++)
-        if (CSV_row(j, &parsed)->len >= 2) fluids++;
-    for (size_t i = 0; i < fluid_names.len; i++) {
-        const char* name = hashmap_key_at(i, &fluid_names);
-        size_t count = 0;
-        for (size_t j = h + 1; j < parsed.len; j++) {
-            dynarr* row = CSV_row(j, &parsed);
-            if (row->len < 2) continue;
-            if (col < row->len && SDL_strcmp(CSV_cell(col, row), name) == 0)
-                count++;
-        }
-        check(&r,
-              count == 1,
-              "Fluid \"%s\" found %lu times, expected once",
-              name,
-              count);
-    }
-    check(&r,
-          fluids == FLUIDS_TOTAL,
-          "Has %lu fluids, expected %d",
-          fluids,
-          FLUIDS_TOTAL);
+    check_each_name_once(&r, &parsed, "fluid", &fluid_names, "Fluid");
     CSV_free(&parsed);
     finish(FLUIDS_CSV_PATH, &r);
+}
+
+// Its first section has the fluids' SFX banks' cooldowns and their falloff
+// range, and its second the table of each fluid's volumes, the step and land
+// ones read by the tilemap.
+static void check_fluids_audio(void) {
+    const key_spec keys[] = {
+        {"splash_cooldown", val_double, 1, 1},
+        {"ripple_cooldown", val_double, 1, 1},
+        {"falloff_range", val_double, 1, 1},
+    };
+    const column_spec specs[] = {
+        {"fluid", val_fluid},
+        {"static_max_vol", val_double},
+        {"static_max_vol_at", val_double},
+        {"running_max_vol", val_double},
+        {"running_max_vol_at", val_double},
+        {"splash_vol", val_double},
+        {"ripple_vol", val_double},
+        {"step_vol", val_double},
+        {"land_vol", val_double},
+    };
+    report r = (report){0};
+    dynarr parsed = CSV_parse_section(fluids_audio_csv, 0);
+    check_keys_csv(&r, &parsed, keys, SDL_arraysize(keys));
+    CSV_free(&parsed);
+    parsed = CSV_parse_section(fluids_audio_csv, 1);
+    check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
+    check_each_name_once(&r, &parsed, "fluid", &fluid_names, "Fluid");
+    CSV_free(&parsed);
+    finish(FLUIDS_AUDIO_CSV_PATH, &r);
+}
+
+// Its first section has the steps' and landings' cooldown and falloff range,
+// and its second the table of each tile type's volumes.
+static void check_tiles_audio(void) {
+    const key_spec keys[] = {
+        {"sfx_cooldown", val_double, 1, 1},
+        {"falloff_range", val_double, 1, 1},
+    };
+    const column_spec specs[] = {
+        {"tile", val_tile},
+        {"step_vol", val_double},
+        {"land_vol", val_double},
+    };
+    report r = (report){0};
+    dynarr parsed = CSV_parse_section(tiles_audio_csv, 0);
+    check_keys_csv(&r, &parsed, keys, SDL_arraysize(keys));
+    CSV_free(&parsed);
+    parsed = CSV_parse_section(tiles_audio_csv, 1);
+    check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
+    check_each_name_once(&r, &parsed, "tile", &tile_names, "Tile");
+    CSV_free(&parsed);
+    finish(TILEMAP_AUDIO_CSV_PATH, &r);
 }
 
 static void check_fluid_fluid_into_tile(void) {
@@ -679,6 +751,29 @@ static void check_fluid_fluid_into_tile(void) {
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(REACTIONS_FLUID_FLUID_INTO_TILE_CSV_PATH, &r);
+}
+
+// Its first section has the reactions' cooldown and falloff range, and its
+// second the table of each fluid fluid into tile reaction's volume.
+static void check_reactions_audio(void) {
+    const key_spec keys[] = {
+        {"sfx_cooldown", val_double, 1, 1},
+        {"falloff_range", val_double, 1, 1},
+    };
+    const column_spec specs[] = {
+        {"fluid A", val_fluid},
+        {"fluid B", val_fluid},
+        {"resulting tile", val_tile},
+        {"vol", val_double},
+    };
+    report r = (report){0};
+    dynarr parsed = CSV_parse_section(reactions_audio_csv, 0);
+    check_keys_csv(&r, &parsed, keys, SDL_arraysize(keys));
+    CSV_free(&parsed);
+    parsed = CSV_parse_section(reactions_audio_csv, 1);
+    check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
+    CSV_free(&parsed);
+    finish(REACTIONS_AUDIO_CSV_PATH, &r);
 }
 
 static void check_platforms(void) {
@@ -788,13 +883,14 @@ static void check_particles(void) {
 }
 
 
-// Each track's loop points, one row per track, which a track without uses its
-// whole file for.
+// Each track's loop points and whether it stops when silent, one row per
+// track, which a track without loops its whole file for and doesn't stop.
 static void check_tracks(void) {
     const column_spec specs[] = {
         {"track", val_bgs_track},
         {"loop_start", val_uint32},
         {"loop_end", val_uint32},
+        {"stop_when_silent", val_bool},
     };
     report r = (report){0};
     dynarr parsed = CSV_parse(tracks_csv);
@@ -859,7 +955,10 @@ void test_data_integrity(void) {
     check_player_presentation();
     check_fluid_particles();
     check_fluids();
+    check_fluids_audio();
+    check_tiles_audio();
     check_fluid_fluid_into_tile();
+    check_reactions_audio();
     check_platforms();
     check_types_map();
     check_particles();

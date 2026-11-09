@@ -2,28 +2,17 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/audio.h"
 #include <SDL3/SDL.h>
 
-// Buses background sounds play on, each its own logical audio device on the
-// default output, like the SFX buses, with its own volume.
-//
-// ```
-// enum bgs_bus {
-//     bgs_bus_music,
-//     bgs_bus_ambience,
-// };
-// ```
-typedef enum {
-    bgs_bus_music,
-    bgs_bus_ambience,
-} bgs_bus;
-#define BGS_BUSES_TOTAL 2
-
 // Every background sound of the game. Each is an OGG Vorbis embedded on
-// `src/engine/bgs.c`, on a bus set there, looping between the `loop_start` and
-// `loop_end` sample frames of its row on `BGS_TRACKS_CSV_PATH`, so an intro can
-// play once before the part that loops. `bgs_track_none` is for no track, and
-// every function here does nothing with it.
+// `src/engine/bgs.c`, on an `audio_bus` set there, looping between the
+// `loop_start` and `loop_end` sample frames of its row on
+// `BGS_TRACKS_CSV_PATH`, so an intro can play once before the part that loops.
+// Its `stop_when_silent` there sets whether its volume reaching `0.0f` stops
+// it, so it plays from its start next time, or it keeps playing silently,
+// keeping its place. `bgs_track_none` is for no track, and every function here
+// does nothing with it.
 //
 // ```
 // enum bgs_track { bgs_track_none, BGS_TRACKS };
@@ -54,38 +43,24 @@ bool BGS_is_track_playing(bgs_track track);
 dynarr BGS_get_playing_tracks(void);
 
 // Sets the volume of `track`, `1.0f` being its own volume and `0.0f` silence,
-// multiplied by its bus's volume. Negative values are taken as `0.0f`. Cancels
-// any fade. It's kept across plays and starts at `1.0f`.
+// multiplied by its bus's volume. Negative values are taken as `0.0f`, which
+// stops it if it's set to stop when silent. Cancels any fade. It's kept across
+// plays and starts at `1.0f`.
 void BGS_set_track_volume(bgs_track track, float volume);
 
 // The volume of `track`, mid fade included, see `BGS_set_track_volume()`.
 float BGS_get_track_volume(bgs_track track);
 
-// Fades the volume of `track` from what it is to `volume` over `seconds`, on
-// `BGS_update()`, stopping it once it gets there when `stop_at_end` is set,
-// for fading out. A fade of `0.0` seconds gets there on the next update.
-// Negative volumes are taken as `0.0f`.
-void BGS_fade_track(bgs_track track,
-                    float volume,
-                    double seconds,
-                    bool stop_at_end);
+// Fades the volume of `track` from what it is to `volume` on `BGS_update()`,
+// changing it by `rate` per second, like `BGS_set_track_volume()` once it gets
+// there. Calling it again mid fade retargets it from where it is, so it can be
+// called every tick to smooth out a volume that jumps around. A rate of `0.0f`
+// or less gets there on the next update. Negative volumes are taken as `0.0f`.
+void BGS_fade_track(bgs_track track, float volume, float rate);
 
-// Pauses every track on `bus`, keeping where they were. Does nothing without
-// an audio device.
-void BGS_pause_bus(bgs_bus bus);
-
-// Resumes every track on `bus` from where it was paused.
-void BGS_resume_bus(bgs_bus bus);
-
-// Whether `bus` is paused. Always false without an audio device.
-bool BGS_is_bus_paused(bgs_bus bus);
-
-// Sets the volume of every track on `bus`, `1.0f` being their own volume and
-// `0.0f` silence. Negative values are taken as `0.0f`.
-void BGS_set_bus_volume(bgs_bus bus, float volume);
-
-// The volume of `bus`, see `BGS_set_bus_volume()`.
-float BGS_get_bus_volume(bgs_bus bus);
+// Whether `track` stops once its volume reaches `0.0f`, from its row on
+// `BGS_TRACKS_CSV_PATH`.
+bool BGS_get_track_stops_when_silent(bgs_track track);
 
 // Get a `string-->bgs_track` map, used to translate the track names written
 // on CSV files into their corresponding `bgs_track`.
@@ -93,18 +68,18 @@ hashmap BGS_get_string_tracks_map(void);
 
 
 
-// Opens a logical audio device for each bus and a decoder for each track,
-// with its loop points from `BGS_TRACKS_CSV_PATH`. If audio can't be started,
-// it logs why and the game runs without background sounds, with tracks never
-// playing. Call on start of the game.
+// Opens a decoder and a stream on its bus for each track, with its loop points
+// and whether it stops when silent from `BGS_TRACKS_CSV_PATH`. Tracks whose bus
+// has no device, see `AUDIO_start()`, never play. Call on start of the game,
+// after `AUDIO_start()`.
 void BGS_start(void);
 
 // Tops up every playing track's buffer and advances fades. Call every tick of
 // the fixed thread.
 void BGS_update(void);
 
-// Destroys every track's decoder, closes the buses and quits audio. Call when
-// quitting the game.
+// Destroys every track's stream and decoder. Call when quitting the game,
+// before `AUDIO_stop()`.
 void BGS_stop(void);
 
 
@@ -114,9 +89,6 @@ void BGS_stop(void);
 
 // The stream of `track`, or `NULL` if there's none.
 SDL_AudioStream* BGS_get_track_stream(bgs_track track);
-
-// The logical device of `bus`, `0` without one.
-SDL_AudioDeviceID BGS_get_bus_device(bgs_bus bus);
 
 // Fills `loop_start` and `loop_end` with the frames `track` loops between.
 void BGS_get_track_loop(bgs_track track, Uint32* loop_start, Uint32* loop_end);

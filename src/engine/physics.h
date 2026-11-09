@@ -5,7 +5,7 @@
 // Body types, for which type of physics interactions it will have.
 // `physics_actor` is for bodies that only collide with the tilemap, while
 // `physics_intangible` is for no collisions at all, useful for moving with
-// velocity alone.
+// velocity alone. The level's edges are walls for both, stopping them there.
 //
 // ```
 // enum { physics_actor, physics_intangible }
@@ -124,14 +124,15 @@ int PHYSICS_get_intersecting_bodies(SDL_Rect rect, dynarr* arr);
 
 // Checks if the body at `body_id` is touching tiles below, setting `check` to
 // true if that's the case. Platform tiles don't count while the body is
-// dropping down from them. Returns `3` when `body_id` is outside the array's
-// range, `1` when there is no body at that index, `0` when everything went
-// right.
+// dropping down from them or going up through them. Returns `3` when `body_id`
+// is outside the array's range, `1` when there is no body at that index, `0`
+// when everything went right.
 int PHYSICS_is_body_on_floor(size_t body_id, bool* check);
 
 // Checks if the body at `body_id` is only touching platform tiles below it,
 // setting `check` to true if that's the case. Always false while the body is
-// dropping down from them. Returns `3` when `body_id` is
+// dropping down from them or going up through them. Returns `3` when `body_id`
+// is
 // outside the array's range, `1` when there is no body at that index, `0` when
 // everything went right.
 int PHYSICS_is_body_on_platform(size_t body_id, bool* check);

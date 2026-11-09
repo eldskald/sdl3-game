@@ -113,4 +113,28 @@ void test_csv(void) {
                entries[1].col.r == 1.0f && entries[1].col.g == 0.0f,
            });
     CSV_free(&data);
+
+    const char* sectioned = "\nk,1,\nl,2,\n,,\n\nh,v\nx,3\n,\nlast";
+    dynarr first = CSV_parse_section(sectioned, 0);
+    dynarr second = CSV_parse_section(sectioned, 1);
+    dynarr third = CSV_parse_section(sectioned, 2);
+    dynarr missing = CSV_parse_section(sectioned, 3);
+    expect("Parsing each section of a CSV split by blank lines and lines of "
+           "empty cells, checking their rows and that past the last one has "
+           "none...",
+           8,
+           (bool[]){
+               first.len == 2,
+               SDL_strcmp(CSV_cell(1, CSV_row(1, &first)), "2") == 0,
+               second.len == 2,
+               SDL_strcmp(CSV_cell(0, CSV_row(0, &second)), "h") == 0,
+               SDL_strcmp(CSV_cell(1, CSV_row(1, &second)), "3") == 0,
+               third.len == 1,
+               SDL_strcmp(CSV_cell(0, CSV_row(0, &third)), "last") == 0,
+               missing.len == 0,
+           });
+    CSV_free(&first);
+    CSV_free(&second);
+    CSV_free(&third);
+    CSV_free(&missing);
 }

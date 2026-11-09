@@ -1,2 +1,4 @@
-track,loop_start,loop_end
-cave,2205,4410
+track,loop_start,loop_end,stop_when_silent
+cave,2205,4410,1
+water_streaming,0,0,0
+lava_bubbling,0,0,1

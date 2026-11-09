@@ -1,5 +1,6 @@
 #include "engine/tilemap.h"
 #include "tests.h"
+#include "tests/audio.h"
 #include "tests/bgs.h"
 #include "tests/chunks.h"
 #include "tests/csv.h"
@@ -19,6 +20,22 @@
 #include "tests/tilemap.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
+
+// LeakSanitizer calls these on startup for its default suppressions and
+// options, so they apply however the tests are run. They need these names and
+// external linkage for it, hence the `NOLINT`s.
+//
+// NVidia's Vulkan driver leaks memory once when the graphics tests create the
+// GPU device, through the D-Bus connection it opens and never releases. It's
+// harmless, but it shows up in the report, so we're suppressing it. The driver
+// is unloaded by the time the report runs, so it can only be matched by D-Bus.
+const char* __lsan_default_suppressions(void) { // NOLINT
+    return "leak:libdbus-1.so\n";
+}
+
+const char* __lsan_default_options(void) { // NOLINT
+    return "print_suppressions=0";
+}
 
 int main(int argc, char* argv[]) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_COUNT);
@@ -47,6 +64,7 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
     if (argc == 1 || SDL_strcmp(argv[1], "text") == 0) test_text();
     if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();
+    if (argc == 1 || SDL_strcmp(argv[1], "audio") == 0) test_audio();
     if (argc == 1 || SDL_strcmp(argv[1], "sfx") == 0) test_sfx();
     if (argc == 1 || SDL_strcmp(argv[1], "bgs") == 0) test_bgs();
     if (argc == 1 || SDL_strcmp(argv[1], "data-integrity") == 0)

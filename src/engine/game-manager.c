@@ -1,7 +1,9 @@
 #include "engine/game-manager.h"
 #include "defs.h"
 #include "dev/profiler.h"
+#include "engine/audio.h"
 #include "engine/bgs.h"
+#include "engine/camera.h"
 #include "engine/chunks.h"
 #include "engine/fluids.h"
 #include "engine/inputs.h"
@@ -83,11 +85,27 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
 #endif
 
 #if DEV && !TEST
+        PROFILER_setup_timer("camera");
+#endif
+        CAMERA_update();
+#if DEV && !TEST
+        PROFILER_finish_timer("camera");
+#endif
+
+#if DEV && !TEST
         PROFILER_setup_timer("sprites");
 #endif
         SPRITES_update();
 #if DEV && !TEST
         PROFILER_finish_timer("sprites");
+#endif
+
+#if DEV && !TEST
+        PROFILER_setup_timer("fluids_bgs");
+#endif
+        FLUIDS_play_bgs();
+#if DEV && !TEST
+        PROFILER_finish_timer("fluids_bgs");
 #endif
 
 #if DEV && !TEST
@@ -169,6 +187,7 @@ int GAME_MANAGER_start(void) {
     if (INPUTS_start()) return 1;
     if (RENDERER_start()) return 1;
     if (TEXT_start()) return 1;
+    AUDIO_start();
     SFX_start();
     BGS_start();
     SPRITES_start();
@@ -179,6 +198,7 @@ int GAME_MANAGER_start(void) {
     FLUIDS_start();
     REACTIONS_start();
     PLAYER_start();
+    CAMERA_start();
 
 #if DEV && !TEST
     PROFILER_start();
@@ -214,6 +234,7 @@ void GAME_MANAGER_stop(void) {
     REACTIONS_stop();
     SFX_stop();
     BGS_stop();
+    AUDIO_stop();
 
 #if DEV && !TEST
     PROFILER_stop();

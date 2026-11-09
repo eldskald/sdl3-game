@@ -17,4 +17,4 @@ void CAMERA_target_at(double x, double y);
 
 void CAMERA_start(void);
 
-void CAMERA_step(void);
+void CAMERA_update(void);

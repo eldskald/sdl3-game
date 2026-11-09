@@ -2,14 +2,20 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/audio.h"
+#include "engine/bgs.h"
 #include "engine/camera.h"
 #include "engine/game-manager.h"
+#include "engine/sfx.h"
 #include "engine/tilemap.h"
 #include "paths.h"
 #include "services/csv.h"
 #include "utils/logger.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
+
+#define FLUID_SFX_MAX 5
+#define FLUID_SFX_VOICES_TOTAL 4
 
 
 
@@ -86,9 +92,101 @@ static const char fluid_particles_csv[] = {
 static const char ripples_csv[] = {
 #embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
 };
+static const char audio_csv[] = {
+#embed FLUIDS_AUDIO_CSV_PATH suffix(, '\0')
+};
 
+// A sound embedded on the executable that plays on `type`. A `NULL` `mem` with
+// a `0` `size` is for no sound, so `type` plays nothing on its bank.
+typedef struct {
+    fluid_type type;
+    const Uint8* mem;
+    size_t size;
+} fluid_sfx_file;
+
+// A set of sounds per fluid type and the voices they play on, with a
+// `cooldown` between any two of them loaded from `FLUIDS_AUDIO_CSV_PATH`.
+// Voices are created on the first sound played instead of on `FLUIDS_start()`,
+// so fluids don't need `SFX_start()` before them. Sounds are played from more
+// than one thread, so each bank has its own mutex.
+typedef struct {
+    const char* name;
+    double cooldown;
+    const fluid_sfx_file* files;
+    size_t files_total;
+    audio_wav* wavs[FLUIDS_TOTAL][FLUID_SFX_MAX];
+    Uint8 counts[FLUIDS_TOTAL];
+    size_t voices[FLUID_SFX_VOICES_TOTAL];
+    bool voices_created;
+    Uint8 next_voice;
+    Uint64 last_ns;
+    bool played;
+    SDL_Mutex* mutex;
+} fluid_sfx_bank;
+
+static const Uint8 water_slosh_1_wav[] = {
+#embed FLUIDS_WATER_SLOSH_1_SFX_PATH
+};
+static const Uint8 water_slosh_2_wav[] = {
+#embed FLUIDS_WATER_SLOSH_2_SFX_PATH
+};
+static const Uint8 water_slosh_3_wav[] = {
+#embed FLUIDS_WATER_SLOSH_3_SFX_PATH
+};
+static const Uint8 water_slosh_4_wav[] = {
+#embed FLUIDS_WATER_SLOSH_4_SFX_PATH
+};
+static const Uint8 water_slosh_5_wav[] = {
+#embed FLUIDS_WATER_SLOSH_5_SFX_PATH
+};
+
+static const Uint8 water_splash_1_wav[] = {
+#embed FLUIDS_WATER_SPLASH_1_SFX_PATH
+};
+static const Uint8 water_splash_2_wav[] = {
+#embed FLUIDS_WATER_SPLASH_2_SFX_PATH
+};
+static const Uint8 water_splash_3_wav[] = {
+#embed FLUIDS_WATER_SPLASH_3_SFX_PATH
+};
+static const Uint8 lava_splash_1_wav[] = {
+#embed FLUIDS_LAVA_SPLASH_1_SFX_PATH
+};
+
+
+static const fluid_sfx_file slosh_sfx_files[] = {
+    {fluid_water, water_slosh_1_wav, sizeof(water_slosh_1_wav)},
+    {fluid_water, water_slosh_2_wav, sizeof(water_slosh_2_wav)},
+    {fluid_water, water_slosh_3_wav, sizeof(water_slosh_3_wav)},
+    {fluid_water, water_slosh_4_wav, sizeof(water_slosh_4_wav)},
+    {fluid_water, water_slosh_5_wav, sizeof(water_slosh_5_wav)},
+    {fluid_lava, NULL, 0},
+};
+static const fluid_sfx_file splash_sfx_files[] = {
+    {fluid_water, water_splash_1_wav, sizeof(water_splash_1_wav)},
+    {fluid_water, water_splash_2_wav, sizeof(water_splash_2_wav)},
+    {fluid_water, water_splash_3_wav, sizeof(water_splash_3_wav)},
+    {fluid_lava, lava_splash_1_wav, sizeof(lava_splash_1_wav)},
+};
+
+static fluid_sfx_bank slosh_sfx = {
+    .name = "slosh",
+    .files = slosh_sfx_files,
+    .files_total = SDL_arraysize(slosh_sfx_files),
+};
+static fluid_sfx_bank splash_sfx = {
+    .name = "splash",
+    .files = splash_sfx_files,
+    .files_total = SDL_arraysize(splash_sfx_files),
+};
+
+// Only the fluids thread writes on `grid`, locking `grid_mutex` while it does,
+// so it reads it without locking and other threads lock to read it. Writes
+// are kept to quick bulk copies and the queues drained at the end of each
+// update, so other threads don't wait long.
 static fluids grid[TILEMAP_SIZE_X * FLUIDS_SPLIT_X]
                   [TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y] = {0};
+static SDL_Mutex* grid_mutex = NULL;
 static fluids buffer[SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
                     [SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y] = {0};
 
@@ -122,6 +220,73 @@ static SDL_Mutex* particles_mutex = NULL;
 
 // Down, diagonal and sideways move timers, in that order.
 static double move_timers[3][FLUIDS_TOTAL] = {0};
+
+// Like a `pool` of `fluid_body`, but cleared by setting `len` to `0`, keeping
+// every slot and the memory of their `cells`, so finding bodies only allocates
+// when it finds more or bigger ones than ever before. Slots from `len` on are
+// left over from earlier calls, ignored even if `used`. Slots below `inited`
+// have their `cells` initialized, so they're reused instead of initialized
+// again and deinitialized when quitting. Removed ids are pushed to `free_ids`,
+// a `size_t` dynarr, to be reused by the next adds before `len` grows.
+typedef struct {
+    fluid_body* items;
+    bool* used;
+    size_t len;
+    size_t inited;
+    size_t cap;
+    dynarr free_ids;
+} body_pool;
+
+// Bodies of fluid found by `FLUIDS_play_bgs()`, on a copy of the simulated
+// rect of their own, since they're found off the fluids thread. `body_ids` maps
+// each cell of `bodies_buffer` to the id + 1 of the body of each fluid type
+// it's on, `0` being no body. Once the bodies are compacted, only whether it's
+// `0` still holds. They aren't locked, so they're only used by the thread
+// finding them.
+static fluids bodies_buffer[SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
+                           [SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y] = {0};
+static size_t body_ids[FLUIDS_TOTAL][SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
+                      [SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y] = {0};
+static body_pool bodies = (body_pool){0};
+
+// The tracks each fluid type's bodies play, `bgs_track_none` for no track.
+typedef struct {
+    bgs_track static_bgs;
+    bgs_track running_bgs;
+} fluid_bgs;
+static const fluid_bgs body_bgs[FLUIDS_TOTAL] = {
+    [fluid_water] =
+        {
+            .static_bgs = bgs_track_none,
+            .running_bgs = bgs_track_water_streaming,
+        },
+    [fluid_lava] =
+        {
+            .static_bgs = bgs_track_lava_bubbling,
+            .running_bgs = bgs_track_none,
+        },
+};
+
+// Each fluid type's volumes, from `FLUIDS_AUDIO_CSV_PATH`. Its static track
+// plays at up to `static_max_vol`, reached when a body's total volume is at
+// `static_max_vol_at`, and its running track at up to `running_max_vol`,
+// reached when a body's moving cells are at `running_max_vol_at`. A `0` on
+// either `_at` means its track doesn't scale with it. Splashes play at
+// `splash_vol` and ripples at up to `ripple_vol`, by their strength. A `0`
+// volume is for a sound it doesn't have.
+typedef struct {
+    float static_max_vol;
+    double static_max_vol_at;
+    float running_max_vol;
+    double running_max_vol_at;
+    float splash_vol;
+    float ripple_vol;
+} fluid_audio;
+static fluid_audio audio[FLUIDS_TOTAL] = {0};
+
+// Pixels off the camera at which every fluid track and sound goes silent, from
+// `FLUIDS_AUDIO_CSV_PATH`.
+static double falloff_range = 0.0;
 
 // We treat these differently from sprites and bodies because these particles
 // are not exposed, their indexes are not IDs that other code should keep track
@@ -300,10 +465,176 @@ static void load_ripples_data(const char* csv) {
                 "Ripples data loaded successfully.");
 }
 
+// Its first section has the banks' cooldowns and the falloff range shared by
+// every track and sound, and its second the table of each fluid's volumes.
+static void load_audio_data(const char* csv) {
+    parsing_field keys[] = {
+        {"splash_cooldown", parsing_double, &splash_sfx.cooldown},
+        {"ripple_cooldown", parsing_double, &slosh_sfx.cooldown},
+        {"falloff_range", parsing_double, &falloff_range},
+    };
+    dynarr parsed = CSV_parse_section(csv, 0);
+    read_csv_keys(&parsed, keys, SDL_arraysize(keys));
+    CSV_free(&parsed);
+
+    // Rows can be in any order, so they're read here and then placed on
+    // `audio` by their fluid.
+    struct {
+        fluid_type type;
+        fluid_audio audio;
+    } rows[FLUIDS_TOTAL] = {0};
+    fluid_audio* a = &rows[0].audio;
+    parsing_field fields[] = {
+        {"fluid", parsing_fluid, &rows[0].type},
+        {"static_max_vol", parsing_float, &a->static_max_vol},
+        {"static_max_vol_at", parsing_double, &a->static_max_vol_at},
+        {"running_max_vol", parsing_float, &a->running_max_vol},
+        {"running_max_vol_at", parsing_double, &a->running_max_vol_at},
+        {"splash_vol", parsing_float, &a->splash_vol},
+        {"ripple_vol", parsing_float, &a->ripple_vol},
+    };
+    parsed = CSV_parse_section(csv, 1);
+    size_t n =
+        read_csv_table(&parsed, fields, SDL_arraysize(fields), sizeof(rows[0]));
+    for (size_t i = 0; i < n; i++)
+        audio[rows[i].type] = rows[i].audio;
+    CSV_free(&parsed);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Fluid audio data loaded successfully.");
+}
+
+// Files without a sound are skipped.
+static void load_sfx_bank(fluid_sfx_bank* bank) {
+    for (size_t i = 0; i < bank->files_total; i++) {
+        fluid_sfx_file f = bank->files[i];
+        if (!f.mem) continue;
+        Uint8* count = &bank->counts[f.type];
+        if (*count >= FLUID_SFX_MAX) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Fluid type %d has more than %d %s SFX, ignoring "
+                        "the rest",
+                        f.type,
+                        FLUID_SFX_MAX,
+                        bank->name);
+            continue;
+        }
+        audio_wav* wav = AUDIO_create_wav(
+            bank->name, SDL_IOFromConstMem(f.mem, f.size), true);
+        if (wav) bank->wavs[f.type][(*count)++] = wav;
+    }
+    bank->mutex = SDL_CreateMutex();
+    log_creation(
+        SDL_LOG_CATEGORY_APPLICATION, bank->mutex, "fluids' SFX bank mutex");
+}
+
+static void unload_sfx_bank(fluid_sfx_bank* bank) {
+    for (int t = 0; t < FLUIDS_TOTAL; t++) {
+        for (int i = 0; i < bank->counts[t]; i++)
+            AUDIO_destroy_wav(bank->wavs[t][i]);
+        bank->counts[t] = 0;
+    }
+    if (bank->voices_created)
+        for (int i = 0; i < FLUID_SFX_VOICES_TOTAL; i++)
+            SFX_del_voice(bank->voices[i]);
+    bank->voices_created = false;
+    bank->next_voice = 0;
+    bank->played = false;
+    SDL_DestroyMutex(bank->mutex);
+    bank->mutex = NULL;
+}
+
+static void init_bodies(void) {
+    bodies = (body_pool){.cap = FLUIDS_STARTING_BODIES_POOL_CAP};
+    bodies.items = SDL_malloc(bodies.cap * sizeof(fluid_body));
+    bodies.used = SDL_calloc(bodies.cap, sizeof(bool));
+    init_dynarr(&bodies.free_ids, sizeof(size_t));
+}
+
+static void deinit_bodies(void) {
+    for (size_t id = 0; id < bodies.inited; id++)
+        deinit_dynarr(&bodies.items[id].cells);
+    SDL_free(bodies.items);
+    SDL_free(bodies.used);
+    deinit_dynarr(&bodies.free_ids);
+    bodies = (body_pool){0};
+}
+
+static void clear_bodies(void) {
+    bodies.len = 0;
+    clear_dynarr(&bodies.free_ids);
+}
+
+// Pointer to the body of id `id`, or `NULL` if there's none. Adding might move
+// the bodies, so don't hold on to it across adds.
+static fluid_body* get_body(size_t id) {
+    return id < bodies.len && bodies.used[id] ? &bodies.items[id] : NULL;
+}
+
+// Takes a removed id if there's any, or the slot at `len` otherwise, doubling
+// the cap when it's full. Returns its id, with an empty body of `type` on it.
+static size_t add_body(fluid_type type) {
+    size_t id;
+    if (bodies.free_ids.len > 0) {
+        size_t top = bodies.free_ids.len - 1;
+        id = *(size_t*)dynarr_at(top, &bodies.free_ids);
+        remove_at_from_dynarr(top, &bodies.free_ids);
+    } else {
+        if (bodies.len == bodies.cap) {
+            bodies.cap *= 2;
+            bodies.items =
+                SDL_realloc(bodies.items, bodies.cap * sizeof(fluid_body));
+            bodies.used = SDL_realloc(bodies.used, bodies.cap * sizeof(bool));
+        }
+        id = bodies.len++;
+    }
+    // Slots from `inited` on were never written, so they're not read
+    dynarr cells;
+    if (id == bodies.inited) {
+        init_dynarr(&cells, sizeof(fluid_coords));
+        bodies.inited++;
+    } else {
+        cells = bodies.items[id].cells;
+        clear_dynarr(&cells);
+    }
+    bodies.items[id] = (fluid_body){.type = type, .cells = cells};
+    bodies.used[id] = true;
+    return id;
+}
+
+static void remove_body(size_t id) {
+    bodies.used[id] = false;
+    push_to_dynarr(&id, &bodies.free_ids);
+}
+
+// Fills every removed id below `len` with the body on the last slot, so the
+// bodies are all on `0` to `len` with no gaps. Bodies are swapped instead of
+// copied, so the removed ones keep owning their `cells` past `len`.
+static void compact_bodies(void) {
+    while (bodies.len > 0 && !bodies.used[bodies.len - 1])
+        bodies.len--;
+    for (size_t i = 0; i < bodies.free_ids.len; i++) {
+        size_t hole = *(size_t*)dynarr_at(i, &bodies.free_ids);
+        if (hole >= bodies.len) continue;
+        size_t last = bodies.len - 1;
+        fluid_body removed = bodies.items[hole];
+        bodies.items[hole] = bodies.items[last];
+        bodies.items[last] = removed;
+        bodies.used[hole] = true;
+        bodies.used[last] = false;
+        while (bodies.len > 0 && !bodies.used[bodies.len - 1])
+            bodies.len--;
+    }
+    clear_dynarr(&bodies.free_ids);
+}
+
 void FLUIDS_start(void) {
     load_fluid_data(fluids_csv);
     load_fluid_particles_data(fluid_particles_csv);
     load_ripples_data(ripples_csv);
+    load_audio_data(audio_csv);
+    load_sfx_bank(&slosh_sfx);
+    load_sfx_bank(&splash_sfx);
     order_fluids_by_density();
     stagger_move_timers();
     init_dynarr(&mods, sizeof(mod));
@@ -334,18 +665,30 @@ void FLUIDS_start(void) {
     log_creation(SDL_LOG_CATEGORY_APPLICATION,
                  particles_mutex,
                  "fluids' particles mutex");
+    init_bodies();
+    grid_mutex = SDL_CreateMutex();
+    log_creation(
+        SDL_LOG_CATEGORY_APPLICATION, grid_mutex, "fluids' grid mutex");
 }
 
 void FLUIDS_stop(void) {
+    unload_sfx_bank(&slosh_sfx);
+    unload_sfx_bank(&splash_sfx);
     clear_queue(&mods, &mods_mutex);
     clear_queue(&queued_particles, &queued_particles_mutex);
     clear_queue(&splashes, &splashes_mutex);
     clear_queue(&ripples, &ripples_mutex);
+    SDL_LockMutex(grid_mutex);
     SDL_memset(grid, 0, sizeof(grid));
+    SDL_UnlockMutex(grid_mutex);
     SDL_memset(move_timers, 0, sizeof(move_timers));
     deinit_dynarr(&particles);
     SDL_DestroyMutex(particles_mutex);
     particles_mutex = NULL;
+    deinit_bodies();
+    SDL_memset(body_ids, 0, sizeof(body_ids));
+    SDL_DestroyMutex(grid_mutex);
+    grid_mutex = NULL;
 }
 
 
@@ -376,8 +719,10 @@ static void initiate_buffer(void) {
 }
 
 static void transfer_buffer(void) {
+    SDL_LockMutex(grid_mutex);
     for (Uint32 x = 0; x < SIMULATION_SPACE_X * FLUIDS_SPLIT_X; x++)
         SDL_memcpy(&grid[sim_x + x][sim_y], buffer[x], sizeof(buffer[x]));
+    SDL_UnlockMutex(grid_mutex);
 }
 
 // Puts the simulated rect on the simulation space, in fluid cells.
@@ -962,6 +1307,8 @@ void FLUIDS_update(void) {
         step_stabilize_surfaces(t);
     }
 
+    // Mods, splashes and landing particles all write on the grid
+    SDL_LockMutex(grid_mutex);
     drain_queue(&mods, mods_mutex, apply_mod);
 
     // Locked so `FLUIDS_draw()` doesn't read the array while it is reallocated.
@@ -970,6 +1317,7 @@ void FLUIDS_update(void) {
     drain_queue(&queued_particles, queued_particles_mutex, add_queued_particle);
     simulate_fluid_particles();
     SDL_UnlockMutex(particles_mutex);
+    SDL_UnlockMutex(grid_mutex);
 
     SDL_AddAtomicInt(&ripples_ticks, 1);
 }
@@ -979,36 +1327,45 @@ void FLUIDS_update(void) {
 void FLUIDS_set_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type, double volume) {
     mod m = {.x = x, .y = y, .w = w, .h = h, .type = type, .volume = volume};
-    if (GAME_MANAGER_is_fluids_thread())
+    if (GAME_MANAGER_is_fluids_thread()) {
+        SDL_LockMutex(grid_mutex);
         apply_mod(&m);
-    else
+        SDL_UnlockMutex(grid_mutex);
+    } else
         queue_item(&mods, mods_mutex, &m);
 }
 
 void FLUIDS_clear_at(Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_type type) {
     mod m = {.x = x, .y = y, .w = w, .h = h, .type = type, .clear = true};
-    if (GAME_MANAGER_is_fluids_thread())
+    if (GAME_MANAGER_is_fluids_thread()) {
+        SDL_LockMutex(grid_mutex);
         apply_mod(&m);
-    else
+        SDL_UnlockMutex(grid_mutex);
+    } else
         queue_item(&mods, mods_mutex, &m);
 }
 
+// The volumes are copied with the grid locked, and the tiles are checked only
+// after, so it's locked for as little as possible.
 void FLUIDS_get_at(
     Uint32 x, Uint32 y, Uint32 w, Uint32 h, fluid_cell (*cells)[w][h]) {
+    SDL_LockMutex(grid_mutex);
     for (long i = x; i < x + w; i++) {
         for (long j = y; j < y + h; j++) {
-            if (i >= TILEMAP_SIZE_X * FLUIDS_SPLIT_X ||
-                j >= TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y) {
-                (*cells)[i - x][j - y] = (fluid_cell){.solid = true};
-                continue;
-            }
             fluid_cell cell = (fluid_cell){0};
-            cell.solid = is_solid(i, j);
-            for (Uint8 type = 0; type < FLUIDS_TOTAL; type++)
-                cell.volume[type] = grid[i][j].volume[type];
+            if (i < TILEMAP_SIZE_X * FLUIDS_SPLIT_X &&
+                j < TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y)
+                for (Uint8 type = 0; type < FLUIDS_TOTAL; type++)
+                    cell.volume[type] = grid[i][j].volume[type];
             (*cells)[i - x][j - y] = cell;
         }
     }
+    SDL_UnlockMutex(grid_mutex);
+    for (long i = x; i < x + w; i++)
+        for (long j = y; j < y + h; j++)
+            (*cells)[i - x][j - y].solid =
+                i >= TILEMAP_SIZE_X * FLUIDS_SPLIT_X ||
+                j >= TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y || is_solid(i, j);
 }
 
 
@@ -1348,6 +1705,222 @@ SDL_Rect FLUIDS_get_simulated_rect(void) {
 
 
 
+// Puts the cell at `(x,y)` of `bodies_buffer` on the body of id `id`, `(x0,y0)`
+// being where the buffer is on the grid.
+static void
+add_cell_to_body(size_t id, Uint32 x, Uint32 y, Uint32 x0, Uint32 y0) {
+    fluid_body* b = get_body(id);
+    body_ids[b->type][x][y] = id + 1;
+    push_to_dynarr(&(fluid_coords){x0 + x, y0 + y}, &b->cells);
+}
+
+// Moves every cell of the body of id `from` to the one of id `to`, removing
+// `from`, both of the same fluid type. Merge the smaller body into the bigger
+// one, so each cell is moved only when its body at least doubles. `(x0,y0)` is
+// where `bodies_buffer` is on the grid.
+static void merge_bodies(size_t to, size_t from, Uint32 x0, Uint32 y0) {
+    fluid_body* src = get_body(from);
+    fluid_body* dst = get_body(to);
+    for (size_t i = 0; i < src->cells.len; i++) {
+        fluid_coords c = *(fluid_coords*)dynarr_at(i, &src->cells);
+        body_ids[dst->type][c.x - x0][c.y - y0] = to + 1;
+        push_to_dynarr(&c, &dst->cells);
+    }
+    remove_body(from);
+}
+
+// Whether `(x,y)` of `bodies_buffer` is a wall, being solid or outside it, with
+// `(x0,y0)` where the buffer is on the grid.
+static bool is_body_wall(long x, long y, Uint32 x0, Uint32 y0) {
+    return x < 0 || y < 0 || x >= SIMULATION_SPACE_X * FLUIDS_SPLIT_X ||
+           y >= SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y || is_solid(x0 + x, y0 + y);
+}
+
+// Whether fluid of `ordered_type` has room to move into `(x,y)` of
+// `bodies_buffer`, counting only the fluids as dense as it or denser, like the
+// moves do.
+static bool
+has_body_room(long x, long y, Uint8 ordered_type, Uint32 x0, Uint32 y0) {
+    return !is_body_wall(x, y, x0, y0) &&
+           1.0f - get_fill(bodies_buffer[x][y], ordered_type) >= EPSILON;
+}
+
+// The index of `type` on `ordered`, which the moves take.
+static Uint8 get_ordered_type(fluid_type type) {
+    Uint8 t = 0;
+    while (ordered[t] != type)
+        t++;
+    return t;
+}
+
+// Sums up the volumes and moving cells of the body of id `id` and finds the
+// rect around its cells, counting only its own fluid type, `(x0,y0)` being
+// where `bodies_buffer` is on the grid. A cell moving down also counts every
+// cell of the body right over it, since they fall along with it. Those are the
+// cells of its type right over it, so it works on compacted bodies, whose ids
+// no longer match `body_ids`. A cell that can't move down moves diagonally if
+// the cell down left or down right has room, unless it's blocked off by walls
+// on both its sides, like the diagonal move does. That's a rougher check than
+// the move's, which also pours into the surfaces from there and holds back
+// fluid too thin to spread. `moving_cells` stops at its max instead of wrapping
+// around.
+static void measure_body(size_t id, Uint32 x0, Uint32 y0) {
+    fluid_body* b = get_body(id);
+    Uint8 ordered_type = get_ordered_type(b->type);
+    fluid_coords first = *(fluid_coords*)dynarr_at(0, &b->cells);
+    Uint32 min_x = first.x;
+    Uint32 min_y = first.y;
+    Uint32 max_x = first.x;
+    Uint32 max_y = first.y;
+    Uint32 moving = 0;
+    for (size_t i = 0; i < b->cells.len; i++) {
+        fluid_coords c = *(fluid_coords*)dynarr_at(i, &b->cells);
+        Uint32 x = c.x - x0;
+        Uint32 y = c.y - y0;
+        b->total_volume += bodies_buffer[x][y].volume[b->type];
+        min_x = SDL_min(min_x, c.x);
+        min_y = SDL_min(min_y, c.y);
+        max_x = SDL_max(max_x, c.x);
+        max_y = SDL_max(max_y, c.y);
+        if (has_body_room(x, y + 1, ordered_type, x0, y0)) {
+            moving++;
+            for (Uint32 above = y; above-- > 0 && body_ids[b->type][x][above];)
+                moving++;
+            continue;
+        }
+        bool bot_wall = is_body_wall(x, y + 1, x0, y0);
+        bool left = has_body_room(x - 1, y + 1, ordered_type, x0, y0) &&
+                    !(bot_wall && is_body_wall(x - 1, y, x0, y0));
+        bool right = has_body_room(x + 1, y + 1, ordered_type, x0, y0) &&
+                     !(bot_wall && is_body_wall(x + 1, y, x0, y0));
+        if (left || right) moving++;
+    }
+    b->rect = (SDL_Rect){
+        .x = min_x,
+        .y = min_y,
+        .w = max_x - min_x + 1,
+        .h = max_y - min_y + 1,
+    };
+    b->moving_cells = SDL_min(moving, SDL_MAX_UINT16);
+}
+
+// How loud the tracks of `b` should be from where it is. It's at full volume
+// while its rect intersects `cam`, going down linearly with the distance
+// between them and reaching silence `falloff_range` pixels away.
+static double get_body_distance_volume(const fluid_body* b, SDL_FRect cam) {
+    double l = (double)b->rect.x * FLUIDS_CELL_W;
+    double t = (double)b->rect.y * FLUIDS_CELL_H;
+    double r = l + (double)b->rect.w * FLUIDS_CELL_W;
+    double bt = t + (double)b->rect.h * FLUIDS_CELL_H;
+    double dx = SDL_max(SDL_max(cam.x - r, l - (cam.x + cam.w)), 0.0);
+    double dy = SDL_max(SDL_max(cam.y - bt, t - (cam.y + cam.h)), 0.0);
+    return SDL_max(1.0 - SDL_sqrt(dx * dx + dy * dy) / falloff_range, 0.0);
+}
+
+// How much of `full` `amount` is, capped at `1`, or `1` if `full` is `0`.
+static double get_body_scale(double amount, double full) {
+    return full > 0.0 ? SDL_min(amount / full, 1.0) : 1.0;
+}
+
+// Fades `track` to `volume` times `max_vol`, so jumps in it are smoothed out,
+// playing it from silence if it isn't playing and it isn't silent. It fades at
+// `FLUIDS_BODIES_BGS_FADE_RATE` times `max_vol` too, so going from silence to
+// `max_vol` takes the same time whatever `max_vol` is. Whether it stops once
+// silent is up to the track. Does nothing for `bgs_track_none`.
+static void play_body_track(bgs_track track, float volume, float max_vol) {
+    if (track == bgs_track_none) return;
+    volume *= max_vol;
+    if (volume > 0.0f && !BGS_is_track_playing(track)) {
+        BGS_set_track_volume(track, 0.0f);
+        BGS_play_track(track);
+    }
+    BGS_fade_track(track, volume, FLUIDS_BODIES_BGS_FADE_RATE * max_vol);
+}
+
+// Plays each fluid type's tracks at the volume of its loudest body for each of
+// them, scaled by distance and then by total volume for the static track and
+// by moving cells for the running one.
+static void play_bodies_sfx(void) {
+    SDL_FRect cam = CAMERA_get_rect();
+    float static_volumes[FLUIDS_TOTAL] = {0};
+    float running_volumes[FLUIDS_TOTAL] = {0};
+    for (size_t id = 0; id < bodies.len; id++) {
+        fluid_body* b = &bodies.items[id];
+        const fluid_audio* a = &audio[b->type];
+        double dist = get_body_distance_volume(b, cam);
+        float stat = (float)(dist * get_body_scale(b->total_volume,
+                                                   a->static_max_vol_at));
+        float run = (float)(dist * get_body_scale(b->moving_cells,
+                                                  a->running_max_vol_at));
+        static_volumes[b->type] = SDL_max(static_volumes[b->type], stat);
+        running_volumes[b->type] = SDL_max(running_volumes[b->type], run);
+    }
+    for (fluid_type type = 0; type < FLUIDS_TOTAL; type++) {
+        play_body_track(body_bgs[type].static_bgs,
+                        static_volumes[type],
+                        audio[type].static_max_vol);
+        play_body_track(body_bgs[type].running_bgs,
+                        running_volumes[type],
+                        audio[type].running_max_vol);
+    }
+}
+
+// Finds the bodies of fluid on the simulated rect, replacing the ones found
+// last time, measures them and plays their tracks. Cells with the same fluid
+// type connected by their sides are on the same body. The bodies aren't locked,
+// so it's only called from one thread. The simulated rect is read once, since
+// the fluids thread may move it midway. Each fluid type has its own bodies, so
+// a cell with more than one type is on one body of each. Cells are checked top
+// to bottom, left to right, so their left and top neighbors were already
+// checked: a cell joins their body of the same type, merging the smaller one
+// into the bigger if they're on different ones, or starts a new body if neither
+// has one. The bodies are compacted once they're all found, so measuring them
+// and playing their tracks don't skip over removed ones.
+void FLUIDS_play_bgs(void) {
+    SDL_LockMutex(grid_mutex);
+    Uint32 x0 = sim_x;
+    Uint32 y0 = sim_y;
+    for (Uint32 x = 0; x < SIMULATION_SPACE_X * FLUIDS_SPLIT_X; x++)
+        SDL_memcpy(
+            bodies_buffer[x], &grid[x0 + x][y0], sizeof(bodies_buffer[x]));
+    SDL_UnlockMutex(grid_mutex);
+    SDL_memset(body_ids, 0, sizeof(body_ids));
+    clear_bodies();
+
+    for (Uint32 y = 0; y < SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y; y++) {
+        for (Uint32 x = 0; x < SIMULATION_SPACE_X * FLUIDS_SPLIT_X; x++) {
+            if (is_solid(x0 + x, y0 + y)) continue;
+            for (fluid_type type = 0; type < FLUIDS_TOTAL; type++) {
+                if (bodies_buffer[x][y].volume[type] <= EPSILON) continue;
+                size_t left = x > 0 ? body_ids[type][x - 1][y] : 0;
+                size_t top = y > 0 ? body_ids[type][x][y - 1] : 0;
+                size_t id;
+                if (!left && !top) {
+                    id = add_body(type);
+                } else if (left && top && left != top) {
+                    size_t a = left - 1;
+                    size_t b = top - 1;
+                    if (get_body(a)->cells.len < get_body(b)->cells.len) {
+                        a = top - 1;
+                        b = left - 1;
+                    }
+                    merge_bodies(a, b, x0, y0);
+                    id = a;
+                } else {
+                    id = (left ? left : top) - 1;
+                }
+                add_cell_to_body(id, x, y, x0, y0);
+            }
+        }
+    }
+    compact_bodies();
+    for (size_t id = 0; id < bodies.len; id++)
+        measure_body(id, x0, y0);
+    play_bodies_sfx();
+}
+
+
+
 int FLUIDS_add_particle(
     fluid_type type, double x, double y, double vel_x, double vel_y) {
     long cell_x = SDL_floor(x / FLUIDS_CELL_W);
@@ -1360,14 +1933,145 @@ int FLUIDS_add_particle(
     return 0;
 }
 
+static void play_sfx_bank(fluid_sfx_bank* bank,
+                          fluid_type type,
+                          double x,
+                          double y,
+                          float max_volume) {
+    if (!bank->counts[type]) return;
+    SDL_LockMutex(bank->mutex);
+    Uint64 now = SDL_GetTicksNS();
+    if (bank->played &&
+        now - bank->last_ns < (Uint64)(bank->cooldown * SDL_NS_PER_SECOND)) {
+        SDL_UnlockMutex(bank->mutex);
+        return;
+    }
+    if (!bank->voices_created) {
+        // Without SFX started, there's nothing to play them on
+        for (int i = 0; i < FLUID_SFX_VOICES_TOTAL; i++) {
+            if (SFX_new_voice(audio_bus_gameplay_sounds, &bank->voices[i])) {
+                SDL_UnlockMutex(bank->mutex);
+                return;
+            }
+        }
+        bank->voices_created = true;
+    }
+    SFX_play_voice_2d(bank->voices[bank->next_voice],
+                      bank->wavs[type][SDL_rand(bank->counts[type])],
+                      x,
+                      y,
+                      max_volume,
+                      falloff_range);
+    bank->next_voice = (bank->next_voice + 1) % FLUID_SFX_VOICES_TOTAL;
+    bank->last_ns = now;
+    bank->played = true;
+    SDL_UnlockMutex(bank->mutex);
+}
+
+// Fills `type` with the fluid with the most volume on the deep columns of the
+// `w` from `(x,y)` to its right, returning whether there are any. A column is
+// deep when it has at least a tile's worth of fluid, `FLUIDS_SPLIT_Y` cells in
+// a row with `FLUIDS_INTERACTION_VOL_THRESHOLD` volume or more each, starting
+// within `FLUIDS_SPLASH_SURFACE_RANGE` cells under `y`. Cells under the
+// threshold over it are skipped, since a surface cell may be only a thin film,
+// but not under it, so thin puddles and blobs of fluid falling through the air
+// don't count however tall they are.
+static bool get_splash_fluid(Uint32 x, Uint32 y, Uint32 w, fluid_type* type) {
+    if (w == 0) return false;
+    const Uint32 h = FLUIDS_SPLASH_SURFACE_RANGE + FLUIDS_SPLIT_Y;
+    fluid_cell cells[w][h];
+    FLUIDS_get_at(x, y, w, h, &cells);
+    double volumes[FLUIDS_TOTAL] = {0};
+    bool deep = false;
+    for (Uint32 i = 0; i < w; i++) {
+        double column[FLUIDS_TOTAL] = {0};
+        Uint32 run = 0;
+        for (Uint32 j = 0; j < h && run < FLUIDS_SPLIT_Y; j++) {
+            if (cells[i][j].solid) break;
+            double total = 0.0;
+            for (int t = 0; t < FLUIDS_TOTAL; t++)
+                total += cells[i][j].volume[t];
+            if (total < FLUIDS_INTERACTION_VOL_THRESHOLD) {
+                if (run > 0) break;
+                continue;
+            }
+            run++;
+            for (int t = 0; t < FLUIDS_TOTAL; t++)
+                column[t] += cells[i][j].volume[t];
+        }
+        if (run < FLUIDS_SPLIT_Y) continue;
+        deep = true;
+        for (int t = 0; t < FLUIDS_TOTAL; t++)
+            volumes[t] += column[t];
+    }
+    if (!deep) return false;
+    *type = 0;
+    for (int t = 1; t < FLUIDS_TOTAL; t++)
+        if (volumes[t] > volumes[*type]) *type = t;
+    return true;
+}
+
 void FLUIDS_splash_at(Uint32 x, Uint32 y, Uint32 w, double speed) {
     splash sp = {.x = x, .y = y, .w = w, .speed = speed};
     queue_item(&splashes, splashes_mutex, &sp);
+    fluid_type type;
+    if (get_splash_fluid(x, y, w, &type))
+        play_sfx_bank(&splash_sfx,
+                      type,
+                      (x + w / 2.0) * FLUIDS_CELL_W,
+                      (double)y * FLUIDS_CELL_H,
+                      audio[type].splash_vol);
+}
+
+static bool
+get_ripple_fluid(Uint32 x, Uint32 y, Uint32 size, fluid_type* type) {
+    long half = size / 2;
+    long l = SDL_max((long)x - half, 0) / FLUIDS_CELL_W;
+    long t = SDL_max((long)y - half, 0) / FLUIDS_CELL_H;
+    long r = ((long)x - half + (long)SDL_max(size, 1) - 1) / FLUIDS_CELL_W;
+    long b = ((long)y - half + (long)SDL_max(size, 1) - 1) / FLUIDS_CELL_H;
+    long w = SDL_max(r - l + 1, 1);
+    long h = SDL_max(b - t + 1, 1);
+    fluid_cell cells[w][h];
+    FLUIDS_get_at(l, t, w, h, &cells);
+    double volumes[FLUIDS_TOTAL] = {0};
+    double total = 0.0;
+    for (long i = 0; i < w; i++) {
+        for (long j = 0; j < h; j++) {
+            if (cells[i][j].solid) continue;
+            for (int f = 0; f < FLUIDS_TOTAL; f++) {
+                volumes[f] += cells[i][j].volume[f];
+                total += cells[i][j].volume[f];
+            }
+        }
+    }
+    if (total <= EPSILON) return false;
+    *type = 0;
+    for (int f = 1; f < FLUIDS_TOTAL; f++)
+        if (volumes[f] > volumes[*type]) *type = f;
+    return true;
+}
+
+static bool is_ripple_deep(Uint32 x, Uint32 y) {
+    fluid_cell cells[1][2];
+    FLUIDS_get_at(x / FLUIDS_CELL_W, y / FLUIDS_CELL_H, 1, 2, &cells);
+    double total = 0.0;
+    for (int j = 0; j < 2; j++) {
+        if (cells[0][j].solid) continue;
+        for (int t = 0; t < FLUIDS_TOTAL; t++)
+            total += cells[0][j].volume[t];
+    }
+    return total >= FLUIDS_RIPPLE_SFX_VOL_THRESHOLD;
 }
 
 void FLUIDS_ripple_at(Uint32 x, Uint32 y, Uint32 size, double strength) {
     ripple r = {.x = x, .y = y, .size = size, .strength = strength};
     queue_item(&ripples, ripples_mutex, &r);
+    fluid_type type;
+    if (strength > 0.0 && is_ripple_deep(x, y) &&
+        get_ripple_fluid(x, y, size, &type))
+        play_sfx_bank(
+            &slosh_sfx, type, x, y, (float)strength * audio[type].ripple_vol);
 }
 
 
