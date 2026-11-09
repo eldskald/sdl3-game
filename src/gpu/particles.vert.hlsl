@@ -6,6 +6,7 @@ StructuredBuffer<uint> _AliveIndices : register(t2, space0);
 
 cbuffer TargetUniforms : register(b0, space1) {
     float2 _TargetSize;
+    int2 _TargetPad0;
 };
 
 cbuffer Uniforms : register(b1, space1) {
@@ -13,7 +14,8 @@ cbuffer Uniforms : register(b1, space1) {
     float2 _TextureSize;
     uint _Group;
     uint _ParticleBufferCap;
-    int2 _Pad0;
+    int _Pad0;
+    int _Pad1;
 };
 
 struct output {

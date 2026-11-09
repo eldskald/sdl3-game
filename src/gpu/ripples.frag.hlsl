@@ -21,6 +21,10 @@ SamplerState _FluidsSampler : register(s1, space2);
 cbuffer Uniforms : register(b0, space3) {
     // How much of their height ripples keep per tick.
     float _Damping;
+
+    int _Pad0;
+    int _Pad1;
+    int _Pad2;
 };
 
 struct input {

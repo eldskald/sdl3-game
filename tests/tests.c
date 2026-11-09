@@ -3,6 +3,7 @@
 #include "engine/fluids.h"
 #include "engine/tilemap.h"
 #include <SDL3/SDL.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 static int errors = 0;
@@ -38,6 +39,24 @@ void expect(const char* desc, size_t n, bool expectations[n]) {
     } else {
         printf(GREEN " Passed" RESET "\n");
     }
+}
+
+void check(report* r, bool ok, const char* fmt, ...) {
+    if (r->len < MAX_EXPECTATIONS)
+        r->checks[r->len++] = ok;
+    else if (!ok)
+        r->checks[MAX_EXPECTATIONS - 1] = false;
+    if (ok || r->errors_len >= MAX_ERRORS) return;
+    va_list args;
+    va_start(args, fmt);
+    SDL_vsnprintf(r->errors[r->errors_len++], FAIL_MESSAGE_MAX, fmt, args);
+    va_end(args);
+}
+
+void finish_report(const char* desc, report* r) {
+    expect(desc, r->len, r->checks);
+    for (size_t i = 0; i < r->errors_len; i++)
+        printf(RED "    %s" RESET "\n", r->errors[i]);
 }
 
 bool get_tests_result(void) {

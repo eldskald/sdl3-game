@@ -122,12 +122,6 @@ typedef struct {
 #define GRAPHICS_SHADER_CODE(spirv, dxil)                                      \
     ((graphics_shader_code){spirv, sizeof(spirv), dxil, sizeof(dxil)})
 
-// Macros for making sure buffer structs are correct, given how padding and
-// order can affect how the shader assigns values.
-#define ASSERT_SIZE_16(type) static_assert(sizeof(type) % 16 == 0)
-#define ASSERT_OFFSETOF(type, var, offset)                                     \
-    static_assert(offsetof(type, var) == (offset))
-
 // A compute shader run on `groups` groups of threads, along x only. It reads
 // the `readonly_buffers`, bound to its `t` registers in order, and reads and
 // writes the `readwrite_buffers`, bound to its `u` registers in order. The

@@ -10,6 +10,9 @@ cbuffer Uniforms : register(b0, space3) {
     // How soft the transition into blooming is, from `0.0`, a hard cut at
     // `_Threshold`, to `1.0`, starting to bloom from zero brightness.
     float _SoftThreshold;
+
+    int _Pad0;
+    int _Pad1;
 };
 
 struct input {

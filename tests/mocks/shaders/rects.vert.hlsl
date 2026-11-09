@@ -6,6 +6,7 @@ StructuredBuffer<float4> _Rects : register(t0, space0);
 
 cbuffer TargetUniforms : register(b0, space1) {
     float2 _TargetSize;
+    int2 _TargetPad0;
 };
 
 cbuffer Uniforms : register(b1, space1) {

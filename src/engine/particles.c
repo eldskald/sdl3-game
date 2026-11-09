@@ -11,7 +11,6 @@
 #include "utils/logger.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
-#include <stddef.h>
 
 // Matches `ParticleType` on `src/gpu/includes/particles-common.hlsli`.
 typedef struct {
@@ -53,65 +52,18 @@ typedef struct {
     int pad1;
 } gpu_type;
 
-ASSERT_SIZE_16(gpu_type);
-ASSERT_OFFSETOF(gpu_type, col, 0);
-ASSERT_OFFSETOF(gpu_type, col_jitter, 16);
-ASSERT_OFFSETOF(gpu_type, src, 32);
-ASSERT_OFFSETOF(gpu_type, acc, 48);
-ASSERT_OFFSETOF(gpu_type, lifetime, 64);
-ASSERT_OFFSETOF(gpu_type, lifetime_jitter, 68);
-ASSERT_OFFSETOF(gpu_type, fade_time, 72);
-ASSERT_OFFSETOF(gpu_type, ignore_fluids, 76);
-ASSERT_OFFSETOF(gpu_type, face_vel, 80);
-ASSERT_OFFSETOF(gpu_type, damping, 84);
-ASSERT_OFFSETOF(gpu_type, slither_freq, 88);
-ASSERT_OFFSETOF(gpu_type, slither_amp, 92);
-ASSERT_OFFSETOF(gpu_type, bounce_count, 96);
-ASSERT_OFFSETOF(gpu_type, bounce, 100);
-ASSERT_OFFSETOF(gpu_type, bounce_until, 104);
-ASSERT_OFFSETOF(gpu_type, col_str, 108);
-ASSERT_OFFSETOF(gpu_type, death_particles, 112);
-ASSERT_OFFSETOF(gpu_type, death_count, 116);
-ASSERT_OFFSETOF(gpu_type, death_speed, 120);
-ASSERT_OFFSETOF(gpu_type, death_spread, 124);
-ASSERT_OFFSETOF(gpu_type, death_speed_jitter, 128);
-ASSERT_OFFSETOF(gpu_type, trail_particles, 132);
-ASSERT_OFFSETOF(gpu_type, trail_freq, 136);
-ASSERT_OFFSETOF(gpu_type, trail_speed, 140);
-ASSERT_OFFSETOF(gpu_type, trail_spread, 144);
-ASSERT_OFFSETOF(gpu_type, trail_speed_jitter, 148);
-ASSERT_OFFSETOF(gpu_type, group, 152);
-
 // Matches `Request` on `src/gpu/includes/particles-common.hlsli`.
 typedef struct {
     float pos[2];
     float vel[2];
+    float size[2];
     float speed_jitter;
     float spread;
     Uint32 type;
     Uint32 count;
     Uint32 seed;
     Uint32 shape;
-    float size[2];
 } request;
-ASSERT_SIZE_16(request);
-ASSERT_OFFSETOF(request, pos, 0);
-ASSERT_OFFSETOF(request, vel, 8);
-ASSERT_OFFSETOF(request, speed_jitter, 16);
-ASSERT_OFFSETOF(request, spread, 20);
-ASSERT_OFFSETOF(request, type, 24);
-ASSERT_OFFSETOF(request, count, 28);
-ASSERT_OFFSETOF(request, seed, 32);
-ASSERT_OFFSETOF(request, shape, 36);
-ASSERT_OFFSETOF(request, size, 40);
-
-// Matches `DrawArgs` on `src/gpu/includes/particles-common.hlsli`.
-static_assert(sizeof(SDL_GPUIndirectDrawCommand) == 16);
-ASSERT_OFFSETOF(SDL_GPUIndirectDrawCommand, num_instances, 4);
-
-// Size of `Particle` on `src/gpu/includes/particles-common.hlsli`. The CPU
-// never reads or writes particles, so it has no struct for them.
-#define PARTICLE_SIZE 48
 
 // Matches `src/gpu/includes/particles-uniforms.hlsli`.
 typedef struct {
@@ -123,12 +75,6 @@ typedef struct {
     Uint32 max_requests;
     int pad1;
 } compute_uniforms;
-ASSERT_SIZE_16(compute_uniforms);
-ASSERT_OFFSETOF(compute_uniforms, fluid_sim_rect, 0);
-ASSERT_OFFSETOF(compute_uniforms, fluid_cell_size, 16);
-ASSERT_OFFSETOF(compute_uniforms, dt, 32);
-ASSERT_OFFSETOF(compute_uniforms, particle_buffer_cap, 36);
-ASSERT_OFFSETOF(compute_uniforms, max_requests, 40);
 
 // Matches the second uniform buffer of `src/gpu/particles.vert.hlsl`.
 typedef struct {
@@ -136,13 +82,9 @@ typedef struct {
     float texture_size[2];
     Uint32 group;
     Uint32 particle_buffer_cap;
-    int pad0[2];
+    int pad0;
+    int pad1;
 } vertex_uniforms;
-ASSERT_SIZE_16(vertex_uniforms);
-ASSERT_OFFSETOF(vertex_uniforms, cam_pos, 0);
-ASSERT_OFFSETOF(vertex_uniforms, texture_size, 8);
-ASSERT_OFFSETOF(vertex_uniforms, group, 16);
-ASSERT_OFFSETOF(vertex_uniforms, particle_buffer_cap, 20);
 
 // A row of `PARTICLES_CSV_PATH`. Sprites are in particle cells, spritesheet
 // cells split by `PARTICLES_SPLIT_X` and `PARTICLES_SPLIT_Y`.

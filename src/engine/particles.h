@@ -22,6 +22,11 @@ typedef enum {
     particle_shaders_total,
 } particle_shader;
 
+// Size of `Particle` on `src/gpu/includes/particles-common.hlsli`. The CPU
+// never reads or writes particles, so it has no struct for them, only buffers
+// of this many bytes per particle.
+#define PARTICLE_SIZE 48
+
 
 
 // Loads the particle types and creates the buffers and shaders the particles

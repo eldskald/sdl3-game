@@ -11,10 +11,7 @@
 #include "services/csv.h"
 #include "tests.h"
 #include <SDL3/SDL.h>
-#include <stdarg.h>
 #include <stdio.h>
-
-#define MAX_ERRORS 16
 
 // Type a CSV value must have to be read by its loader.
 typedef enum {
@@ -44,15 +41,6 @@ typedef struct {
     const char* name;
     val_type type;
 } column_spec;
-
-// Checks of a single file, passed to a single `expect()`, along with messages
-// of what failed to be printed after it.
-typedef struct {
-    bool checks[MAX_EXPECTATIONS];
-    size_t len;
-    char errors[MAX_ERRORS][FAIL_MESSAGE_MAX];
-    size_t errors_len;
-} report;
 
 static const char bloom_csv[] = {
 #embed RENDERER_BLOOM_CSV_PATH suffix(, '\0')
@@ -109,26 +97,10 @@ static hashmap particle_names = (hashmap){0};
 static hashmap particle_shader_names = (hashmap){0};
 static hashmap bgs_track_names = (hashmap){0};
 
-static void check(report* r, bool ok, const char* fmt, ...) {
-    // Past `MAX_EXPECTATIONS`, failures go on the last check so they still fail
-    // the file.
-    if (r->len < MAX_EXPECTATIONS)
-        r->checks[r->len++] = ok;
-    else if (!ok)
-        r->checks[MAX_EXPECTATIONS - 1] = false;
-    if (ok || r->errors_len >= MAX_ERRORS) return;
-    va_list args;
-    va_start(args, fmt);
-    SDL_vsnprintf(r->errors[r->errors_len++], FAIL_MESSAGE_MAX, fmt, args);
-    va_end(args);
-}
-
 static void finish(const char* path, report* r) {
     char desc[FAIL_MESSAGE_MAX] = "";
     sprintf(desc, "Checking %s...", path);
-    expect(desc, r->len, r->checks);
-    for (size_t i = 0; i < r->errors_len; i++)
-        printf(RED "    %s" RESET "\n", r->errors[i]);
+    finish_report(desc, r);
 }
 
 static bool is_val(const char* s, val_type type) {

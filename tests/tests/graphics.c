@@ -80,7 +80,7 @@ static const SDL_Color blue = {0, 0, 255, 255};
 typedef struct {
     float offset[2];
     Uint32 count;
-    Uint32 pad;
+    Uint32 pad0;
 } rects_comp_uniforms;
 
 

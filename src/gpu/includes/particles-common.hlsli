@@ -58,13 +58,13 @@ struct ParticleType {
 struct Request {
     float2 pos;
     float2 vel;
+    float2 size; // Of the rect, when `shape` is `SHAPE_RECT`
     float speed_jitter;
     float spread;
     uint type;
     uint count;
     uint seed;
     uint shape; // One of the `SHAPE_` defines
-    float2 size; // Of the rect, when `shape` is `SHAPE_RECT`
 };
 
 // Matches `SDL_GPUIndirectDrawCommand`, one per group on the draw arguments'
