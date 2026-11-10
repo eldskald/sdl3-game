@@ -268,8 +268,6 @@ static const int NEIGHBORS[8][2] = {
 static tile (*map)[TILEMAP_SIZE_X][TILEMAP_SIZE_Y] = NULL;
 static dynarr autotiles = (dynarr){0};
 
-// Index on `autotiles` plus one of the autotile each spritesheet tile belongs
-// to, `0` meaning it's not part of any autotile.
 static Uint8 autotile_ids[SPRITESHEET_X / SPRITESHEET_CELL_X]
                          [SPRITESHEET_Y / SPRITESHEET_CELL_Y] = {0};
 
@@ -278,21 +276,15 @@ static land_particles land_on_particles[TILEMAP_TILE_TYPES_TOTAL] = {0};
 static tile_sfx step_sfx[TILEMAP_TILE_TYPES_TOTAL] = {0};
 static tile_sfx land_sfx[TILEMAP_TILE_TYPES_TOTAL] = {0};
 
-// Played instead of the tile's own sounds when there are fluids on it, by the
-// fluid with the most volume there.
 static tile_sfx fluids_step_sfx[FLUIDS_TOTAL] = {0};
 static tile_sfx fluids_land_sfx[FLUIDS_TOTAL] = {0};
 
-// Shared by steps and landings. Voices are created on the first sound instead
-// of on `TILEMAP_start()`, so the tilemap doesn't need `SFX_start()` before it.
 static size_t sfx_voices[TILE_SFX_VOICES_TOTAL] = {0};
 static bool sfx_voices_created = false;
 static Uint8 sfx_next_voice = 0;
 static Uint64 sfx_last_ns = 0;
 static bool sfx_played = false;
 
-// Seconds between any two steps or landings, and pixels off the camera at which
-// they go silent, from `TILEMAP_AUDIO_CSV_PATH`.
 static double sfx_cooldown = 0.0;
 static double sfx_falloff_range = 0.0;
 

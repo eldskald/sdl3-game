@@ -2,5 +2,5 @@
 
 bin/compile-shaders
 make dev GAME_NAME=.dev
-./.dev.*
+./.dev.* "$@"
 rm .dev.*

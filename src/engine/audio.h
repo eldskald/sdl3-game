@@ -118,12 +118,21 @@ void AUDIO_resume_bus(audio_bus bus);
 bool AUDIO_is_bus_paused(audio_bus bus);
 
 // Sets the volume of everything on `bus`, `1.0f` being their own volume and
-// `0.0f` silence. Negative values are taken as `0.0f`. It's kept across
-// `AUDIO_stop()` and `AUDIO_start()`, and starts at `AUDIO_STARTING_VOLUME`.
+// `0.0f` silence, scaled by the master volume. Negative values are taken as
+// `0.0f`. It's kept across `AUDIO_stop()` and `AUDIO_start()`, and starts at
+// `AUDIO_STARTING_VOLUME`.
 void AUDIO_set_bus_volume(audio_bus bus, float volume);
 
 // The volume of `bus`, see `AUDIO_set_bus_volume()`.
 float AUDIO_get_bus_volume(audio_bus bus);
+
+// Sets the volume every bus's volume is scaled by, `1.0f` leaving them as they
+// are and `0.0f` muting everything. Negative values are taken as `0.0f`. It's
+// kept across `AUDIO_stop()` and `AUDIO_start()`, and starts at `1.0f`.
+void AUDIO_set_master_volume(float volume);
+
+// The master volume, see `AUDIO_set_master_volume()`.
+float AUDIO_get_master_volume(void);
 
 // The logical device of `bus`, to bind streams to, `0` without one.
 SDL_AudioDeviceID AUDIO_get_bus_device(audio_bus bus);

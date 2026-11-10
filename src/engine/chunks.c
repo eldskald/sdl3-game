@@ -5,6 +5,7 @@
 #include "engine/fluids.h"
 #include "engine/tilemap.h"
 #include "paths.h"
+#include "player/player-core.h"
 #include "props/vines.h"
 #include "services/csv.h"
 #include "services/json.h"
@@ -62,6 +63,9 @@ static const char platforms_csv[] = {
 static const char types_map_csv[] = {
 #embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
 };
+static const char player_core_csv[] = {
+#embed PLAYER_BASE_CSV_PATH suffix(, '\0')
+};
 static const char chunk001[] = {
 #embed CHUNKS_001_PATH suffix(, '\0')
 };
@@ -114,6 +118,8 @@ static const helper_tile empty_helper_tile = (helper_tile){0};
 static chunk chunks[CHUNKS_TOTAL] = {0};
 static dynarr platforms = (dynarr){0};
 static dynarr types_map = (dynarr){0};
+static Uint8 player_w = 0;
+static Uint8 player_h = 0;
 
 
 
@@ -152,6 +158,18 @@ static void load_types_map_data(const char* csv) {
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Tile types map data loaded successfully.");
+}
+
+// Player size, to offset it inside its spawn object. Read here because chunks
+// are loaded before the player's data.
+static void load_player_size(const char* csv) {
+    parsing_field fields[] = {
+        {"width", parsing_uint8, &player_w},
+        {"height", parsing_uint8, &player_h},
+    };
+    dynarr parsed = CSV_parse(csv);
+    read_csv_keys(&parsed, fields, SDL_arraysize(fields));
+    CSV_free(&parsed);
 }
 
 static tile_type get_type_from_coords(Uint8 x, Uint8 y) {
@@ -297,6 +315,9 @@ static chunk load_from_json(const char* json) {
     dynarr vines = (dynarr){0};
     init_dynarr(&vines, sizeof(vine_spawn));
 
+    chunk c = (chunk){0};
+    hashmap fluid_names = FLUIDS_get_string_fluid_types_map();
+
     dynarr layers = JSON_get("layers", data)->arr;
 
     // Parse each layer
@@ -337,53 +358,71 @@ static chunk load_from_json(const char* json) {
             load_vines(&l, &vines);
         }
 
-        // If layer is a water layer
-        if (SDL_strcmp(name, "Water") == 0 &&
-            SDL_strcmp(type, "objectgroup") == 0) {
-            dynarr objects = JSON_get("objects", layer)->arr;
-            for (int i = 0; i < objects.len; i++) {
-                jsondata* obj = JSON_at(i, &objects);
-                double x = JSON_get("x", obj)->num;
-                double y = JSON_get("y", obj)->num;
-                double w = JSON_get("width", obj)->num;
-                double h = JSON_get("height", obj)->num;
-                fluid_pool pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
-                                               .y = y / FLUIDS_CELL_H,
-                                               .w = w / FLUIDS_CELL_W,
-                                               .h = h / FLUIDS_CELL_H,
-                                               .type = fluid_water};
-                push_to_dynarr(&pool, &fluids);
+        // If layer is a fluid layer
+        if (SDL_strcmp(type, "objectgroup") == 0) {
+            for (size_t f = 0; f < fluid_names.len; f++) {
+                char layer_name[KEY_MAX_SIZE];
+                SDL_snprintf(layer_name,
+                             KEY_MAX_SIZE,
+                             "Fluid%s",
+                             hashmap_key_at(f, &fluid_names));
+                layer_name[5] = (char)SDL_toupper(layer_name[5]);
+                if (SDL_strcmp(name, layer_name) != 0) continue;
+                fluid_type fluid =
+                    *(fluid_type*)hashmap_value_at(f, &fluid_names);
+                dynarr objects = JSON_get("objects", layer)->arr;
+                for (int i = 0; i < objects.len; i++) {
+                    jsondata* obj = JSON_at(i, &objects);
+                    double x = JSON_get("x", obj)->num;
+                    double y = JSON_get("y", obj)->num;
+                    double w = JSON_get("width", obj)->num;
+                    double h = JSON_get("height", obj)->num;
+                    fluid_pool pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
+                                                   .y = y / FLUIDS_CELL_H,
+                                                   .w = w / FLUIDS_CELL_W,
+                                                   .h = h / FLUIDS_CELL_H,
+                                                   .type = fluid};
+                    push_to_dynarr(&pool, &fluids);
+                }
             }
         }
 
-        // If layer is a lava layer
-        if (SDL_strcmp(name, "Lava") == 0 &&
-            SDL_strcmp(type, "objectgroup") == 0) {
+        // Player spawn
+        if (SDL_strcmp(type, "objectgroup") == 0 &&
+            SDL_strcmp(name, "PlayerSpawn") == 0) {
             dynarr objects = JSON_get("objects", layer)->arr;
-            for (int i = 0; i < objects.len; i++) {
-                jsondata* obj = JSON_at(i, &objects);
-                double x = JSON_get("x", obj)->num;
-                double y = JSON_get("y", obj)->num;
-                double w = JSON_get("width", obj)->num;
-                double h = JSON_get("height", obj)->num;
-                fluid_pool pool = (fluid_pool){.x = x / FLUIDS_CELL_W,
-                                               .y = y / FLUIDS_CELL_H,
-                                               .w = w / FLUIDS_CELL_W,
-                                               .h = h / FLUIDS_CELL_H,
-                                               .type = fluid_lava};
-                push_to_dynarr(&pool, &fluids);
-            }
+            jsondata* obj = JSON_at(0, &objects);
+            double x = JSON_get("x", obj)->num;
+            double y = JSON_get("y", obj)->num;
+            double h = JSON_get("height", obj)->num;
+            // Tile objects are anchored at their bottom left corner, move it
+            // to the top left like every other rect.
+            y -= h;
+            // Let's assume the player's hitbox is always at the bottom left
+            // cell of the object, centered horizontally and touching its floor.
+            double offset_x = (SPRITESHEET_CELL_X - player_w) / 2.0;
+            double offset_y = SPRITESHEET_CELL_Y - player_h;
+            offset_y += h - SPRITESHEET_CELL_Y;
+            c.has_player = true;
+            c.player_x = x + offset_x;
+            c.player_y = y + offset_y;
         }
     }
 
+    deinit_hashmap(&fluid_names);
     JSON_free(data);
-    return (chunk){
-        .w = w, .h = h, .map = (tile***)map, .fluids = fluids, .vines = vines};
+    c.w = w;
+    c.h = h;
+    c.map = (tile***)map;
+    c.fluids = fluids;
+    c.vines = vines;
+    return c;
 }
 
 void CHUNKS_start(void) {
     load_platforms_data(platforms_csv);
     load_types_map_data(types_map_csv);
+    load_player_size(player_core_csv);
 
     chunks[0] = load_from_json(chunk001);
     chunks[1] = load_from_json(chunk002);
@@ -416,30 +455,24 @@ int CHUNKS_get(size_t id, chunk* data) {
     return 0;
 }
 
-int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
-    if (id < 0 || id >= CHUNKS_TOTAL) {
+// Loads `c` in the map at tilemap coordinates `x` and `y`, as on
+// `CHUNKS_load_at()`. Returns `0` when successful and `1` when the chunk can't
+// fit the tilemap at that position.
+static int load_chunk_at(const chunk* c, Uint16 x, Uint16 y) {
+    if (x + c->w > TILEMAP_SIZE_X || y + c->h > TILEMAP_SIZE_Y) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Tried to access chunk id=%lu but this is outside the "
-                    "chunk range",
-                    id);
-        return 1;
-    }
-    if (x + chunks[id].w > TILEMAP_SIZE_X ||
-        y + chunks[id].h > TILEMAP_SIZE_Y) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "Tried to load chunk id=%lu at (%d,%d) but it would loud "
-                    "outside the tilemap's tile range",
-                    id,
+                    "Tried to load chunk of size (%d,%d) at (%d,%d) but it "
+                    "would load outside the tilemap's tile range",
+                    c->w,
+                    c->h,
                     x,
                     y);
-        return 2;
+        return 1;
     }
-    chunk c = chunks[id];
-    TILEMAP_set_at(x, y, c.w, c.h, (tile(*)[c.w][c.h])c.map);
+    TILEMAP_set_at(x, y, c->w, c->h, (tile(*)[c->w][c->h])c->map);
 
-    // Fluid pools are in fluid cell coords relative to the chunk
-    for (size_t i = 0; i < c.fluids.len; i++) {
-        fluid_pool* p = dynarr_at(i, &c.fluids);
+    for (size_t i = 0; i < c->fluids.len; i++) {
+        fluid_pool* p = dynarr_at(i, &c->fluids);
         FLUIDS_set_at(p->x + x * FLUIDS_SPLIT_X,
                       p->y + y * FLUIDS_SPLIT_Y,
                       p->w,
@@ -448,11 +481,10 @@ int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
                       1.0f);
     }
 
-    // Vine pins are in pixel coords relative to the chunk
     double px = x * SPRITESHEET_CELL_X;
     double py = y * SPRITESHEET_CELL_Y;
-    for (size_t i = 0; i < c.vines.len; i++) {
-        vine_spawn* v = dynarr_at(i, &c.vines);
+    for (size_t i = 0; i < c->vines.len; i++) {
+        vine_spawn* v = dynarr_at(i, &c->vines);
         SDL_FPoint path[] = {
             {v->a_x + px, v->a_y + py},
             {v->a_x + px, v->bend_y + py},
@@ -461,5 +493,29 @@ int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
         };
         VINES_add(path, SDL_arraysize(path), v->segments, v->double_pinned);
     }
+
+    if (c->has_player) PLAYER_create(c->player_x + px, c->player_y + py);
     return 0;
 }
+
+int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
+    if (id < 0 || id >= CHUNKS_TOTAL) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to access chunk id=%lu but this is outside the "
+                    "chunk range",
+                    id);
+        return 1;
+    }
+    if (load_chunk_at(&chunks[id], x, y)) return 2;
+    return 0;
+}
+
+#ifdef DEV
+void CHUNK_load_from_file(char* data) {
+    chunk level = load_from_json(data);
+    load_chunk_at(&level, 0, 0);
+    SDL_free(level.map);
+    deinit_dynarr(&level.fluids);
+    deinit_dynarr(&level.vines);
+}
+#endif

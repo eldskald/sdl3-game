@@ -27,6 +27,7 @@ static float bus_volumes[AUDIO_BUSES_TOTAL] = {
     [audio_bus_ambience_tracks] = AUDIO_STARTING_VOLUME,
     [audio_bus_music_tracks] = AUDIO_STARTING_VOLUME,
 };
+static float master_volume = 1.0f;
 static bool audio_started = false;
 
 
@@ -137,11 +138,23 @@ bool AUDIO_is_bus_paused(audio_bus bus) {
 
 void AUDIO_set_bus_volume(audio_bus bus, float volume) {
     bus_volumes[bus] = volume > 0.0f ? volume : 0.0f;
-    if (devices[bus]) SDL_SetAudioDeviceGain(devices[bus], bus_volumes[bus]);
+    if (devices[bus])
+        SDL_SetAudioDeviceGain(devices[bus], bus_volumes[bus] * master_volume);
 }
 
 float AUDIO_get_bus_volume(audio_bus bus) {
     return bus_volumes[bus];
+}
+
+void AUDIO_set_master_volume(float volume) {
+    master_volume = volume > 0.0f ? volume : 0.0f;
+    for (int b = 0; b < AUDIO_BUSES_TOTAL; b++)
+        if (devices[b])
+            SDL_SetAudioDeviceGain(devices[b], bus_volumes[b] * master_volume);
+}
+
+float AUDIO_get_master_volume(void) {
+    return master_volume;
 }
 
 SDL_AudioDeviceID AUDIO_get_bus_device(audio_bus bus) {
@@ -171,7 +184,7 @@ void AUDIO_start(void) {
                          devices[b] ? &devices[b] : NULL,
                          "%s bus",
                          names[b]))
-            SDL_SetAudioDeviceGain(devices[b], bus_volumes[b]);
+            SDL_SetAudioDeviceGain(devices[b], bus_volumes[b] * master_volume);
     }
 }
 

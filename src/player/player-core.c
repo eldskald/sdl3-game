@@ -42,6 +42,14 @@ static player_state state = (player_state){0};
 
 
 void PLAYER_create(double at_x, double at_y) {
+    if (state.created) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to create another player at (%.0f,%.0f) but one "
+                    "already exists",
+                    at_x,
+                    at_y);
+        return;
+    }
     PHYSICS_new_body(
         (body){
             .type = physics_actor,

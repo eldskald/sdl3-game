@@ -8,6 +8,29 @@
 // ```
 typedef enum { thread_main = 1, thread_fixed, thread_fluids } thread;
 
+// App arguments parsed given at execution.
+//
+// ```
+// struct app_args {
+//     char* dev_level;
+//     bool muted;
+// };
+// ```
+typedef struct {
+    char* dev_level;
+    bool muted;
+} app_args;
+
+
+
+// Parses app arguments. Call on `SDL_AppInit()`.
+void GAME_MANAGER_parse_args(int argc, char** argv);
+
+// Gets the app arguments.
+app_args GAME_MANAGER_get_args(void);
+
+
+
 // Initializes game. Call on `SDL_AppInit()`. Returns `0` when successful, `1`
 // otherwise.
 int GAME_MANAGER_start(void);
@@ -22,14 +45,20 @@ int GAME_MANAGER_events(SDL_Event* event);
 // Unloads game. Call on `SDL_AppQuit()`.
 void GAME_MANAGER_stop(void);
 
+
+
 // Requests to quit the game.
 void GAME_MANAGER_quit(void);
 
-// Current thread's delta time.
-double GAME_MANAGER_get_current_dt(void);
+
 
 // Returns current thread.
 thread GAME_MANAGER_get_current_thread(void);
+
+
+
+// Current thread's delta time.
+double GAME_MANAGER_get_current_dt(void);
 
 // Whether the current thread is the fluids thread. Always `false` before the
 // fluids thread starts, so calls from the main thread on tests aren't mistaken
