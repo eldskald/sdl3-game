@@ -5,9 +5,10 @@
 
 #define FAC 32.0
 
-#define IDX_WATER 1.0
-#define IDX_LAVA 2.0
-
+// Indices of each fluid, its `fluid_type` on the CPU plus one. Samples store
+// them divided by `FAC`.
+#define IDX_WATER 1
+#define IDX_LAVA 2
 
 // `1.0` when the sample is air, `0.0` otherwise.
 float is_air(float s) {
@@ -22,6 +23,11 @@ float is_fluid(float s) {
 // `1.0` when the sample is a wall, `0.0` otherwise.
 float is_wall(float s) {
     return step(1.0 - EPSILON, s);
+}
+
+// Index of the material of sample `s`, `0` for air, `IDX_*` for fluids.
+int fluid_idx(float s) {
+    return (int)round(s * FAC);
 }
 
 // `1.0` when the sample is the fluid of index `idx`, `0.0` otherwise.

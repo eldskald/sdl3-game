@@ -9,8 +9,8 @@
 #include <SDL3/SDL.h>
 
 void DEV_start(void) {
-    CHUNKS_load_at(0, 0, 0);
-    // PLAYER_create(168.0f, 96.0f);
+    CHUNKS_load_at(4, 0, 0);
+    PLAYER_create(168.0f, 96.0f);
     // PLAYER_create(80.0f, 72.0f);
 
     BGS_play_track(bgs_track_cave);

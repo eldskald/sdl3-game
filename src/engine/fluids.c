@@ -6,6 +6,7 @@
 #include "engine/bgs.h"
 #include "engine/camera.h"
 #include "engine/game-manager.h"
+#include "engine/graphics.h"
 #include "engine/sfx.h"
 #include "engine/tilemap.h"
 #include "paths.h"
@@ -26,6 +27,8 @@ typedef struct {
     double move_side_time;
     double min_spread;
     double particle_vol;
+    double ripples_damping;
+    bool slow_ripples;
     Uint8 col_r, col_g, col_b, col_a;
 } fluid_data;
 
@@ -208,10 +211,7 @@ static Uint8 ripples_idx = 0;
 static float ripples_x = 0.0f;
 static float ripples_y = 0.0f;
 static SDL_AtomicInt ripples_ticks = {0};
-// The camera when `FLUIDS_prepare()` was called, so `FLUIDS_draw()` draws what
-// it prepared even if the camera moved since.
 static SDL_FRect prepared_cam = {0};
-static float ripples_damping = 0.0f;
 static float ripples_refraction = 0.0f;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
@@ -340,6 +340,8 @@ static void load_fluid_data(const char* csv) {
         {"move_side_time", parsing_double, &d->move_side_time},
         {"min_spread", parsing_double, &d->min_spread},
         {"particle_vol", parsing_double, &d->particle_vol},
+        {"ripples_damping", parsing_double, &d->ripples_damping},
+        {"slow_ripples", parsing_bool, &d->slow_ripples},
         {"col_r", parsing_uint8, &d->col_r},
         {"col_g", parsing_uint8, &d->col_g},
         {"col_b", parsing_uint8, &d->col_b},
@@ -454,7 +456,6 @@ static void load_fluid_particles_data(const char* csv) {
 
 static void load_ripples_data(const char* csv) {
     parsing_field fields[] = {
-        {"damping", parsing_float, &ripples_damping},
         {"refraction", parsing_float, &ripples_refraction},
     };
     dynarr parsed = CSV_parse(csv);
@@ -1417,7 +1418,8 @@ static double quarter_px(double vol) {
 //    height at the pixel, from `_Ripples`, the latest of
 //    `fluids_canvas.ripples`, so ripples refract what's under the fluid. See
 //    `step_ripples()`.
-// 4. It calls the function of the pixel's fluid, like `water()` on
+// 4. It calls `fluid_col()` on `src/gpu/includes/fluids.hlsli`, which calls
+//    the color function of the pixel's fluid, like `water_col()` on
 //    `src/gpu/includes/water.hlsli`, with the pixel, the refracted sample, the
 //    ripples' normal and its neighbors, which returns its final color. Each
 //    fluid gets its base color from the `_Colors` uniform, which
@@ -1425,8 +1427,13 @@ static double quarter_px(double vol) {
 //    with the refracted sample, lights the ripples with their normal and
 //    brightens pixels next to air to draw a contour.
 //
+// Before all that, surfaces are waved by the ripples and bubbled by each
+// fluid's bubbles function, like `lava_bubbles()`, see `waved()` on
+// `src/gpu/fluids.frag.hlsl`.
+//
 // Adding a fluid requires a new `IDX_*` define, a new include with its
-// function, a call to it on `main()` and increasing the size of `_Colors`.
+// `<fluid>_col()` and `<fluid>_bubbles()` functions, cases for them on
+// `fluid_col()` and `fluid_bubbles()` and increasing the size of `_Colors`.
 //
 // Particles aren't drawn into `fluids_texture`, they are drawn directly with
 // their fluid's color.
@@ -1440,6 +1447,7 @@ static void draw_grid(SDL_FRect area) {
                           TILEMAP_SIZE_X * FLUIDS_SPLIT_X);
     Uint32 to_y = SDL_min(SDL_ceil((area.y + area.h) / FLUIDS_CELL_H),
                           TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y);
+    GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_none});
     for (Uint32 x = from_x; x < to_x; x++) {
         for (Uint32 y = from_y; y < to_y; y++) {
             if (is_solid(x, y)) {
@@ -1481,12 +1489,13 @@ static void draw_grid(SDL_FRect area) {
                 below += vol;
                 SDL_Color col = {FLUIDS_SHADER_IDX_STEP * (type + 1),
                                  FLUIDS_SHADER_IDX_STEP * (FLUIDS_TOTAL - t),
-                                 0,
-                                 255};
+                                 data[type].ripples_damping * 255,
+                                 data[type].slow_ripples ? 128 : 255};
                 GRAPHICS_fill_rect(rect, GRAPHICS_fcolor(col));
             }
         }
     }
+    GRAPHICS_set_state(NULL);
 }
 
 static void draw_particles(SDL_FRect cam) {
@@ -1514,25 +1523,11 @@ static void draw_particles(SDL_FRect cam) {
 // Matches the fluids shader's uniforms on
 // `src/gpu/includes/fluids-uniforms.hlsli`, padded to a multiple of 16 bytes.
 typedef struct {
-    // Each fluid's color indexed by type.
     float colors[FLUIDS_TOTAL][4];
-    // Camera position in uv units, so world pixels over the screen's size.
     float cam_pos[2];
-    // Seconds since the game started.
     float time;
-    // How far, in pixels, a fully tilted normal offsets what's seen through
-    // the fluid.
     float refraction;
 } shader_uniforms;
-
-// Matches the uniforms on `src/gpu/ripples.frag.hlsl`, padded to 16 bytes.
-typedef struct {
-    // How much of their height ripples keep per tick.
-    float damping;
-    int pad0;
-    int pad1;
-    int pad2;
-} ripples_uniforms;
 
 static shader_uniforms get_shader_uniforms(SDL_FRect cam) {
     shader_uniforms uniforms = {.cam_pos = {cam.x / cam.w, cam.y / cam.h},
@@ -1547,25 +1542,16 @@ static shader_uniforms get_shader_uniforms(SDL_FRect cam) {
     return uniforms;
 }
 
-// Ripples are simulated on two float textures the size of `fluids_texture`,
-// `fluids_canvas.ripples`, holding each pixel's current height on red and its
-// previous height on green. On the first tick of a draw, the queued ripples
-// are added to the current height of the latest one, a square of `size`
-// pixels each, so they build on the ripples already there instead of
-// flattening them. Then, each tick, the latest is drawn into the other
-// with the ripples shader, `src/gpu/ripples.frag.hlsl`, which ticks them and
-// makes that one the latest. The shader samples `fluids_texture`, drawn just
-// before, so ripples only spread through pixels of the same fluid type,
-// bouncing off anything else, and pixels that aren't fluid are flattened.
-// Ripples reaching the textures' edges, off screen, are absorbed instead.
-//
-// Since rendering must happen on the main thread, ripples aren't ticked on
-// `FLUIDS_update()`. It counts ticks on `ripples_ticks` instead, which are all
-// run here, so ripples run at the fluids thread's rate. When the main thread
-// falls behind, ticks over `FLUIDS_RIPPLES_MAX_TICKS` are dropped.
-//
-// Queued ripples are in world pixels, so they're drawn relative to the top left
-// of `area`, the ripples area.
+// Matches the ripples shader's uniforms on `src/gpu/ripples.frag.hlsl`.
+typedef struct {
+    Uint32 step_slow;
+    int pad0;
+    int pad1;
+    int pad2;
+} ripples_uniform;
+
+static ripples_uniform r_uniform = {0};
+
 static void step_ripples(fluids_canvas* canvas, SDL_FRect area) {
     int ticks = SDL_SetAtomicInt(&ripples_ticks, 0);
     if (ticks <= 0) return;
@@ -1587,14 +1573,15 @@ static void step_ripples(fluids_canvas* canvas, SDL_FRect area) {
     drain_queue(&ripples, ripples_mutex, NULL);
     SDL_UnlockMutex(ripples_mutex);
 
-    GRAPHICS_set_state(&(graphics_state){
-        .fragment = canvas->ripples_shader,
-        .samplers = {GRAPHICS_binding(canvas->texture)},
-        .num_samplers = 1,
-        .fragment_uniforms = &(ripples_uniforms){.damping = ripples_damping},
-        .fragment_uniforms_size = sizeof(ripples_uniforms),
-    });
     for (int i = 0; i < ticks; i++) {
+        r_uniform.step_slow = 1 - r_uniform.step_slow;
+        GRAPHICS_set_state(&(graphics_state){
+            .fragment = canvas->ripples_shader,
+            .samplers = {GRAPHICS_binding(canvas->texture)},
+            .num_samplers = 1,
+            .fragment_uniforms = &r_uniform,
+            .fragment_uniforms_size = sizeof(ripples_uniform),
+        });
         graphics_texture* from = canvas->ripples[ripples_idx];
         GRAPHICS_set_target(canvas->ripples[1 - ripples_idx]);
         GRAPHICS_draw_texture(

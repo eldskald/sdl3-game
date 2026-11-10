@@ -1,6 +1,4 @@
-#include "includes/fluids-common.hlsli"
-#include "includes/water.hlsli"
-#include "includes/lava.hlsli"
+#include "includes/fluids.hlsli"
 #include "includes/normals.hlsli"
 
 Texture2D<float4> _Texture : register(t0, space2);
@@ -9,14 +7,13 @@ SamplerState _Sampler : register(s0, space2);
 Texture2D<float4> _Ripples : register(t1, space2);
 SamplerState _RipplesSampler : register(s1, space2);
 
-// Everything drawn before the fluids, shown through them.
 Texture2D<float4> _PreFluids : register(t2, space2);
 SamplerState _PreFluidsSampler : register(s2, space2);
 
 // `_Texture` and `_Ripples` are bigger than the screen and centered on it, so
 // ripples are simulated off screen too, and only their part on screen is drawn.
 // Converts `uv` on them to uv on the screen, which `_PreFluids` covers and
-// effects anchored to the world, like lava's noise, are scaled by.
+// effects anchored to the world, like lava's bubbles, are scaled by.
 float2 to_screen_uv(float2 uv) {
     uint width, height, screen_width, screen_height;
     _Texture.GetDimensions(width, height);
@@ -34,10 +31,18 @@ float2 to_screen_uv(float2 uv) {
 #define WAVES_HEIGHT 2
 #define WAVES_STRENGTH 24.0
 
-// How deep, in pixels, fluids must be under a surface for it to wave by `1px`,
-// and for it to wave up to `WAVES_HEIGHT`. Shallower surfaces don't wave.
-#define WAVES_SHALLOW_DEPTH 3
-#define WAVES_DEEP_DEPTH 6
+// How far, in pixels, surfaces can be bubbled up or down by their fluid's
+// `fluid_bubbles()`.
+#define BUBBLES_HEIGHT 2
+
+// How far, in pixels, surfaces can move up or down, waved and bubbled.
+#define SURFACE_HEIGHT (WAVES_HEIGHT + BUBBLES_HEIGHT)
+
+// How deep, in pixels, fluids must be under a surface for it to wave or bubble
+// by `1px`, and for it to wave up to `WAVES_HEIGHT` or bubble up to
+// `BUBBLES_HEIGHT`. Shallower surfaces don't move.
+#define SURFACE_SHALLOW_DEPTH 3
+#define SURFACE_DEEP_DEPTH 6
 
 struct input {
     float4 color : COLOR0;
@@ -65,41 +70,41 @@ float is_inner_corner(
            (1.0 - is_same(f, o)) * (1.0 - is_same(g, o));
 }
 
-// How far, in pixels, a surface can be waved with `depth` pixels of fluid under
-// it. See `WAVES_SHALLOW_DEPTH` and `WAVES_DEEP_DEPTH`.
-float depth_limit(float depth) {
-    return step(WAVES_SHALLOW_DEPTH, depth) +
-           step(WAVES_DEEP_DEPTH, depth) * (WAVES_HEIGHT - 1);
+// How far, in pixels, a surface that can move up to `height` pixels can move
+// with `depth` pixels of fluid under it. See `SURFACE_SHALLOW_DEPTH` and
+// `SURFACE_DEEP_DEPTH`.
+float depth_limit(float depth, float height) {
+    return step(SURFACE_SHALLOW_DEPTH, depth) +
+           step(SURFACE_DEEP_DEPTH, depth) * (height - 1);
 }
 
-// Sample at `uv`, `(type, density rank)`, with surfaces waved by the ripples.
-// Surfaces are the tops of fluids under lighter materials other than walls,
-// including lighter fluids. Each is moved up by the ripples' height at its top
-// pixel, times `WAVES_STRENGTH` and rounded, or down when it's negative, up to
-// `WAVES_HEIGHT` pixels. So it samples the `WAVES_HEIGHT` pixels above and
-// below `uv` to find surfaces that can reach it. The height is blurred with its
-// left and right pixels, weighted `1, 2, 1`, which cancels out ripples that
-// alternate every pixel, otherwise they'd wave surfaces into spikes. How far
-// each surface waves is limited by how deep the fluids under it are, of any
-// type, see `WAVES_SHALLOW_DEPTH` and `WAVES_DEEP_DEPTH`, so it also samples
-// enough pixels under the lowest surface to measure it. Lava surfaces also
-// bubble up and down by `lava_noise()`, limited the same way by how deep the
-// lava alone is under them, which fades out as the waves get higher so they
-// take over smoothly.
+// Sample at `uv`, `(type, density rank)`, with surfaces waved by the ripples
+// and bubbled by their fluids. Surfaces are the tops of fluids under lighter
+// materials other than walls, including lighter fluids. Each is moved up by the
+// ripples' height at its top pixel, times `WAVES_STRENGTH`, up to
+// `WAVES_HEIGHT` pixels, plus its fluid's `fluid_bubbles()` there, times
+// `BUBBLES_HEIGHT`, then rounded, or down when it's negative. So it samples the
+// `SURFACE_HEIGHT` pixels above and below `uv` to find surfaces that can reach
+// it. The ripples' height is blurred with its left and right pixels, weighted
+// `1, 2, 1`, which cancels out ripples that alternate every pixel, otherwise
+// they'd wave surfaces into spikes. How far each surface waves is limited by
+// how deep the fluids under it are, of any type, and how far it bubbles by how
+// deep its fluid alone is, see `depth_limit()`, so it also samples enough
+// pixels under the lowest surface to measure them.
 float2 waved(float2 uv, float2 dx, float2 dy) {
-    float2 s[2 * WAVES_HEIGHT + WAVES_DEEP_DEPTH];
-    [unroll] for (int k = 0; k < 2 * WAVES_HEIGHT + WAVES_DEEP_DEPTH; k++)
-        s[k] = _Texture.Sample(_Sampler, uv + (k - WAVES_HEIGHT) * dy).rg;
+    float2 s[2 * SURFACE_HEIGHT + SURFACE_DEEP_DEPTH];
+    [unroll] for (int k = 0; k < 2 * SURFACE_HEIGHT + SURFACE_DEEP_DEPTH; k++)
+        s[k] = _Texture.Sample(_Sampler, uv + (k - SURFACE_HEIGHT) * dy).rg;
 
     // For a surface between `k` and `t`, `a` is the lighter material and `b`
-    // the denser one. When it's under `uv` and waved up to it, `uv` becomes
-    // `b`, and when it's over `uv` and waved down past it, `uv` becomes `a`.
+    // the denser one. When it's under `uv` and moved up to it, `uv` becomes
+    // `b`, and when it's over `uv` and moved down past it, `uv` becomes `a`.
     // Pixels between `uv` and the surface must be on the same side as `uv`.
-    float2 x = s[WAVES_HEIGHT];
-    [unroll] for (int k = -WAVES_HEIGHT; k < WAVES_HEIGHT; k++) {
+    float2 x = s[SURFACE_HEIGHT];
+    [unroll] for (int k = -SURFACE_HEIGHT; k < SURFACE_HEIGHT; k++) {
         int t = k + 1;
-        float2 a = s[k + WAVES_HEIGHT];
-        float2 b = s[t + WAVES_HEIGHT];
+        float2 a = s[k + SURFACE_HEIGHT];
+        float2 b = s[t + SURFACE_HEIGHT];
         float surface = step(a.g + EPSILON, b.g) * (1.0 - is_wall(a.r));
 
         float2 p = uv + t * dy;
@@ -108,37 +113,39 @@ float2 waved(float2 uv, float2 dx, float2 dy) {
                    _Ripples.Sample(_RipplesSampler, p + dx).r) /
                   4.0;
 
-        // Pixels of any fluid, and of lava alone, from the surface down, up to
-        // `WAVES_DEEP_DEPTH`.
+        // Pixels of any fluid, and of `b`'s fluid alone, from the surface
+        // down, up to `SURFACE_DEEP_DEPTH`.
         float depth = 0.0;
-        float lava_depth = 0.0;
+        float fluid_depth = 0.0;
         float run = 1.0;
-        float lava_run = 1.0;
-        [unroll] for (int j = 0; j < WAVES_DEEP_DEPTH; j++) {
-            float type = s[t + j + WAVES_HEIGHT].r;
+        float fluid_run = 1.0;
+        [unroll] for (int j = 0; j < SURFACE_DEEP_DEPTH; j++) {
+            float type = s[t + j + SURFACE_HEIGHT].r;
             run *= is_fluid(type);
-            lava_run *= is_type(type, IDX_LAVA);
+            fluid_run *= is_same(type, b.r);
             depth += run;
-            lava_depth += lava_run;
+            fluid_depth += fluid_run;
         }
-        float limit = depth_limit(depth);
-        float wave = clamp(h * WAVES_STRENGTH, -limit, limit);
 
-        float lava_limit = depth_limit(lava_depth);
-        float fade = 1.0 - saturate(abs(h * WAVES_STRENGTH) / WAVES_HEIGHT);
-        float noise = lava_noise(to_screen_uv(p)) * WAVES_HEIGHT;
-        float bubble = clamp(noise, -lava_limit, lava_limit) * fade;
+        float wave_limit = depth_limit(depth, WAVES_HEIGHT);
+        float wave = clamp(h * WAVES_STRENGTH, -wave_limit, wave_limit);
 
-        float w = clamp(round(wave + bubble), -WAVES_HEIGHT, WAVES_HEIGHT);
+        float bubble_limit = depth_limit(fluid_depth, BUBBLES_HEIGHT);
+        float bubble = clamp(fluid_bubbles(b.r, to_screen_uv(p)) *
+                                 BUBBLES_HEIGHT,
+                             -bubble_limit,
+                             bubble_limit);
+
+        float w = round(wave + bubble);
 
         float side = 1.0;
         if (t > 0) {
             [unroll] for (int j = 0; j < k; j++)
-                side *= is_same(s[j + WAVES_HEIGHT], a);
+                side *= is_same(s[j + SURFACE_HEIGHT], a);
             x = lerp(x, b, surface * side * step(t, w));
         } else {
             [unroll] for (int j = t + 1; j <= 0; j++)
-                side *= is_same(s[j + WAVES_HEIGHT], b);
+                side *= is_same(s[j + SURFACE_HEIGHT], b);
             x = lerp(x, a, surface * side * step(w, t - 1));
         }
     }
@@ -195,13 +202,8 @@ float4 main(input i) : SV_Target0 {
     float4 bg =
         _PreFluids.Sample(_PreFluidsSampler, to_screen_uv(i.uv + offset));
 
-    // Check if it's water
-    col += is_type(x.r, IDX_WATER) *
-           water(screen_uv, bg, n, x.r, u.r, l.r, d.r, r.r);
-
-    // Check if it's lava
-    col += is_type(x.r, IDX_LAVA) *
-           lava(screen_uv, bg, n, x.r, u.r, l.r, d.r, r.r);
+    // Each fluid colors its own pixels.
+    col += fluid_col(screen_uv, bg, n, x.r, u.r, l.r, d.r, r.r);
 
     // It covers the whole screen, so it's always opaque.
     col.a = 1.0;

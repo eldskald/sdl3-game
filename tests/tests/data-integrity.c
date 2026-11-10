@@ -309,7 +309,6 @@ static void check_ripples(void) {
         {"new_prop_ripple_pix_size", val_int, 1, 1},
         {"body_ripple_strength", val_double, 1, 1},
         {"prop_ripple_strength", val_double, 1, 1},
-        {"damping", val_double, 1, 1},
         {"refraction", val_double, 1, 1},
     };
     report r = (report){0};
@@ -642,6 +641,8 @@ static void check_fluids(void) {
         {"move_side_time", val_double},
         {"min_spread", val_double},
         {"particle_vol", val_double},
+        {"ripples_damping", val_double},
+        {"slow_ripples", val_bool},
         {"col_r", val_uint8},
         {"col_g", val_uint8},
         {"col_b", val_uint8},
