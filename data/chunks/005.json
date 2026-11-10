@@ -227,10 +227,34 @@
          "y":0
         }, 
         {
+         "draworder":"topdown",
+         "id":7,
+         "name":"PlayerSpawn",
+         "objects":[
+                {
+                 "gid":1089,
+                 "height":16,
+                 "id":14,
+                 "name":"",
+                 "opacity":1,
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":16,
+                 "x":184,
+                 "y":104
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
          "color":"#55aaff",
          "draworder":"topdown",
          "id":5,
-         "name":"Water",
+         "name":"FluidWater",
          "objects":[
                 {
                  "height":72,
@@ -266,7 +290,7 @@
          "color":"#ffaa00",
          "draworder":"topdown",
          "id":6,
-         "name":"Lava",
+         "name":"FluidLava",
          "objects":[
                 {
                  "height":8,
@@ -334,8 +358,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":7,
- "nextobjectid":10,
+ "nextlayerid":8,
+ "nextobjectid":15,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
@@ -348,6 +372,10 @@
         {
          "firstgid":1025,
          "source":"..\/..\/editor\/helper-tiles.tsx"
+        }, 
+        {
+         "firstgid":1089,
+         "source":"..\/..\/editor\/object-tiles.tsx"
         }],
  "tilewidth":8,
  "type":"map",

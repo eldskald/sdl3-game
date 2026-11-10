@@ -72,7 +72,7 @@
          "color":"#55aaff",
          "draworder":"topdown",
          "id":2,
-         "name":"Water",
+         "name":"FluidWater",
          "objects":[
                 {
                  "height":56,

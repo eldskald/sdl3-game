@@ -1,17 +1,29 @@
 #include "dev/dev.h"
-#include "defs.h"
+#include "engine/audio.h"
 #include "engine/bgs.h"
 #include "engine/chunks.h"
 #include "engine/game-manager.h"
-#include "engine/particles.h"
-#include "engine/text.h"
-#include "player/player-core.h"
 #include <SDL3/SDL.h>
 
 void DEV_start(void) {
-    CHUNKS_load_at(4, 0, 0);
-    PLAYER_create(168.0f, 96.0f);
-    // PLAYER_create(80.0f, 72.0f);
+    // CHUNKS_load_at(4, 0, 0);
+    // PLAYER_create(168.0f, 96.0f);
+
+    app_args args = GAME_MANAGER_get_args();
+    if (args.muted) AUDIO_set_master_volume(0.0f);
+
+    if (args.dev_level) {
+        char* level = SDL_LoadFile(args.dev_level, NULL);
+        if (level) {
+            CHUNK_load_from_file(level);
+            SDL_free(level);
+        } else {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "Failed to load dev level %s: %s",
+                        args.dev_level,
+                        SDL_GetError());
+        }
+    }
 
     BGS_play_track(bgs_track_cave);
 }
@@ -20,20 +32,6 @@ void DEV_update(void) {
 }
 
 void DEV_draw(void) {
-    // TEXT_draw(8.0f,
-    //           160.0f,
-    //           "Testando oi som, ação coé",
-    //           font_main,
-    //           1,
-    //           (SDL_FColor){1.0f, 1.0f, 1.0f, 1.0f},
-    //           30);
-    // TEXT_draw(8.0f,
-    //           140.0f,
-    //           "Testando oi som, ação coé",
-    //           font_unifont,
-    //           1,
-    //           (SDL_FColor){1.0f, 1.0f, 1.0f, 1.0f},
-    //           30);
 }
 
 void DEV_stop(void) {

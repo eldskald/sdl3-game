@@ -49,7 +49,9 @@ typedef struct {
 
 // A chunk is just a block of tiles of size `(w, h)` contained on map, which
 // should be interpreted as a tile `tile(*)[w][h]`. All chunks are embedded from
-// `data/chunks` and kept in memory in a static array.
+// `data/chunks` and kept in memory in a static array. If `has_player`, the
+// player is spawned at `(player_x,player_y)`, in pixel coordinates in the
+// chunk, when it's loaded.
 //
 // ```
 // struct chunk {
@@ -58,6 +60,9 @@ typedef struct {
 //     tile*** map; // cast it to tile(*)[w][h]
 //     dynarr fluids; // fluid_pool dynarr
 //     dynarr vines; // vine_spawn dynarr
+//     bool has_player;
+//     double player_x;
+//     double player_y;
 // }
 // ```
 typedef struct {
@@ -66,6 +71,9 @@ typedef struct {
     tile*** map;
     dynarr fluids;
     dynarr vines;
+    bool has_player;
+    double player_x;
+    double player_y;
 } chunk;
 
 // Load all chunk files and allocates memory for them. Call at start.
@@ -79,8 +87,14 @@ void CHUNKS_stop(void);
 int CHUNKS_get(size_t id, chunk* data);
 
 // Loads the chunk in the map at tilemap coordinates `x` and `y`, along with its
-// fluids and vines. Take into account the chunk's `h` and `w` values, so the
-// passed `x` and `y` values must be such that the loaded chunk fits in the
-// tilemap. Returns `0` when successful, `1` when `id` is outside the array
-// range and `2` when the chunk can't fit the tilemap at that position.
+// fluids, vines and player, if it has one. Take into account the chunk's `h`
+// and `w` values, so the passed `x` and `y` values must be such that the loaded
+// chunk fits in the tilemap. Returns `0` when successful, `1` when `id` is
+// outside the array range and `2` when the chunk can't fit the tilemap at that
+// position.
 int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y);
+
+
+#ifdef DEV
+void CHUNK_load_from_file(char* data);
+#endif

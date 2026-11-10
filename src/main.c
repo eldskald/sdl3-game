@@ -3,7 +3,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-SDL_AppResult SDL_AppInit(void** _appstate, int _argc, char** _argv) { // NOLINT
+SDL_AppResult SDL_AppInit(void** _appstate, int argc, char** argv) { // NOLINT
+    GAME_MANAGER_parse_args(argc, argv);
     if (GAME_MANAGER_start()) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Aborting.");
         return SDL_APP_FAILURE;

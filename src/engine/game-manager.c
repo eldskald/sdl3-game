@@ -29,6 +29,24 @@
 
 #define SEC2NANOSEC 1000000000
 
+
+
+static app_args args = {0};
+
+app_args GAME_MANAGER_get_args(void) {
+    return args;
+}
+
+void GAME_MANAGER_parse_args(int argc, char** argv) {
+    for (int i = 1; i < argc; i++) {
+        char* arg = argv[i];
+        if (SDL_strcmp(arg, "muted") == 0) args.muted = true;
+        if (SDL_strncmp(arg, "dev_level=", 10) == 0) args.dev_level = arg + 10;
+    }
+}
+
+
+
 static SDL_Thread* fixed_t = NULL;
 static SDL_Thread* fluids_t = NULL;
 

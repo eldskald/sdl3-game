@@ -85,6 +85,47 @@ void test_audio(void) {
            (bool[]){is_near(AUDIO_get_bus_volume(audio_bus_music_tracks), 0.0f),
                     is_near(SDL_GetAudioDeviceGain(music), 0.0f)});
 
+    AUDIO_set_master_volume(0.5f);
+    expect("Set the master volume, checking if every bus's device gain got "
+           "scaled by it and their own volumes were kept...",
+           7,
+           (bool[]){
+               is_near(AUDIO_get_master_volume(), 0.5f),
+               is_near(SDL_GetAudioDeviceGain(ambience), 0.25f),
+               is_near(SDL_GetAudioDeviceGain(gameplay), 0.5f),
+               is_near(SDL_GetAudioDeviceGain(gui), 0.5f),
+               is_near(SDL_GetAudioDeviceGain(music), 0.0f),
+               is_near(AUDIO_get_bus_volume(audio_bus_ambience_tracks), 0.5f),
+               is_near(AUDIO_get_bus_volume(audio_bus_gameplay_sounds), 1.0f)});
+
+    AUDIO_set_bus_volume(audio_bus_gui_sounds, 0.8f);
+    expect("Set the gui sounds bus's volume with the master volume at half, "
+           "checking if its device's gain got scaled by it...",
+           2,
+           (bool[]){is_near(AUDIO_get_bus_volume(audio_bus_gui_sounds), 0.8f),
+                    is_near(SDL_GetAudioDeviceGain(gui), 0.4f)});
+    AUDIO_set_bus_volume(audio_bus_gui_sounds, 1.0f);
+
+    AUDIO_set_master_volume(-1.0f);
+    expect(
+        "Set a negative master volume, checking if it's taken as silence "
+        "on every bus with their own volumes kept...",
+        6,
+        (bool[]){is_near(AUDIO_get_master_volume(), 0.0f),
+                 is_near(SDL_GetAudioDeviceGain(ambience), 0.0f),
+                 is_near(SDL_GetAudioDeviceGain(gameplay), 0.0f),
+                 is_near(SDL_GetAudioDeviceGain(gui), 0.0f),
+                 is_near(AUDIO_get_bus_volume(audio_bus_ambience_tracks), 0.5f),
+                 is_near(AUDIO_get_bus_volume(audio_bus_gui_sounds), 1.0f)});
+
+    AUDIO_set_master_volume(1.0f);
+    expect("Set the master volume back to full, checking if the buses' "
+           "device gains went back to their own volumes...",
+           3,
+           (bool[]){is_near(SDL_GetAudioDeviceGain(ambience), 0.5f),
+                    is_near(SDL_GetAudioDeviceGain(gameplay), 1.0f),
+                    is_near(SDL_GetAudioDeviceGain(gui), 1.0f)});
+
     AUDIO_stop();
     bool closed = true;
     for (audio_bus b = 0; b < AUDIO_BUSES_TOTAL; b++)
@@ -107,6 +148,29 @@ void test_audio(void) {
                     is_near(SDL_GetAudioDeviceGain(
                                 AUDIO_get_bus_device(audio_bus_music_tracks)),
                             0.0f)});
+
+    AUDIO_set_master_volume(0.5f);
+    AUDIO_stop();
+    expect("Set the master volume and stopped audio, checking if it was "
+           "kept...",
+           1,
+           (bool[]){is_near(AUDIO_get_master_volume(), 0.5f)});
+
+    AUDIO_start();
+    expect("Started audio again, checking if the devices got the kept volumes "
+           "scaled by the kept master volume...",
+           3,
+           (bool[]){is_near(SDL_GetAudioDeviceGain(AUDIO_get_bus_device(
+                                audio_bus_ambience_tracks)),
+                            0.25f),
+                    is_near(SDL_GetAudioDeviceGain(AUDIO_get_bus_device(
+                                audio_bus_gameplay_sounds)),
+                            0.5f),
+                    is_near(SDL_GetAudioDeviceGain(
+                                AUDIO_get_bus_device(audio_bus_music_tracks)),
+                            0.0f)});
+
+    AUDIO_set_master_volume(1.0f);
     AUDIO_set_bus_volume(audio_bus_ambience_tracks, 1.0f);
     AUDIO_set_bus_volume(audio_bus_music_tracks, 1.0f);
     AUDIO_stop();

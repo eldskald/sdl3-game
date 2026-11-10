@@ -1,6 +1,16 @@
 {
     "automappingRulesFile": "editor/rules.txt",
     "commands": [
+        {
+            "arguments": "dev_level=%mapfile",
+            "command": "/home/rafael/dev/sdl3-game/bin/dev",
+            "enabled": true,
+            "name": "Run",
+            "saveBeforeExecute": true,
+            "shortcut": "F8",
+            "showOutput": true,
+            "workingDirectory": "/home/rafael/dev/sdl3-game"
+        }
     ],
     "compatibilityVersion": 1100,
     "extensionsPath": "extensions",

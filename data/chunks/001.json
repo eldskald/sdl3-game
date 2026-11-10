@@ -105,7 +105,7 @@
          "color":"#55aaff",
          "draworder":"topdown",
          "id":2,
-         "name":"Water",
+         "name":"FluidWater",
          "objects":[
                 {
                  "height":24,
@@ -129,7 +129,7 @@
          "color":"#ffaa00",
          "draworder":"topdown",
          "id":3,
-         "name":"Lava",
+         "name":"FluidLava",
          "objects":[
                 {
                  "height":64,
