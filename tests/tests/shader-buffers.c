@@ -98,7 +98,7 @@ static const struct_spec struct_specs[] = {
      "src/gpu/includes/fluids-uniforms.hlsli",
      "cbuffer Uniforms"},
     {"src/engine/fluids.c",
-     "ripples_uniforms",
+     "ripples_uniform",
      "src/gpu/ripples.frag.hlsl",
      "cbuffer Uniforms"},
 

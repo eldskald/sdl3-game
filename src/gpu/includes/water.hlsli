@@ -8,14 +8,18 @@
 #define WATER_HIGHLIGHT 0.15
 #define WATER_SHADOW 0.1
 
-float4 water(float2 uv,
-             float4 bg,
-             float3 n,
-             float o,
-             float u,
-             float l,
-             float d,
-             float r) {
+float water_bubbles(float2 uv) {
+    return 0.0;
+}
+
+float4 water_col(float2 uv,
+                 float4 bg,
+                 float3 n,
+                 float o,
+                 float u,
+                 float l,
+                 float d,
+                 float r) {
     float4 col = _Colors[0];
     col.rgb = lerp(col.rgb, bg.rgb, WATER_BACKGROUND_BLEND);
 
