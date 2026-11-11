@@ -7,6 +7,7 @@
 #include "engine/camera.h"
 #include "engine/game-manager.h"
 #include "engine/graphics.h"
+#include "engine/particles.h"
 #include "engine/sfx.h"
 #include "engine/tilemap.h"
 #include "paths.h"
@@ -152,10 +153,21 @@ static const Uint8 water_splash_2_wav[] = {
 static const Uint8 water_splash_3_wav[] = {
 #embed FLUIDS_WATER_SPLASH_3_SFX_PATH
 };
+
 static const Uint8 lava_splash_1_wav[] = {
 #embed FLUIDS_LAVA_SPLASH_1_SFX_PATH
 };
 
+static const Uint8 acid_splash_1_wav[] = {
+#embed FLUIDS_ACID_SPLASH_1_SFX_PATH
+};
+
+static const Uint8 sludge_splash_1_wav[] = {
+#embed FLUIDS_SLUDGE_SPLASH_1_SFX_PATH
+};
+static const Uint8 sludge_splash_2_wav[] = {
+#embed FLUIDS_SLUDGE_SPLASH_2_SFX_PATH
+};
 
 static const fluid_sfx_file slosh_sfx_files[] = {
     {fluid_water, water_slosh_1_wav, sizeof(water_slosh_1_wav)},
@@ -164,12 +176,17 @@ static const fluid_sfx_file slosh_sfx_files[] = {
     {fluid_water, water_slosh_4_wav, sizeof(water_slosh_4_wav)},
     {fluid_water, water_slosh_5_wav, sizeof(water_slosh_5_wav)},
     {fluid_lava, NULL, 0},
+    {fluid_acid, NULL, 0},
+    {fluid_sludge, NULL, 0},
 };
 static const fluid_sfx_file splash_sfx_files[] = {
     {fluid_water, water_splash_1_wav, sizeof(water_splash_1_wav)},
     {fluid_water, water_splash_2_wav, sizeof(water_splash_2_wav)},
     {fluid_water, water_splash_3_wav, sizeof(water_splash_3_wav)},
     {fluid_lava, lava_splash_1_wav, sizeof(lava_splash_1_wav)},
+    {fluid_acid, acid_splash_1_wav, sizeof(acid_splash_1_wav)},
+    {fluid_sludge, sludge_splash_1_wav, sizeof(sludge_splash_1_wav)},
+    {fluid_sludge, sludge_splash_2_wav, sizeof(sludge_splash_2_wav)},
 };
 
 static fluid_sfx_bank slosh_sfx = {
@@ -213,6 +230,15 @@ static float ripples_y = 0.0f;
 static SDL_AtomicInt ripples_ticks = {0};
 static SDL_FRect prepared_cam = {0};
 static float ripples_refraction = 0.0f;
+
+// Seconds the fluids have been drawn for, the shader's `_Time`. It only
+// advances on `FLUIDS_draw()`, so the fluids' effects stop while they aren't
+// drawn and resume where they were.
+static double shader_time_uniform = 0.0;
+
+// Whether `fluids_canvas.colors` has the fluids' colors yet. They never change,
+// so they're uploaded on the first `FLUIDS_draw()`.
+static bool colors_uploaded = false;
 static fluid_type ordered[FLUIDS_TOTAL] = {0};
 
 static dynarr particles = (dynarr){0}; // fluid_particle dynarr
@@ -263,6 +289,16 @@ static const fluid_bgs body_bgs[FLUIDS_TOTAL] = {
     [fluid_lava] =
         {
             .static_bgs = bgs_track_lava_bubbling,
+            .running_bgs = bgs_track_none,
+        },
+    [fluid_acid] =
+        {
+            .static_bgs = bgs_track_acid_fizz,
+            .running_bgs = bgs_track_none,
+        },
+    [fluid_sludge] =
+        {
+            .static_bgs = bgs_track_sludge_bubbling,
             .running_bgs = bgs_track_none,
         },
 };
@@ -656,6 +692,8 @@ void FLUIDS_start(void) {
     log_creation(
         SDL_LOG_CATEGORY_APPLICATION, ripples_mutex, "fluids' ripples mutex");
     ripples_idx = 0;
+    shader_time_uniform = 0.0;
+    colors_uploaded = false;
     ripples_x = 0.0f;
     ripples_y = 0.0f;
     SDL_SetAtomicInt(&ripples_ticks, 0);
@@ -1422,8 +1460,8 @@ static double quarter_px(double vol) {
 //    the color function of the pixel's fluid, like `water_col()` on
 //    `src/gpu/includes/water.hlsli`, with the pixel, the refracted sample, the
 //    ripples' normal and its neighbors, which returns its final color. Each
-//    fluid gets its base color from the `_Colors` uniform, which
-//    `set_shader_uniforms()` fills from the fluid data every frame, blends it
+//    fluid gets its base color from `_Colors`, a storage buffer that
+//    `upload_colors()` fills from the fluid data once, blends it
 //    with the refracted sample, lights the ripples with their normal and
 //    brightens pixels next to air to draw a contour.
 //
@@ -1433,7 +1471,7 @@ static double quarter_px(double vol) {
 //
 // Adding a fluid requires a new `IDX_*` define, a new include with its
 // `<fluid>_col()` and `<fluid>_bubbles()` functions, cases for them on
-// `fluid_col()` and `fluid_bubbles()` and increasing the size of `_Colors`.
+// `fluid_col()` and `fluid_bubbles()`. `_Colors` grows with `FLUIDS_TOTAL`.
 //
 // Particles aren't drawn into `fluids_texture`, they are drawn directly with
 // their fluid's color.
@@ -1523,23 +1561,28 @@ static void draw_particles(SDL_FRect cam) {
 // Matches the fluids shader's uniforms on
 // `src/gpu/includes/fluids-uniforms.hlsli`, padded to a multiple of 16 bytes.
 typedef struct {
-    float colors[FLUIDS_TOTAL][4];
     float cam_pos[2];
     float time;
     float refraction;
 } shader_uniforms;
 
 static shader_uniforms get_shader_uniforms(SDL_FRect cam) {
-    shader_uniforms uniforms = {.cam_pos = {cam.x / cam.w, cam.y / cam.h},
-                                .time = SDL_GetTicks() / 1000.0f,
-                                .refraction = ripples_refraction};
+    return (shader_uniforms){.cam_pos = {cam.x / cam.w, cam.y / cam.h},
+                             .time = (float)shader_time_uniform,
+                             .refraction = ripples_refraction};
+}
+
+// Uploads each fluid's color, indexed by `fluid_type`, into `buffer`, which the
+// fluids shader reads as `_Colors`.
+static void upload_colors(SDL_GPUBuffer* buffer) {
+    float colors[FLUIDS_TOTAL][4] = {0};
     for (Uint8 t = 0; t < FLUIDS_TOTAL; t++) {
-        uniforms.colors[t][0] = data[t].col_r / 255.0f;
-        uniforms.colors[t][1] = data[t].col_g / 255.0f;
-        uniforms.colors[t][2] = data[t].col_b / 255.0f;
-        uniforms.colors[t][3] = data[t].col_a / 255.0f;
+        colors[t][0] = data[t].col_r / 255.0f;
+        colors[t][1] = data[t].col_g / 255.0f;
+        colors[t][2] = data[t].col_b / 255.0f;
+        colors[t][3] = data[t].col_a / 255.0f;
     }
-    return uniforms;
+    GRAPHICS_upload_buffer(buffer, 0, colors, sizeof(colors));
 }
 
 // Matches the ripples shader's uniforms on `src/gpu/ripples.frag.hlsl`.
@@ -1626,9 +1669,87 @@ static SDL_FRect get_ripples_area(SDL_FRect cam) {
     };
 }
 
+// Matches `SurfaceUniforms` on `src/gpu/fluids-surfaces.comp.hlsl`.
+typedef struct {
+    int cells_rect[4];
+    float cell_size[2];
+    float dt;
+    Uint32 seed;
+    Uint32 max_requests;
+    int pad0;
+    int pad1;
+    int pad2;
+} surface_uniforms;
+
+// Code of cell `(x, y)` for the surfaces pass. The low byte is `0` when it's
+// completely empty, `255` when it's a wall or outside of the simulation, and
+// otherwise the shader's `IDX_*` of its lightest fluid, the one on top, with
+// the next byte how full it is, from `0` to `255`.
+static Uint32 encode_surface_cell(long x, long y) {
+    if (is_wall(x, y)) return 255;
+    fluids cell = grid[x][y];
+    for (int t = FLUIDS_TOTAL - 1; t >= 0; t--) {
+        if (cell.volume[ordered[t]] <= EPSILON) continue;
+        double fill = SDL_clamp(get_fill(cell, FLUIDS_TOTAL - 1), 0.0, 1.0);
+        return (ordered[t] + 1) | (Uint32)SDL_round(fill * 255.0) << 8;
+    }
+    return 0;
+}
+
+// Finds the surfaces on the fluid cells over `cam` on the GPU, which request
+// the particles they spawn on the particles' requests, one thread per cell. The
+// cells are uploaded with the rows above and below them, so the top ones know
+// what's over them and the bottom ones what's under them. Recorded before
+// `PARTICLES_draw()`, so they spawn on this frame.
+static void dispatch_surfaces(fluids_canvas* canvas, SDL_FRect cam) {
+    SDL_GPUBuffer* requests = PARTICLES_get_requests_buffer();
+    SDL_GPUBuffer* counters = PARTICLES_get_counters_buffer();
+    if (!requests || !counters || !canvas->surfaces_pipeline) return;
+
+    long from_x = SDL_max(SDL_floor(cam.x / FLUIDS_CELL_W), 0.0f);
+    long from_y = SDL_max(SDL_floor(cam.y / FLUIDS_CELL_H), 0.0f) - 1;
+    long to_x = SDL_min(SDL_ceil((cam.x + cam.w) / FLUIDS_CELL_W),
+                        TILEMAP_SIZE_X * FLUIDS_SPLIT_X);
+    long to_y = SDL_min(SDL_ceil((cam.y + cam.h) / FLUIDS_CELL_H),
+                        TILEMAP_SIZE_Y * FLUIDS_SPLIT_Y);
+    to_y++; // The row below the camera
+    long w = SDL_min(to_x - from_x, FLUIDS_SURFACE_CELLS_X);
+    long h = SDL_min(to_y - from_y, FLUIDS_SURFACE_CELLS_Y);
+    if (w <= 0 || h <= 2) return;
+
+    static Uint32 cells[FLUIDS_SURFACE_CELLS_X * FLUIDS_SURFACE_CELLS_Y];
+    for (long y = 0; y < h; y++)
+        for (long x = 0; x < w; x++)
+            cells[y * w + x] = encode_surface_cell(from_x + x, from_y + y);
+    GRAPHICS_upload_buffer(
+        canvas->surface_cells, 0, cells, w * h * sizeof(Uint32));
+
+    surface_uniforms uniforms = {
+        .cells_rect = {from_x, from_y, w, h},
+        .cell_size = {FLUIDS_CELL_W, FLUIDS_CELL_H},
+        .dt = GAME_MANAGER_get_current_dt(),
+        .seed = SDL_rand_bits(),
+        .max_requests = PARTICLES_MAX_REQUESTS,
+    };
+    Uint32 threads = w * (h - 2);
+    GRAPHICS_dispatch(&(graphics_dispatch){
+        .pipeline = canvas->surfaces_pipeline,
+        .readonly_buffers = {canvas->surface_cells},
+        .num_readonly_buffers = 1,
+        .readwrite_buffers = {requests, counters},
+        .num_readwrite_buffers = 2,
+        .uniforms = &uniforms,
+        .uniforms_size = sizeof(uniforms),
+        .groups =
+            (threads + FLUIDS_SURFACE_THREADS - 1) / FLUIDS_SURFACE_THREADS,
+    });
+}
+
 void FLUIDS_prepare(fluids_canvas* canvas) {
     prepared_cam = CAMERA_get_rect();
     SDL_FRect area = get_ripples_area(prepared_cam);
+
+    dispatch_surfaces(canvas, prepared_cam);
 
     GRAPHICS_set_target(canvas->texture);
     GRAPHICS_clear((SDL_FColor){0, 0, 0, 0});
@@ -1643,12 +1764,20 @@ void FLUIDS_draw(fluids_canvas* canvas) {
     SDL_FRect cam = prepared_cam;
     SDL_FRect area = get_ripples_area(cam);
 
+    if (!colors_uploaded) {
+        upload_colors(canvas->colors);
+        colors_uploaded = true;
+    }
+    shader_time_uniform += GAME_MANAGER_get_current_dt();
+
     shader_uniforms uniforms = get_shader_uniforms(cam);
     GRAPHICS_set_state(&(graphics_state){
         .fragment = canvas->shader,
         .samplers = {GRAPHICS_binding(canvas->ripples[ripples_idx]),
                      GRAPHICS_binding(canvas->pre_fluids)},
         .num_samplers = 2,
+        .fragment_storage_buffers = {canvas->colors},
+        .num_fragment_storage_buffers = 1,
         .fragment_uniforms = &uniforms,
         .fragment_uniforms_size = sizeof(uniforms),
     });
@@ -2077,5 +2206,7 @@ hashmap FLUIDS_get_string_fluid_types_map(void) {
     init_hashmap(&map, sizeof(fluid_type));
     set_on_hashmap(&(fluid_type){fluid_water}, "water", &map);
     set_on_hashmap(&(fluid_type){fluid_lava}, "lava", &map);
+    set_on_hashmap(&(fluid_type){fluid_acid}, "acid", &map);
+    set_on_hashmap(&(fluid_type){fluid_sludge}, "sludge", &map);
     return map;
 }

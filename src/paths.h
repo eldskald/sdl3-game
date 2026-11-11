@@ -76,6 +76,9 @@
 #define TILEMAP_WATER_LAND_2_SFX_PATH "res/sfx/footsteps/water/Footsteps_Water_Jump/Footsteps_Water_Jump_Light_02.wav"
 #define TILEMAP_WATER_LAND_3_SFX_PATH "res/sfx/footsteps/water/Footsteps_Water_Jump/Footsteps_Water_Jump_Light_03.wav"
 
+#define TILEMAP_SLUDGE_LAND_1_SFX_PATH "res/sfx/footsteps/sludge/slime-hit-1.wav"
+#define TILEMAP_SLUDGE_LAND_2_SFX_PATH "res/sfx/footsteps/sludge/slime-hit-2.wav"
+
 #define TILEMAP_DIRT_STEP_1_SFX_PATH "res/sfx/footsteps/dirt/Footsteps_DirtyGround_Run/Footsteps_DirtyGround_Run_01.wav"
 #define TILEMAP_DIRT_STEP_2_SFX_PATH "res/sfx/footsteps/dirt/Footsteps_DirtyGround_Run/Footsteps_DirtyGround_Run_02.wav"
 #define TILEMAP_DIRT_STEP_3_SFX_PATH "res/sfx/footsteps/dirt/Footsteps_DirtyGround_Run/Footsteps_DirtyGround_Run_03.wav"
@@ -106,6 +109,9 @@
 #define TILEMAP_WATER_STEP_4_SFX_PATH "res/sfx/footsteps/water/Footsteps_Water_Walk/Footsteps_WaterV1_Walk_04.wav"
 #define TILEMAP_WATER_STEP_5_SFX_PATH "res/sfx/footsteps/water/Footsteps_Water_Walk/Footsteps_WaterV1_Walk_05.wav"
 
+#define TILEMAP_SLUDGE_STEP_1_SFX_PATH "res/sfx/footsteps/sludge/sludge-step-1.wav"
+#define TILEMAP_SLUDGE_STEP_2_SFX_PATH "res/sfx/footsteps/sludge/sludge-step-2.wav"
+
 
 
 // Fluids
@@ -118,12 +124,19 @@
 #define FLUIDS_FRAG_DXIL_PATH          "res/shaders/fluids.frag.dxil"
 #define FLUIDS_RIPPLES_FRAG_SPIRV_PATH "res/shaders/ripples.frag.spv"
 #define FLUIDS_RIPPLES_FRAG_DXIL_PATH  "res/shaders/ripples.frag.dxil"
+#define FLUIDS_SURFACES_COMP_SPIRV_PATH "res/shaders/fluids-surfaces.comp.spv"
+#define FLUIDS_SURFACES_COMP_DXIL_PATH  "res/shaders/fluids-surfaces.comp.dxil"
 
 #define FLUIDS_WATER_SPLASH_1_SFX_PATH "res/sfx/fluids/water/Footsteps_Water_Jump_Big_01.wav"
 #define FLUIDS_WATER_SPLASH_2_SFX_PATH "res/sfx/fluids/water/Footsteps_Water_Jump_Big_02.wav"
 #define FLUIDS_WATER_SPLASH_3_SFX_PATH "res/sfx/fluids/water/Footsteps_Water_Jump_Big_03.wav"
 
 #define FLUIDS_LAVA_SPLASH_1_SFX_PATH "res/sfx/fluids/lava/sizzler.wav"
+
+#define FLUIDS_ACID_SPLASH_1_SFX_PATH "res/sfx/fluids/acid/shovel-sizzle.wav"
+
+#define FLUIDS_SLUDGE_SPLASH_1_SFX_PATH "res/sfx/fluids/sludge/splat-1.wav"
+#define FLUIDS_SLUDGE_SPLASH_2_SFX_PATH "res/sfx/fluids/sludge/splat-2.wav"
 
 #define FLUIDS_WATER_SLOSH_1_SFX_PATH "res/sfx/fluids/water/Footsteps_Water_Run_01.wav"
 #define FLUIDS_WATER_SLOSH_2_SFX_PATH "res/sfx/fluids/water/Footsteps_Water_Run_02.wav"
@@ -181,5 +194,7 @@
 #define BGS_CAVE_PATH "res/bgs/Cave/Cave.ogg"
 #define BGS_WATER_STREAMING_PATH "res/bgs/fluids/water-streaming-loop.ogg"
 #define BGS_LAVA_BUBBLING_PATH "res/bgs/fluids/lava-bubbling-loop.ogg"
+#define BGS_ACID_FIZZ_PATH "res/bgs/fluids/acid-fizz.ogg"
+#define BGS_SLUDGE_BUBBLING_PATH "res/bgs/fluids/sludge-looped.ogg"
 
 // clang-format on

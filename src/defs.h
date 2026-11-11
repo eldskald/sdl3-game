@@ -67,7 +67,7 @@ typedef enum {
 
 // Graphics
 #define GRAPHICS_MAX_EXTRA_SAMPLERS 3
-#define GRAPHICS_MAX_UNIFORMS_SIZE 64
+#define GRAPHICS_MAX_UNIFORMS_SIZE 128
 #define GRAPHICS_MAX_PIPELINES 32
 #define GRAPHICS_VERTICES_STARTING_CAP 4096
 #define GRAPHICS_COMMANDS_STARTING_CAP 64
@@ -115,8 +115,9 @@ typedef enum {
 
 // BGS
 #define BGS_TRACKS                                                             \
-    bgs_track_cave, bgs_track_water_streaming, bgs_track_lava_bubbling,
-#define BGS_TRACKS_TOTAL 4
+    bgs_track_cave, bgs_track_water_streaming, bgs_track_lava_bubbling,        \
+        bgs_track_acid_fizz, bgs_track_sludge_bubbling
+#define BGS_TRACKS_TOTAL 6
 #define BGS_BUFFER_MS 500   // How far ahead of what's heard tracks are decoded
 #define BGS_MAX_FILL_MS 100 // Most a track decodes per tick to get there
 #define BGS_DECODE_CHUNK_SAMPLES 4096 // Floats decoded at a time
@@ -142,12 +143,17 @@ typedef enum {
 // Fluids
 #define FLUIDS_SPLIT_X 2
 #define FLUIDS_SPLIT_Y 2
-#define FLUIDS_TYPES fluid_water, fluid_lava
-#define FLUIDS_TOTAL 2
+#define FLUIDS_TYPES fluid_water, fluid_lava, fluid_acid, fluid_sludge
+#define FLUIDS_TOTAL 4
 #define FLUIDS_CELL_W (SPRITESHEET_CELL_X / FLUIDS_SPLIT_X)
 #define FLUIDS_CELL_H (SPRITESHEET_CELL_Y / FLUIDS_SPLIT_Y)
 #define FLUIDS_RIPPLES_MAX_TICKS 4
 #define FLUIDS_RIPPLES_TEXTURE_RES_FACTOR 2
+// Fluid cells the surfaces pass reads, enough to cover the camera however it's
+// aligned to them, plus the rows above and below it. See `FLUIDS_prepare()`.
+#define FLUIDS_SURFACE_CELLS_X (WINDOW_SIZE_X / FLUIDS_CELL_W + 1)
+#define FLUIDS_SURFACE_CELLS_Y (WINDOW_SIZE_Y / FLUIDS_CELL_H + 3)
+#define FLUIDS_SURFACE_THREADS 64
 #define FLUIDS_SHADER_IDX_STEP 8
 #define FLUIDS_WALL_COLOR 255, 0, 0, 255
 #define FLUIDS_STARTING_PARTICLES_DYNARR_CAP 1024
@@ -162,8 +168,9 @@ typedef enum {
 // Particles
 #define PARTICLES_TYPES                                                        \
     particle_tile_dirt, particle_tile_stone, particle_tile_wood,               \
-        particle_tile_metal
-#define PARTICLES_TOTAL 5
+        particle_tile_metal, particle_fluid_acid_bubble,                       \
+        particle_fluid_sludge_bubble, particle_fluid_sludge_pop
+#define PARTICLES_TOTAL 8
 #define PARTICLES_SPLIT_X 2
 #define PARTICLES_SPLIT_Y 2
 #define PARTICLES_CELL_W (SPRITESHEET_CELL_X / PARTICLES_SPLIT_X)

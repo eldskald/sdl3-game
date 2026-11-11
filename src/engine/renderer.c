@@ -53,6 +53,12 @@ static const Uint8 ripples_spirv[] = {
 static const Uint8 ripples_dxil[] = {
 #embed FLUIDS_RIPPLES_FRAG_DXIL_PATH
 };
+static const Uint8 surfaces_spirv[] = {
+#embed FLUIDS_SURFACES_COMP_SPIRV_PATH
+};
+static const Uint8 surfaces_dxil[] = {
+#embed FLUIDS_SURFACES_COMP_DXIL_PATH
+};
 static const Uint8 tonemap_spirv[] = {
 #embed RENDERER_TONEMAP_FRAG_SPIRV_PATH
 };
@@ -185,6 +191,21 @@ static int create_textures(void) {
         if (!fluids.ripples[i]) return 1;
     }
 
+    // Buffer for the fluids' colors, a float4 each, see FLUIDS_draw().
+    fluids.colors =
+        GRAPHICS_create_buffer("fluids_colors",
+                               SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ,
+                               FLUIDS_TOTAL * sizeof(float[4]));
+    if (!fluids.colors) return 1;
+
+    // Buffer for the fluid cells the surfaces pass reads, a uint each, see
+    // FLUIDS_prepare().
+    fluids.surface_cells = GRAPHICS_create_buffer(
+        "fluids_surface_cells",
+        SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ,
+        FLUIDS_SURFACE_CELLS_X * FLUIDS_SURFACE_CELLS_Y * sizeof(Uint32));
+    if (!fluids.surface_cells) return 1;
+
     return 0;
 }
 
@@ -241,7 +262,11 @@ static int load_shaders(void) {
     // Fluids shader, sampling one of the ripples textures and
     // pre_fluids_texture as well, see FLUIDS_draw()
     fluids.shader = GRAPHICS_load_fragment_shader(
-        "fluids_shader", GRAPHICS_SHADER_CODE(fluids_spirv, fluids_dxil), 3, 1);
+        "fluids_shader",
+        GRAPHICS_SHADER_CODE(fluids_spirv, fluids_dxil),
+        3,
+        1,
+        1);
     if (!fluids.shader) return 1;
 
     // Ripples shader, sampling the fluids texture as well
@@ -249,13 +274,26 @@ static int load_shaders(void) {
         "ripples_shader",
         GRAPHICS_SHADER_CODE(ripples_spirv, ripples_dxil),
         2,
+        0,
         1);
     if (!fluids.ripples_shader) return 1;
+
+    // Fluids surfaces pass, reading the fluid cells and appending to the
+    // particles' requests and counters, see FLUIDS_prepare()
+    fluids.surfaces_pipeline = GRAPHICS_load_compute_pipeline(
+        "fluids_surfaces",
+        GRAPHICS_SHADER_CODE(surfaces_spirv, surfaces_dxil),
+        1,
+        2,
+        1,
+        FLUIDS_SURFACE_THREADS);
+    if (!fluids.surfaces_pipeline) return 1;
 
     tonemap_shader = GRAPHICS_load_fragment_shader(
         "tonemap_shader",
         GRAPHICS_SHADER_CODE(tonemap_spirv, tonemap_dxil),
         1,
+        0,
         0);
     if (!tonemap_shader) return 1;
 
@@ -263,6 +301,7 @@ static int load_shaders(void) {
         "bloom_prefilter_shader",
         GRAPHICS_SHADER_CODE(bloom_prefilter_spirv, bloom_prefilter_dxil),
         1,
+        0,
         1);
     if (!bloom_prefilter_shader) return 1;
 
@@ -270,6 +309,7 @@ static int load_shaders(void) {
         "box_sample_shader",
         GRAPHICS_SHADER_CODE(box_sample_spirv, box_sample_dxil),
         1,
+        0,
         1);
     if (!box_sample_shader) return 1;
 
@@ -568,9 +608,12 @@ void RENDERER_stop(void) {
     GRAPHICS_release_shader(tonemap_shader);
     GRAPHICS_release_shader(fluids.ripples_shader);
     GRAPHICS_release_shader(fluids.shader);
+    GRAPHICS_release_compute_pipeline(fluids.surfaces_pipeline);
     for (Uint8 i = 0; i < 2; i++)
         GRAPHICS_destroy_texture(fluids.ripples[i]);
     GRAPHICS_destroy_texture(fluids.texture);
+    GRAPHICS_destroy_buffer(fluids.colors);
+    GRAPHICS_destroy_buffer(fluids.surface_cells);
     GRAPHICS_destroy_texture(pre_fluids_texture);
     for (int i = 0; i < bloom_iterations; i++)
         GRAPHICS_destroy_texture(bloom_chain[i]);

@@ -25,6 +25,12 @@ All of the code and art was done by me. The sound effects and fonts were not. Mo
 - [Audionautics](https://freesound.org/people/Audionautics/) for the bubbling lava sound
 - [pengo_au](https://freesound.org/people/pengo_au/sounds/90143/) for this steam sound
 - [magnuswaker](https://freesound.org/people/magnuswaker/sounds/540080/) for this sizzling sound
+- [rabban625](https://freesound.org/people/rabban625/sounds/436470/) for this sizzling sound
+- [HECKFRICKER](https://freesound.org/people/HECKFRICKER/sounds/753538/) for this frying sound
+- [SDLx](https://freesound.org/people/SDLx/sounds/260101/) for this geothermal mud
+- [Zuzek06](https://freesound.org/people/Zuzek06/sounds/353250/) for this slime sound
+- [zolopher](https://freesound.org/people/zolopher/sounds/44203/) for these splat sounds
+- [qubodup](https://freesound.org/people/qubodup/sounds/751341/) for a couple of slime sounds
 - [Tom Music](https://tommusic.itch.io/) for the cave ambiance sounds
 - [stormgold](https://stormgold.itch.io/able-font) for the Able font
 - [quiple](https://github.com/quiple/galmuri) for the Galmuri font

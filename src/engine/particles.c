@@ -393,12 +393,14 @@ static int load_shaders(void) {
         "particles_base_frag",
         GRAPHICS_SHADER_CODE(frag_spirv, frag_dxil),
         1,
+        0,
         0);
 
     frag_shaders[particle_shader_glow] = GRAPHICS_load_fragment_shader(
         "particles_shader_glow",
         GRAPHICS_SHADER_CODE(glow_shader_spirv, glow_shader_dxil),
         1,
+        0,
         0);
 
     for (int i = 0; i < particle_shaders_total; i++)
@@ -475,6 +477,14 @@ void PARTICLES_emit(particle_type type, particles_emit_settings settings) {
     SDL_LockMutex(requests_mutex);
     push_to_dynarr(&r, &requests);
     SDL_UnlockMutex(requests_mutex);
+}
+
+SDL_GPUBuffer* PARTICLES_get_requests_buffer(void) {
+    return requests_buffer;
+}
+
+SDL_GPUBuffer* PARTICLES_get_counters_buffer(void) {
+    return counters_buffer;
 }
 
 // Uploads the queued requests and sets the request counter to how many there
@@ -559,8 +569,10 @@ void PARTICLES_draw(graphics_texture* spritesheet) {
         };
         GRAPHICS_set_state(&(graphics_state){
             .vertex = vert_shader,
-            .storage_buffers = {particles_buffer, types_buffer, alive_buffer},
-            .num_storage_buffers = 3,
+            .vertex_storage_buffers = {particles_buffer,
+                                       types_buffer,
+                                       alive_buffer},
+            .num_vertex_storage_buffers = 3,
             .vertex_uniforms = &v_uniforms,
             .vertex_uniforms_size = sizeof(v_uniforms),
             .fragment = frag_shaders[g],
@@ -585,6 +597,12 @@ hashmap PARTICLES_get_string_particle_types_map(void) {
     set_on_hashmap(&(particle_type){particle_tile_stone}, "stone", &map);
     set_on_hashmap(&(particle_type){particle_tile_wood}, "wood", &map);
     set_on_hashmap(&(particle_type){particle_tile_metal}, "metal", &map);
+    set_on_hashmap(
+        &(particle_type){particle_fluid_acid_bubble}, "acid_bubble", &map);
+    set_on_hashmap(
+        &(particle_type){particle_fluid_sludge_bubble}, "sludge_bubble", &map);
+    set_on_hashmap(
+        &(particle_type){particle_fluid_sludge_pop}, "sludge_pop", &map);
     return map;
 }
 

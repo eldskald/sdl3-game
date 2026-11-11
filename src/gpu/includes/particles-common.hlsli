@@ -3,6 +3,11 @@
 // every struct is a multiple of 16 bytes, which lays them out the same on
 // SPIR-V and DXIL.
 
+#ifndef PARTICLES_COMMON
+#define PARTICLES_COMMON
+
+#include "includes/common.hlsli"
+
 struct Particle {
     float2 pos;
     float2 vel;
@@ -77,11 +82,6 @@ struct DrawArgs {
     uint first_instance;
 };
 
-#define EPSILON 0.0001
-#define PI 3.14159265
-#define TAU (PI * 2)
-#define DEG2RAD (PI / 180)
-
 // Matches `particles_emit_shape` on `src/engine/particles.h`.
 #define SHAPE_POINT 0
 #define SHAPE_RECT 1
@@ -89,15 +89,4 @@ struct DrawArgs {
 #define COUNTER_REQUESTS 0
 #define COUNTER_NEXT_SLOT 1
 
-// PCG's, from "Hash Functions for GPU Rendering", Jarzynski and Olano, 2020.
-uint hash(uint v) {
-    uint state = v * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    return (word >> 22u) ^ word;
-}
-
-// Advances `seed` and returns a random float in `[0.0, 1.0)` from it.
-float random(inout uint seed) {
-    seed = hash(seed);
-    return (seed >> 8) / 16777216.0;
-}
+#endif

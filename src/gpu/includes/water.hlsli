@@ -1,5 +1,6 @@
 #include "includes/fluids-uniforms.hlsli"
 #include "includes/fluids-common.hlsli"
+#include "includes/particles-common.hlsli"
 #include "includes/normals.hlsli"
 
 #define WATER_BACKGROUND_BLEND 0.7
@@ -12,6 +13,12 @@ float water_bubbles(float2 uv) {
     return 0.0;
 }
 
+// Particles a water surface spawns this frame, see `fluid_particles()`.
+Request water_particles(
+    float2 pos, float2 cell_size, float volume, float dt, uint seed) {
+    return (Request)0;
+}
+
 float4 water_col(float2 uv,
                  float4 bg,
                  float3 n,
@@ -20,7 +27,7 @@ float4 water_col(float2 uv,
                  float l,
                  float d,
                  float r) {
-    float4 col = _Colors[0];
+    float4 col = _Colors[IDX_WATER - 1];
     col.rgb = lerp(col.rgb, bg.rgb, WATER_BACKGROUND_BLEND);
 
     // Light the ripples.

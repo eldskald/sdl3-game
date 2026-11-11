@@ -135,6 +135,30 @@
          "y":0
         }, 
         {
+         "draworder":"topdown",
+         "id":6,
+         "name":"PlayerSpawn",
+         "objects":[
+                {
+                 "gid":1089,
+                 "height":16,
+                 "id":2,
+                 "name":"",
+                 "opacity":1,
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":16,
+                 "x":112,
+                 "y":80
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
          "color":"#55aaff",
          "draworder":"topdown",
          "id":2,
@@ -158,8 +182,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":6,
- "nextobjectid":2,
+ "nextlayerid":7,
+ "nextobjectid":3,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
@@ -172,6 +196,10 @@
         {
          "firstgid":1025,
          "source":"..\/..\/editor\/helper-tiles.tsx"
+        }, 
+        {
+         "firstgid":1089,
+         "source":"..\/..\/editor\/object-tiles.tsx"
         }],
  "tilewidth":8,
  "type":"map",

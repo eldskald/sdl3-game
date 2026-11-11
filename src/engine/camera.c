@@ -10,9 +10,10 @@
 #include <SDL3/SDL_stdinc.h>
 
 typedef struct {
-    double speed;
     double smoothing_range;
     double smoothing_min_speed;
+    double smoothing_max_speed;
+    double target_center_range;
 } camera_data;
 
 static const char camera_csv[] = {
@@ -77,9 +78,10 @@ void CAMERA_target_at(double x, double y) {
 
 void CAMERA_start(void) {
     parsing_field fields[] = {
-        {"speed", parsing_double, &data.speed},
         {"smoothing_range", parsing_double, &data.smoothing_range},
         {"smoothing_min_speed", parsing_double, &data.smoothing_min_speed},
+        {"smoothing_max_speed", parsing_double, &data.smoothing_max_speed},
+        {"target_center_range", parsing_double, &data.target_center_range},
     };
     dynarr parsed = CSV_parse(camera_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
@@ -93,10 +95,17 @@ void CAMERA_update(void) {
     double center_y = pos_y + WINDOW_SIZE_Y / 2;
     double d = SDL_sqrt((center_x - target_x) * (center_x - target_x) +
                         (center_y - target_y) * (center_y - target_y));
-    double v = data.speed;
+
+    if (d >= data.target_center_range) {
+        set_center(target_x, target_y);
+        return;
+    }
+
+    double v = data.smoothing_max_speed;
     if (d < data.smoothing_range)
         v = data.smoothing_min_speed +
-            (data.speed - data.smoothing_min_speed) * d / data.smoothing_range;
+            (data.smoothing_max_speed - data.smoothing_min_speed) * d /
+                data.smoothing_range;
 
     double step = v * GAME_MANAGER_get_current_dt();
     if (step >= d) {

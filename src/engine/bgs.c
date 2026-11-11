@@ -42,6 +42,12 @@ static const Uint8 water_streaming_ogg[] = {
 static const Uint8 lava_bubbling_ogg[] = {
 #embed BGS_LAVA_BUBBLING_PATH
 };
+static const Uint8 acid_fizz_ogg[] = {
+#embed BGS_ACID_FIZZ_PATH
+};
+static const Uint8 sludge_bubbling_ogg[] = {
+#embed BGS_SLUDGE_BUBBLING_PATH
+};
 static const char tracks_csv[] = {
 #embed BGS_TRACKS_CSV_PATH suffix(, '\0')
 };
@@ -61,6 +67,15 @@ static const track_source sources[BGS_TRACKS_TOTAL] = {
                                  lava_bubbling_ogg,
                                  sizeof(lava_bubbling_ogg),
                                  audio_bus_gameplay_sounds},
+    [bgs_track_acid_fizz] = {"acid_fizz",
+                             acid_fizz_ogg,
+                             sizeof(acid_fizz_ogg),
+                             audio_bus_gameplay_sounds},
+    [bgs_track_sludge_bubbling] = {"sludge_bubbling",
+                                   sludge_bubbling_ogg,
+                                   sizeof(sludge_bubbling_ogg),
+                                   audio_bus_gameplay_sounds},
+
 };
 static track_data tracks[BGS_TRACKS_TOTAL] = {0};
 static SDL_Mutex* tracks_mutex = NULL;

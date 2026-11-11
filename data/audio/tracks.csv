@@ -2,3 +2,5 @@ track,loop_start,loop_end,stop_when_silent
 cave,0,2646000,0
 water_streaming,0,0,1
 lava_bubbling,0,0,1
+acid_fizz,0,0,1
+sludge_bubbling,0,0,1

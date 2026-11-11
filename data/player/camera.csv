@@ -1,3 +1,4 @@
-speed,100
 smoothing_range,50
-smoothing_min_speed,5
+smoothing_min_speed,10
+smoothing_max_speed,500
+target_center_range,320

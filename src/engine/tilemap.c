@@ -197,6 +197,13 @@ static const Uint8 water_step_5_wav[] = {
 #embed TILEMAP_WATER_STEP_5_SFX_PATH
 };
 
+static const Uint8 sludge_step_1_wav[] = {
+#embed TILEMAP_SLUDGE_STEP_1_SFX_PATH
+};
+static const Uint8 sludge_step_2_wav[] = {
+#embed TILEMAP_SLUDGE_STEP_2_SFX_PATH
+};
+
 static const Uint8 water_land_1_wav[] = {
 #embed TILEMAP_WATER_LAND_1_SFX_PATH
 };
@@ -205,6 +212,13 @@ static const Uint8 water_land_2_wav[] = {
 };
 static const Uint8 water_land_3_wav[] = {
 #embed TILEMAP_WATER_LAND_3_SFX_PATH
+};
+
+static const Uint8 sludge_land_1_wav[] = {
+#embed TILEMAP_SLUDGE_LAND_1_SFX_PATH
+};
+static const Uint8 sludge_land_2_wav[] = {
+#embed TILEMAP_SLUDGE_LAND_2_SFX_PATH
 };
 
 static const tile_sfx_file step_sfx_files[] = {
@@ -248,11 +262,23 @@ static const tile_sfx_file fluids_step_sfx_files[] = {
     {fluid_water, water_step_3_wav, sizeof(water_step_3_wav)},
     {fluid_water, water_step_4_wav, sizeof(water_step_4_wav)},
     {fluid_water, water_step_5_wav, sizeof(water_step_5_wav)},
+    {fluid_acid, water_step_1_wav, sizeof(water_step_1_wav)},
+    {fluid_acid, water_step_2_wav, sizeof(water_step_2_wav)},
+    {fluid_acid, water_step_3_wav, sizeof(water_step_3_wav)},
+    {fluid_acid, water_step_4_wav, sizeof(water_step_4_wav)},
+    {fluid_acid, water_step_5_wav, sizeof(water_step_5_wav)},
+    {fluid_sludge, sludge_step_1_wav, sizeof(sludge_step_1_wav)},
+    {fluid_sludge, sludge_step_2_wav, sizeof(sludge_step_2_wav)},
 };
 static const tile_sfx_file fluids_land_sfx_files[] = {
     {fluid_water, water_land_1_wav, sizeof(water_land_1_wav)},
     {fluid_water, water_land_2_wav, sizeof(water_land_2_wav)},
     {fluid_water, water_land_3_wav, sizeof(water_land_3_wav)},
+    {fluid_acid, water_land_1_wav, sizeof(water_land_1_wav)},
+    {fluid_acid, water_land_2_wav, sizeof(water_land_2_wav)},
+    {fluid_acid, water_land_3_wav, sizeof(water_land_3_wav)},
+    {fluid_sludge, sludge_land_1_wav, sizeof(sludge_land_1_wav)},
+    {fluid_sludge, sludge_land_2_wav, sizeof(sludge_land_2_wav)},
 };
 
 // Neighbor offsets, in the order of their bits on the autotiles' lookup tables:

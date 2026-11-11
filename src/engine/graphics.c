@@ -31,10 +31,13 @@ typedef struct {
             SDL_GPUTextureSamplerBinding
                 samplers[1 + GRAPHICS_MAX_EXTRA_SAMPLERS];
             Uint32 num_samplers;
+            SDL_GPUBuffer*
+                fragment_storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+            Uint32 num_fragment_storage_buffers;
             Uint8 fragment_uniforms[GRAPHICS_MAX_UNIFORMS_SIZE];
             Uint32 fragment_uniforms_size;
-            SDL_GPUBuffer* storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
-            Uint32 num_storage_buffers;
+            SDL_GPUBuffer* vertex_storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+            Uint32 num_vertex_storage_buffers;
             Uint8 vertex_uniforms[GRAPHICS_MAX_UNIFORMS_SIZE];
             Uint32 vertex_uniforms_size;
             Uint32 first_vertex, num_vertices, num_instances;
@@ -175,12 +178,13 @@ static SDL_GPUShader* load_shader(const char* name,
 SDL_GPUShader* GRAPHICS_load_fragment_shader(const char* name,
                                              graphics_shader_code code,
                                              Uint32 num_samplers,
+                                             Uint32 num_storage_buffers,
                                              Uint32 num_uniform_buffers) {
     return load_shader(name,
                        code,
                        SDL_GPU_SHADERSTAGE_FRAGMENT,
                        num_samplers,
-                       0,
+                       num_storage_buffers,
                        num_uniform_buffers);
 }
 
@@ -316,7 +320,7 @@ int GRAPHICS_start(void) {
     if (!base_vert) return 1;
 
     base_frag = GRAPHICS_load_fragment_shader(
-        "base_frag", GRAPHICS_SHADER_CODE(frag_spirv, frag_dxil), 1, 0);
+        "base_frag", GRAPHICS_SHADER_CODE(frag_spirv, frag_dxil), 1, 0, 0);
     if (!base_frag) return 1;
 
     nearest_sampler = create_sampler(SDL_GPU_FILTER_NEAREST);
@@ -831,12 +835,19 @@ static void run_dispatch(const command* c) {
 static void run_draw(SDL_GPURenderPass* pass, const command* c) {
     SDL_BindGPUFragmentSamplers(
         pass, 0, c->draw.samplers, c->draw.num_samplers);
+    if (c->draw.num_fragment_storage_buffers)
+        SDL_BindGPUFragmentStorageBuffers(pass,
+                                          0,
+                                          c->draw.fragment_storage_buffers,
+                                          c->draw.num_fragment_storage_buffers);
     if (c->draw.fragment_uniforms_size)
         SDL_PushGPUFragmentUniformData(
             cmd, 0, c->draw.fragment_uniforms, c->draw.fragment_uniforms_size);
-    if (c->draw.num_storage_buffers)
-        SDL_BindGPUVertexStorageBuffers(
-            pass, 0, c->draw.storage_buffers, c->draw.num_storage_buffers);
+    if (c->draw.num_vertex_storage_buffers)
+        SDL_BindGPUVertexStorageBuffers(pass,
+                                        0,
+                                        c->draw.vertex_storage_buffers,
+                                        c->draw.num_vertex_storage_buffers);
     if (c->draw.vertex_uniforms_size)
         SDL_PushGPUVertexUniformData(
             cmd, 1, c->draw.vertex_uniforms, c->draw.vertex_uniforms_size);
@@ -950,14 +961,18 @@ static command* push_draw(graphics_texture* texture, bool vertex_input) {
                state.samplers,
                state.num_samplers * sizeof(SDL_GPUTextureSamplerBinding));
     c.draw.num_samplers = 1 + state.num_samplers;
+    SDL_memcpy(c.draw.fragment_storage_buffers,
+               state.fragment_storage_buffers,
+               state.num_fragment_storage_buffers * sizeof(SDL_GPUBuffer*));
+    c.draw.num_fragment_storage_buffers = state.num_fragment_storage_buffers;
     SDL_memcpy(c.draw.fragment_uniforms,
                state.fragment_uniforms,
                state.fragment_uniforms_size);
     c.draw.fragment_uniforms_size = state.fragment_uniforms_size;
-    SDL_memcpy(c.draw.storage_buffers,
-               state.storage_buffers,
-               state.num_storage_buffers * sizeof(SDL_GPUBuffer*));
-    c.draw.num_storage_buffers = state.num_storage_buffers;
+    SDL_memcpy(c.draw.vertex_storage_buffers,
+               state.vertex_storage_buffers,
+               state.num_vertex_storage_buffers * sizeof(SDL_GPUBuffer*));
+    c.draw.num_vertex_storage_buffers = state.num_vertex_storage_buffers;
     SDL_memcpy(c.draw.vertex_uniforms,
                state.vertex_uniforms,
                state.vertex_uniforms_size);

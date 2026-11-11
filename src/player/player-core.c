@@ -247,3 +247,7 @@ void PLAYER_start(void) {
     load_base_data_from_csv();
     PLAYER_PRESENTATION_start();
 }
+
+player_state PLAYER_get_player(void) {
+    return state;
+}
