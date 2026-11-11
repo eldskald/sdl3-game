@@ -1,7 +1,7 @@
 #ifndef FLUIDS_COMMON
 #define FLUIDS_COMMON
 
-#define EPSILON 0.001
+#include "includes/common.hlsli"
 
 #define FAC 32.0
 
@@ -9,6 +9,8 @@
 // them divided by `FAC`.
 #define IDX_WATER 1
 #define IDX_LAVA 2
+#define IDX_ACID 3
+#define IDX_SLUDGE 4
 
 // `1.0` when the sample is air, `0.0` otherwise.
 float is_air(float s) {
@@ -44,6 +46,14 @@ float is_same(float a, float b) {
 // material.
 float is_same(float2 a, float2 b) {
     return is_same(a.r, b.r);
+}
+
+// If you call this every frame, expect it to return `1` a `freq` amount per
+// second. `rand` is a number from `0.0` to `1.0` from the `random()` function,
+// and `dt` is the frame time in seconds. `freq` can't be higher than the frame
+// rate.
+uint rand_per_sec(float rand, float dt, float freq) {
+    return rand < freq * dt ? 1 : 0;
 }
 
 #endif

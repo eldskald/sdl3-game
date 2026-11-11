@@ -1,11 +1,11 @@
 #include "includes/fluids-uniforms.hlsli"
 #include "includes/fluids-common.hlsli"
+#include "includes/particles-common.hlsli"
 #include "includes/normals.hlsli"
 #include "includes/simplex-noise.hlsli"
 
-#define LAVA_NOISE_FREQUENCY 16.0
+#define LAVA_NOISE_FREQ 16.0
 #define LAVA_NOISE_SPEED 0.5
-#define LAVA_NOISE_ASPECT (16.0 / 9.0)
 
 #define LAVA_CONTOUR 0.4
 #define LAVA_BACKGROUND_BLEND 0.1
@@ -17,13 +17,19 @@
 
 float lava_bubbles(float2 uv) {
     uv += _CamPos;
-    uv.x *= LAVA_NOISE_ASPECT;
-    return snoise(float3(uv * LAVA_NOISE_FREQUENCY, _Time * LAVA_NOISE_SPEED));
+    uv.x *= ASPECT;
+    return snoise(float3(uv * LAVA_NOISE_FREQ, _Time * LAVA_NOISE_SPEED));
 }
 
 // `1.0` when neighbor `s` of lava sample `o` is air or another fluid.
 float lava_edge(float o, float s) {
     return (1.0 - is_same(o, s)) * (1.0 - is_wall(s));
+}
+
+// Particles a lava surface spawns this frame, see `fluid_particles()`.
+Request lava_particles(
+    float2 pos, float2 cell_size, float volume, float dt, uint seed) {
+    return (Request)0;
 }
 
 float4 lava_col(float2 uv,
@@ -34,7 +40,7 @@ float4 lava_col(float2 uv,
                 float l,
                 float d,
                 float r) {
-    float4 col = _Colors[1];
+    float4 col = _Colors[IDX_LAVA - 1];
 
     // Ripples.
     col.rgb = lerp(col.rgb, bg.rgb, LAVA_BACKGROUND_BLEND);

@@ -98,6 +98,10 @@ static const struct_spec struct_specs[] = {
      "src/gpu/includes/fluids-uniforms.hlsli",
      "cbuffer Uniforms"},
     {"src/engine/fluids.c",
+     "surface_uniforms",
+     "src/gpu/fluids-surfaces.comp.hlsl",
+     "cbuffer SurfaceUniforms"},
+    {"src/engine/fluids.c",
      "ripples_uniform",
      "src/gpu/ripples.frag.hlsl",
      "cbuffer Uniforms"},
@@ -613,8 +617,19 @@ static void check_struct(const struct_spec* spec) {
                 parse_c_struct(&r, &cs, spec->path, spec->name, &c);
     bool h_ok = load_source(&r, spec->hlsl_path, &hs) &&
                 parse_hlsl_struct(&r, &hs, spec->hlsl_path, spec->decl, &h);
-    if (c_ok) check_layout(&r, &c);
+    size_t c_size = c_ok ? check_layout(&r, &c) : 0;
     if (h_ok) check_layout(&r, &h);
+    // Uniforms are copied into fixed buffers of `GRAPHICS_MAX_UNIFORMS_SIZE`
+    // bytes on their way to the GPU, and anything past it overflows them.
+    if (c_ok && starts_with(spec->decl, "cbuffer"))
+        check(&r,
+              c_size <= GRAPHICS_MAX_UNIFORMS_SIZE,
+              "%s:%zu: uniforms are %zu bytes, but "
+              "`GRAPHICS_MAX_UNIFORMS_SIZE` is %d",
+              c.path,
+              c.line,
+              c_size,
+              GRAPHICS_MAX_UNIFORMS_SIZE);
     if (c_ok && h_ok) check_fields_match(&r, &c, &h);
     free_source(&cs);
     free_source(&hs);

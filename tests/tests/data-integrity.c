@@ -28,7 +28,8 @@ typedef enum {
     val_bgs_track,
 } val_type;
 
-// Row of a key/value CSV, a key followed by `min` up to `max` values.
+// Row of a key/value CSV, a key followed by `min` up to `max` values if it's an
+// array.
 typedef struct {
     const char* key;
     val_type type;
@@ -337,11 +338,10 @@ static void check_props(void) {
 }
 
 static void check_camera(void) {
-    const key_spec specs[] = {
-        {"speed", val_double, 1, 1},
-        {"smoothing_range", val_double, 1, 1},
-        {"smoothing_min_speed", val_double, 1, 1},
-    };
+    const key_spec specs[] = {{"smoothing_range", val_double, 1, 1},
+                              {"smoothing_min_speed", val_double, 1, 1},
+                              {"smoothing_max_speed", val_double, 1, 1},
+                              {"target_center_range", val_double, 1, 1}};
     report r = (report){0};
     dynarr parsed = CSV_parse(camera_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));

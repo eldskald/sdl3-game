@@ -64,7 +64,10 @@ typedef struct {
 // `shader`, sampling the latest of `ripples` for the ripples and `pre_fluids`
 // for everything drawn before the fluids. Ripples are ticked by drawing one of
 // `ripples` into the other with `ripples_shader`, which samples `texture` to
-// keep them inside the fluids.
+// keep them inside the fluids. `colors` is the storage buffer `shader` reads
+// each fluid's color from, a `float4` per fluid, uploaded by `FLUIDS_draw()`.
+// `surfaces_pipeline` finds the fluids' surfaces on `surface_cells` and
+// requests the particles they spawn, see `FLUIDS_prepare()`.
 //
 // ```
 // struct fluids_canvas {
@@ -73,6 +76,9 @@ typedef struct {
 //     graphics_texture* pre_fluids;
 //     SDL_GPUShader* shader;
 //     SDL_GPUShader* ripples_shader;
+//     SDL_GPUBuffer* colors;
+//     SDL_GPUComputePipeline* surfaces_pipeline;
+//     SDL_GPUBuffer* surface_cells;
 // };
 // ```
 typedef struct {
@@ -81,6 +87,9 @@ typedef struct {
     graphics_texture* pre_fluids;
     SDL_GPUShader* shader;
     SDL_GPUShader* ripples_shader;
+    SDL_GPUBuffer* colors;
+    SDL_GPUComputePipeline* surfaces_pipeline;
+    SDL_GPUBuffer* surface_cells;
 } fluids_canvas;
 
 

@@ -2,7 +2,6 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
-#include "engine/audio.h"
 #include <SDL3/SDL.h>
 
 // Every background sound of the game. Each is an OGG Vorbis embedded on

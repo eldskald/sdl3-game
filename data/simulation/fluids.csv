@@ -1,3 +1,5 @@
 fluid,density,move_down_time,move_diag_time,move_side_time,min_spread,particle_vol,ripples_damping,slow_ripples,col_r,col_g,col_b,col_a
 water,1,0.05,0.05,0.05,0.05,0.1,0.05,0,160,221,211,255
-lava,5,0.1,0.2,0.2,0.2,0.25,0.12,1,247,207,145,255
+lava,10,0.1,0.2,0.2,0.2,0.25,0.12,1,247,207,145,255
+acid,2,0.05,0.05,0.05,0.1,0.1,0.05,0,170,215,149,255
+sludge,5,0.05,0.1,0.1,0.2,0.25,0.1,1,124,61,100,255

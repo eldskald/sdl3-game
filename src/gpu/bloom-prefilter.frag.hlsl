@@ -1,4 +1,4 @@
-#define EPSILON 0.0001
+#include "includes/common.hlsli"
 
 Texture2D<float4> _Texture : register(t0, space2);
 SamplerState _Sampler : register(s0, space2);

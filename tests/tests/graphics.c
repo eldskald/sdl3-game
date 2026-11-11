@@ -121,7 +121,8 @@ static bool is_vertices_draw(const command* c,
            c->draw.samplers[0].sampler == texture->sampler &&
            c->draw.first_vertex == first && c->draw.num_vertices == n &&
            c->draw.num_instances == 1 && !c->draw.indirect_buffer &&
-           c->draw.num_samplers == 1 && c->draw.num_storage_buffers == 0 &&
+           c->draw.num_samplers == 1 &&
+           c->draw.num_vertex_storage_buffers == 0 &&
            c->draw.vertex_uniforms_size == 0 &&
            c->draw.fragment_uniforms_size == 0;
 }
@@ -396,7 +397,7 @@ static void test_state(graphics_texture* t) {
     graphics_texture* mask =
         create_strip("mask", 2, (SDL_Color[]){white_col, black});
     SDL_GPUShader* mask_frag = GRAPHICS_load_fragment_shader(
-        "mask", GRAPHICS_SHADER_CODE(mask_frag_spirv, mask_frag_dxil), 2, 1);
+        "mask", GRAPHICS_SHADER_CODE(mask_frag_spirv, mask_frag_dxil), 2, 0, 1);
     SDL_FColor tint = GRAPHICS_fcolor(green);
     SDL_FColor half_red = {1.0f, 0.0f, 0.0f, 0.5f};
 
@@ -500,8 +501,8 @@ static void test_instances(graphics_texture* t, SDL_GPUShader* rects_vert) {
     GRAPHICS_draw_instances(white, &(graphics_instances){6, 2});
     graphics_state s = {
         .vertex = rects_vert,
-        .storage_buffers = {rects},
-        .num_storage_buffers = 1,
+        .vertex_storage_buffers = {rects},
+        .num_vertex_storage_buffers = 1,
         .vertex_uniforms = &col,
         .vertex_uniforms_size = sizeof(col),
     };
@@ -531,8 +532,8 @@ static void test_instances(graphics_texture* t, SDL_GPUShader* rects_vert) {
             a->type == command_draw,
             a->draw.num_vertices == 6 && a->draw.num_instances == 2,
             a->draw.first_vertex == 0 && !a->draw.indirect_buffer,
-            a->draw.num_storage_buffers == 1,
-            a->draw.storage_buffers[0] == rects,
+            a->draw.num_vertex_storage_buffers == 1,
+            a->draw.vertex_storage_buffers[0] == rects,
             a->draw.vertex_uniforms_size == sizeof(SDL_FColor),
             SDL_memcmp(a->draw.vertex_uniforms, &green_f, sizeof(green_f)) == 0,
             is_entry(entry_of(a->draw.pipeline),
@@ -616,8 +617,8 @@ static void test_dispatch(graphics_texture* t, SDL_GPUShader* rects_vert) {
     u.count = 0;
     GRAPHICS_set_state(&(graphics_state){
         .vertex = rects_vert,
-        .storage_buffers = {rects},
-        .num_storage_buffers = 1,
+        .vertex_storage_buffers = {rects},
+        .num_vertex_storage_buffers = 1,
         .vertex_uniforms = &col,
         .vertex_uniforms_size = sizeof(col),
     });

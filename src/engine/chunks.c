@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "defs.h"
+#include "engine/camera.h"
 #include "engine/fluids.h"
 #include "engine/tilemap.h"
 #include "paths.h"
@@ -272,9 +273,6 @@ static vine_spawn trace_vine(vines_layer* l, int x, int y, Uint8 c) {
     }
 }
 
-// A vine starts at every tile a vine comes down into from a tile above that
-// doesn't have one going down. Double pinned vines start at both ends, so they
-// are only kept from the end that comes first, top to bottom, left to right.
 static void load_vines(vines_layer* l, dynarr* vines) {
     for (int y = 0; y < l->h; y++) {
         for (int x = 0; x < l->w; x++) {
@@ -455,9 +453,6 @@ int CHUNKS_get(size_t id, chunk* data) {
     return 0;
 }
 
-// Loads `c` in the map at tilemap coordinates `x` and `y`, as on
-// `CHUNKS_load_at()`. Returns `0` when successful and `1` when the chunk can't
-// fit the tilemap at that position.
 static int load_chunk_at(const chunk* c, Uint16 x, Uint16 y) {
     if (x + c->w > TILEMAP_SIZE_X || y + c->h > TILEMAP_SIZE_Y) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
@@ -494,7 +489,10 @@ static int load_chunk_at(const chunk* c, Uint16 x, Uint16 y) {
         VINES_add(path, SDL_arraysize(path), v->segments, v->double_pinned);
     }
 
-    if (c->has_player) PLAYER_create(c->player_x + px, c->player_y + py);
+    if (c->has_player) {
+        PLAYER_create(c->player_x + px, c->player_y + py);
+        CAMERA_center_at(c->player_x + px, c->player_y + py);
+    }
     return 0;
 }
 

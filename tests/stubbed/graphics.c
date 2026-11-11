@@ -65,6 +65,7 @@ SDL_GPUShader*
 GRAPHICS_load_fragment_shader([[maybe_unused]] const char* name,
                               [[maybe_unused]] graphics_shader_code code,
                               [[maybe_unused]] Uint32 num_samplers,
+                              [[maybe_unused]] Uint32 num_storage_buffers,
                               [[maybe_unused]] Uint32 num_uniform_buffers) {
     return (SDL_GPUShader*)&dummy_shader;
 }

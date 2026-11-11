@@ -90,6 +90,21 @@ typedef struct {
 // dropped. Call in any thread.
 void PARTICLES_emit(particle_type type, particles_emit_settings settings);
 
+// The buffer of particle requests, `PARTICLES_MAX_REQUESTS` of `Request` on
+// `src/gpu/includes/particles-common.hlsli`, for compute shaders of other
+// systems to request particles on. Bind it read-write with
+// `PARTICLES_get_counters_buffer()`, and append to it like the simulation pass
+// does: increment the `COUNTER_REQUESTS` counter with `InterlockedAdd()` and
+// write the request at the index it returns, unless it's past
+// `PARTICLES_MAX_REQUESTS`. Dispatch before `PARTICLES_draw()`, which spawns
+// them, on the same frame. `NULL` before `PARTICLES_start()`.
+SDL_GPUBuffer* PARTICLES_get_requests_buffer(void);
+
+// The buffer of the particles' counters, read-write, which says how many
+// requests `PARTICLES_get_requests_buffer()` has. `NULL` before
+// `PARTICLES_start()`.
+SDL_GPUBuffer* PARTICLES_get_counters_buffer(void);
+
 // Simulates the particles for a frame and draws them on the current render
 // target, relative to the camera, with their sprites from `spritesheet`. Does
 // nothing before `PARTICLES_start()`. Call on renderer update.

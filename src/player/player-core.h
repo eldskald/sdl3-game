@@ -14,6 +14,8 @@ void PLAYER_start(void);
 
 void PLAYER_create(double at_x, double at_y);
 
+player_state PLAYER_get_player(void);
+
 void PLAYER_destroy(void);
 
 void PLAYER_update(void);

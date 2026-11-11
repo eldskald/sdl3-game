@@ -57,15 +57,17 @@ typedef struct {
 // the base one, `src/gpu/base.vert.hlsl`. Draws of vertices feed it them as
 // `graphics_vertex`, so it must take them like the base one does, while draws
 // of instances bind no vertex buffer, so it builds its vertices itself from
-// `SV_VertexID`, `SV_InstanceID` and whatever it reads from `storage_buffers`,
-// bound to its `t` registers in order. Its first uniform buffer is always the
-// target's size, and the `vertex_uniforms_size` bytes at `vertex_uniforms` are
-// its second.
+// `SV_VertexID`, `SV_InstanceID` and whatever it reads from
+// `vertex_storage_buffers`, bound to its `t` registers in order. Its first
+// uniform buffer is always the target's size, and the `vertex_uniforms_size`
+// bytes at `vertex_uniforms` are its second.
 //
 // `fragment` is a fragment shader from `GRAPHICS_load_fragment_shader()`,
 // `NULL` for the base one, which draws the texture multiplied by the vertex
 // color. The texture being drawn is always bound to its first sampler slot,
-// and `samplers` to the slots after it. The `fragment_uniforms_size` bytes at
+// and `samplers` to the slots after it. It reads `fragment_storage_buffers`,
+// bound to its `t` registers in order after the samplers', see
+// `SDL_CreateGPUShader()`. The `fragment_uniforms_size` bytes at
 // `fragment_uniforms` are its first uniform buffer.
 //
 // Uniforms are copied when the state is set.
@@ -73,28 +75,32 @@ typedef struct {
 // ```
 // struct graphics_state {
 //     SDL_GPUShader* vertex;
-//     SDL_GPUBuffer* storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
-//     Uint32 num_storage_buffers;
+//     SDL_GPUBuffer* vertex_storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+//     Uint32 num_vertex_storage_buffers;
 //     const void* vertex_uniforms;
 //     Uint32 vertex_uniforms_size;
 //     SDL_GPUShader* fragment;
 //     graphics_blend blend;
 //     SDL_GPUTextureSamplerBinding samplers[GRAPHICS_MAX_EXTRA_SAMPLERS];
 //     Uint32 num_samplers;
+//     SDL_GPUBuffer* fragment_storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+//     Uint32 num_fragment_storage_buffers;
 //     const void* fragment_uniforms;
 //     Uint32 fragment_uniforms_size;
 // };
 // ```
 typedef struct {
     SDL_GPUShader* vertex;
-    SDL_GPUBuffer* storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
-    Uint32 num_storage_buffers;
+    SDL_GPUBuffer* vertex_storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+    Uint32 num_vertex_storage_buffers;
     const void* vertex_uniforms;
     Uint32 vertex_uniforms_size;
     SDL_GPUShader* fragment;
     graphics_blend blend;
     SDL_GPUTextureSamplerBinding samplers[GRAPHICS_MAX_EXTRA_SAMPLERS];
     Uint32 num_samplers;
+    SDL_GPUBuffer* fragment_storage_buffers[GRAPHICS_MAX_STORAGE_BUFFERS];
+    Uint32 num_fragment_storage_buffers;
     const void* fragment_uniforms;
     Uint32 fragment_uniforms_size;
 } graphics_state;
@@ -212,11 +218,13 @@ void GRAPHICS_destroy_texture(graphics_texture* texture);
 void GRAPHICS_upload_surface(graphics_texture* texture, SDL_Surface* surface);
 
 // Creates a fragment shader from `code`, in whichever format the device
-// supports, with `num_samplers` samplers and `num_uniform_buffers` uniform
-// buffers. `name` is for logging. Returns `NULL` on errors.
+// supports, with `num_samplers` samplers, `num_storage_buffers` storage buffers
+// and `num_uniform_buffers` uniform buffers. `name` is for logging. Returns
+// `NULL` on errors.
 SDL_GPUShader* GRAPHICS_load_fragment_shader(const char* name,
                                              graphics_shader_code code,
                                              Uint32 num_samplers,
+                                             Uint32 num_storage_buffers,
                                              Uint32 num_uniform_buffers);
 
 // Creates a vertex shader from `code`, for `graphics_state.vertex`, with
