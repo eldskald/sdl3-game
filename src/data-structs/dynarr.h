@@ -53,6 +53,10 @@ void remove_at_from_dynarr(size_t n, dynarr* arr);
 // bytes.
 void remove_val_from_dynarr(const void* val, dynarr* arr);
 
+// Frees the memory `arr` has beyond its values, for when it won't grow
+// anymore. It can still grow, allocating again.
+void shrink_dynarr(dynarr* arr);
+
 // Removes every value from `arr`, keeping its memory to be reused.
 void clear_dynarr(dynarr* arr);
 

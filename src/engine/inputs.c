@@ -79,7 +79,7 @@ static Sint8 y_dir = 0;
 
 
 
-void INPUTS_process(SDL_Event* event) {
+void INPUTS_handle_inputs(SDL_Event* event) {
     // Handling key presses
     if (event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) {
         for (int i = 0; i < sizeof(map) / sizeof(action_node); i++) {

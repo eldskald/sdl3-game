@@ -364,6 +364,23 @@ static inline SDL_FRect GRAPHICS_uv(const graphics_texture* texture,
     return uv;
 }
 
+// Writes on `v` the two triangles covering `dst` with `col`, its top left, top
+// right, bottom right and bottom left corners in that order getting the `u,v`
+// coords `uv[0]` to `uv[3]`. `v[0]` is the top left and `v[4]` the bottom
+// right.
+static inline void GRAPHICS_quad_corners(graphics_vertex v[6],
+                                         SDL_FRect dst,
+                                         const float uv[4][2],
+                                         SDL_FColor col) {
+    float x0 = dst.x, y0 = dst.y, x1 = dst.x + dst.w, y1 = dst.y + dst.h;
+    v[0] = (graphics_vertex){x0, y0, uv[0][0], uv[0][1], col};
+    v[1] = (graphics_vertex){x1, y0, uv[1][0], uv[1][1], col};
+    v[2] = (graphics_vertex){x0, y1, uv[3][0], uv[3][1], col};
+    v[3] = v[1];
+    v[4] = (graphics_vertex){x1, y1, uv[2][0], uv[2][1], col};
+    v[5] = v[2];
+}
+
 // Writes on `v` the two triangles covering `dst` with `col`, mapping the top
 // left of `uv` to the top left of `dst` and its bottom right to the bottom
 // right of `dst`, so a negative `uv.w` or `uv.h` flips it. `v[0]` is the top
@@ -372,14 +389,28 @@ static inline void GRAPHICS_quad(graphics_vertex v[6],
                                  SDL_FRect dst,
                                  SDL_FRect uv,
                                  SDL_FColor col) {
-    float x0 = dst.x, y0 = dst.y, x1 = dst.x + dst.w, y1 = dst.y + dst.h;
     float u0 = uv.x, v0 = uv.y, u1 = uv.x + uv.w, v1 = uv.y + uv.h;
-    v[0] = (graphics_vertex){x0, y0, u0, v0, col};
-    v[1] = (graphics_vertex){x1, y0, u1, v0, col};
-    v[2] = (graphics_vertex){x0, y1, u0, v1, col};
-    v[3] = (graphics_vertex){x1, y0, u1, v0, col};
-    v[4] = (graphics_vertex){x1, y1, u1, v1, col};
-    v[5] = (graphics_vertex){x0, y1, u0, v1, col};
+    GRAPHICS_quad_corners(
+        v,
+        dst,
+        (const float[4][2]){{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}},
+        col);
+}
+
+// Same as `GRAPHICS_quad()`, but turning `uv` a quarter turn clockwise onto
+// `dst`, so `dst` should have the width and height of `uv` swapped. The left
+// of `uv` ends up on the top of `dst`, so a negative `uv.w` or `uv.h` flips it
+// before it's turned.
+static inline void GRAPHICS_quad_rotated(graphics_vertex v[6],
+                                         SDL_FRect dst,
+                                         SDL_FRect uv,
+                                         SDL_FColor col) {
+    float u0 = uv.x, v0 = uv.y, u1 = uv.x + uv.w, v1 = uv.y + uv.h;
+    GRAPHICS_quad_corners(
+        v,
+        dst,
+        (const float[4][2]){{u0, v1}, {u0, v0}, {u1, v0}, {u1, v1}},
+        col);
 }
 
 // Converts `col` from `[0, 255]` to `[0.0, 1.0]`.

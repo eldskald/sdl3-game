@@ -757,6 +757,7 @@ void TILEMAP_draw(void) {
                 1,
                 1,
                 SDL_FLIP_NONE,
+                false,
                 (SDL_FColor){1.0f, 1.0f, 1.0f, 1.0f},
                 t.platform ? TILEMAP_PLATFORMS_Z_INDEX : TILEMAP_Z_INDEX);
         }

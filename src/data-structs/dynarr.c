@@ -62,6 +62,16 @@ void remove_val_from_dynarr(const void* val, dynarr* arr) {
     }
 }
 
+void shrink_dynarr(dynarr* arr) {
+    if (!arr || arr->len == arr->cap) return;
+    if (!arr->len) {
+        SDL_free(arr->data);
+        arr->data = NULL;
+    } else
+        arr->data = SDL_realloc(arr->data, arr->len * arr->data_size);
+    arr->cap = arr->len;
+}
+
 void clear_dynarr(dynarr* arr) {
     if (!arr) return;
     arr->len = 0;

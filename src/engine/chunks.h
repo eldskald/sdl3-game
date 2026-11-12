@@ -47,6 +47,36 @@ typedef struct {
     bool double_pinned;
 } vine_spawn;
 
+// Which entity is spawned by each tile of the entities tileset,
+// `CHUNKS_ENTITY_TILESET_NAME`, on the `Entities` layer, by tile ID.
+//
+// ```
+// enum entity_spawn_type {
+//     entity_spawn_frog,
+//     entity_spawn_spider,
+//     entity_spawn_wisp,
+// };
+// ```
+typedef enum {
+    entity_spawn_frog,
+    entity_spawn_spider,
+    entity_spawn_wisp,
+} entity_spawn_type;
+
+// An entity of `type` to be spawned when the chunk is loaded with its bottom
+// center at `(x,y)`, in pixel coordinates in the chunk.
+//
+// ```
+// struct entity_spawn {
+//     entity_spawn_type type;
+//     double x, y;
+// }
+// ```
+typedef struct {
+    entity_spawn_type type;
+    double x, y;
+} entity_spawn;
+
 // A chunk is just a block of tiles of size `(w, h)` contained on map, which
 // should be interpreted as a tile `tile(*)[w][h]`. All chunks are embedded from
 // `data/chunks` and kept in memory in a static array. If `has_player`, the
@@ -60,6 +90,7 @@ typedef struct {
 //     tile*** map; // cast it to tile(*)[w][h]
 //     dynarr fluids; // fluid_pool dynarr
 //     dynarr vines; // vine_spawn dynarr
+//     dynarr entities; // entity_spawn dynarr
 //     bool has_player;
 //     double player_x;
 //     double player_y;
@@ -71,6 +102,7 @@ typedef struct {
     tile*** map;
     dynarr fluids;
     dynarr vines;
+    dynarr entities;
     bool has_player;
     double player_x;
     double player_y;
@@ -87,11 +119,11 @@ void CHUNKS_stop(void);
 int CHUNKS_get(size_t id, chunk* data);
 
 // Loads the chunk in the map at tilemap coordinates `x` and `y`, along with its
-// fluids, vines and player, if it has one. Take into account the chunk's `h`
-// and `w` values, so the passed `x` and `y` values must be such that the loaded
-// chunk fits in the tilemap. Returns `0` when successful, `1` when `id` is
-// outside the array range and `2` when the chunk can't fit the tilemap at that
-// position.
+// fluids, vines, entities and player, if it has one. Take into account the
+// chunk's `h` and `w` values, so the passed `x` and `y` values must be such
+// that the loaded chunk fits in the tilemap. Returns `0` when successful, `1`
+// when `id` is outside the array range and `2` when the chunk can't fit the
+// tilemap at that position.
 int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y);
 
 

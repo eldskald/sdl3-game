@@ -4,20 +4,44 @@
  "layers":[
         {
          "draworder":"topdown",
-         "id":9,
-         "name":"PlayerSpawn",
+         "id":12,
+         "name":"Entities",
          "objects":[
                 {
-                 "gid":1025,
+                 "gid":1090,
                  "height":16,
-                 "id":24,
+                 "id":27,
                  "name":"",
                  "opacity":1,
                  "rotation":0,
                  "type":"",
                  "visible":true,
                  "width":16,
-                 "x":1264,
+                 "x":216,
+                 "y":48
+                }],
+         "opacity":1,
+         "type":"objectgroup",
+         "visible":true,
+         "x":0,
+         "y":0
+        }, 
+        {
+         "draworder":"topdown",
+         "id":11,
+         "name":"PlayerSpawn",
+         "objects":[
+                {
+                 "gid":1089,
+                 "height":16,
+                 "id":26,
+                 "name":"",
+                 "opacity":1,
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":16,
+                 "x":16,
                  "y":48
                 }],
          "opacity":1,
@@ -474,8 +498,8 @@
          "x":0,
          "y":0
         }],
- "nextlayerid":10,
- "nextobjectid":25,
+ "nextlayerid":13,
+ "nextobjectid":28,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
@@ -487,11 +511,11 @@
         }, 
         {
          "firstgid":1025,
-         "source":"..\/object-tiles.tsx"
+         "source":"..\/helper-tiles.tsx"
         }, 
         {
          "firstgid":1089,
-         "source":"..\/helper-tiles.tsx"
+         "source":"..\/entity-tiles.tsx"
         }],
  "tilewidth":8,
  "type":"map",

@@ -18,6 +18,11 @@
 //     parsing_particle, // particle_type, from its name, particle_none if empty
 //     parsing_particle_shader, // particle_shader, from its name, base if empty
 //     parsing_bgs_track, // bgs_track, from its name, bgs_track_none if empty
+//     parsing_jump_class,  // jump_class, from its name
+//     parsing_fall_class,  // fall_class, from its name
+//     parsing_run_class,   // run_class, from its name
+//     parsing_swim_class,  // swim_class, from its name
+//     parsing_size_class,  // size_class, from its name
 //     parsing_color,  // SDL_FColor, from 4 values from 0 to 255
 // };
 // ```
@@ -34,6 +39,12 @@ typedef enum {
     parsing_particle,
     parsing_particle_shader,
     parsing_bgs_track,
+    parsing_jump_class,
+    parsing_fall_class,
+    parsing_run_class,
+    parsing_swim_class,
+    parsing_fly_class,
+    parsing_size_class,
     parsing_color,
 } parsing_type;
 
@@ -87,3 +98,22 @@ size_t read_csv_table(const dynarr* csv,
                       const parsing_field* fields,
                       size_t n,
                       size_t entry_size);
+
+// Fields of the frames of the `animation` `anim`, on the rows `<name>_anim_x`,
+// `<name>_anim_y` and `<name>_anim_dur`, each column a frame. Needs
+// `engine/sprites.h` where it's used.
+#define PARSING_ANIM_FIELDS(name, anim)                                        \
+    {name "_anim_x",                                                           \
+     parsing_uint8,                                                            \
+     &(anim).frames[0].coords_x,                                               \
+     .count = SPRITES_ANIM_MAX_KEYFRAMES,                                      \
+     .stride = sizeof(keyframe)},                                              \
+        {name "_anim_y",                                                       \
+         parsing_uint8,                                                        \
+         &(anim).frames[0].coords_y,                                           \
+         .count = SPRITES_ANIM_MAX_KEYFRAMES,                                  \
+         .stride = sizeof(keyframe)},                                          \
+    {                                                                          \
+        name "_anim_dur", parsing_double, &(anim).frames[0].duration,          \
+            .count = SPRITES_ANIM_MAX_KEYFRAMES, .stride = sizeof(keyframe)    \
+    }

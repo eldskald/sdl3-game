@@ -241,7 +241,11 @@ static bool clamp_to_level_y(const body* b, double* d) {
 }
 
 // Tile loops use `int`s, so going left or up past tile `0` doesn't wrap around.
-static void move_body_horizontally(body_data* b, double d) {
+// Returns whether it collided with a tile or the level's edge. Tiles are read
+// with `get_tile`, like `TILEMAP_get_at()`.
+static bool move_body_horizontally(body_data* b,
+                                   double d,
+                                   int (*get_tile)(Uint16, Uint16, tile*)) {
     bool edge = clamp_to_level_x(&b->body, &d);
 
     // tiles the corners of the body is in, snapped to pixels
@@ -260,7 +264,7 @@ static void move_body_horizontally(body_data* b, double d) {
         for (int i = from_x; i <= to_x; i++) {
             for (int j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
-                int r = TILEMAP_get_at(i, j, &data);
+                int r = get_tile(i, j, &data);
                 if (r == 1 || (data.type && !data.platform)) {
                     if (SDL_roundf(b->body.y + b->body.h) <=
                             SPRITESHEET_CELL_Y * j ||
@@ -279,6 +283,7 @@ static void move_body_horizontally(body_data* b, double d) {
             b->body.x += d;
             if (edge) b->body.vel_x = 0.0f;
         }
+        return found || edge;
     }
     // when moving left
     else {
@@ -290,7 +295,7 @@ static void move_body_horizontally(body_data* b, double d) {
         for (int i = from_x; i >= to_x; i--) {
             for (int j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
-                int r = TILEMAP_get_at(i, j, &data);
+                int r = get_tile(i, j, &data);
                 if (r == 1 || (data.type && !data.platform)) {
                     if (SDL_roundf(b->body.y + b->body.h) <=
                             SPRITESHEET_CELL_Y * j ||
@@ -309,10 +314,15 @@ static void move_body_horizontally(body_data* b, double d) {
             b->body.x += d;
             if (edge) b->body.vel_x = 0.0f;
         }
+        return found || edge;
     }
 }
 
-static void move_body_vertically(body_data* b, double d) {
+// Returns whether it collided with a tile or the level's edge. Tiles are read
+// with `get_tile`, like `TILEMAP_get_at()`.
+static bool move_body_vertically(body_data* b,
+                                 double d,
+                                 int (*get_tile)(Uint16, Uint16, tile*)) {
     bool edge = clamp_to_level_y(&b->body, &d);
 
     // tiles the corners of the body is in
@@ -332,7 +342,7 @@ static void move_body_vertically(body_data* b, double d) {
         for (int i = from_x; i <= to_x; i++) {
             for (int j = from_y; j <= to_y; j++) {
                 tile data = (tile){0};
-                int r = TILEMAP_get_at(i, j, &data);
+                int r = get_tile(i, j, &data);
                 if (r == 1 || data.type) {
                     if (data.platform &&
                         (b->drop_timer > 0.0f || bl_y > SPRITESHEET_CELL_Y * j))
@@ -354,6 +364,7 @@ static void move_body_vertically(body_data* b, double d) {
             b->body.y += d;
             if (edge) b->body.vel_y = 0.0f;
         }
+        return found || edge;
     }
     // when moving up
     else {
@@ -365,7 +376,7 @@ static void move_body_vertically(body_data* b, double d) {
         for (int i = from_x; i <= to_x; i++) {
             for (int j = from_y; j >= to_y; j--) {
                 tile data = (tile){0};
-                int r = TILEMAP_get_at(i, j, &data);
+                int r = get_tile(i, j, &data);
                 if (r == 1 || (data.type && !data.platform)) {
                     if (SDL_roundf(b->body.x + b->body.w) <=
                             SPRITESHEET_CELL_X * i ||
@@ -384,6 +395,7 @@ static void move_body_vertically(body_data* b, double d) {
             b->body.y += d;
             if (edge) b->body.vel_y = 0.0f;
         }
+        return found || edge;
     }
 }
 
@@ -819,8 +831,8 @@ static void move_bodies(void) {
         double x0 = b->body.x;
         double y0 = b->body.y;
         if (b->body.type == physics_actor) {
-            move_body_horizontally(b, dx);
-            move_body_vertically(b, dy);
+            move_body_horizontally(b, dx, TILEMAP_get_at);
+            move_body_vertically(b, dy, TILEMAP_get_at);
         } else {
             if (clamp_to_level_x(&b->body, &dx)) b->body.vel_x = 0.0f;
             if (clamp_to_level_y(&b->body, &dy)) b->body.vel_y = 0.0f;
@@ -837,6 +849,77 @@ static void move_bodies(void) {
             splash_fluids(b, x0, y0, vel_y0);
         }
     }
+}
+
+
+
+// Steps a body on its own like `move_bodies()` does to the real ones, but only
+// against the tilemap, or `tile_func`'s made up tiles, so it's free from the
+// pool, the neighbor search and the fluids, and nothing else can tell it moved.
+int PHYSICS_simulate(
+    body* data,
+    double time,
+    double drop_time,
+    bool (*step_func)(body* data, double t, physics_hits hits, void* arg),
+    void* arg,
+    physics_hits* hits,
+    int (*tile_func)(Uint16 x, Uint16 y, tile* data)) {
+    if (data->w == 0 || data->h == 0 || data->x < 0.0f ||
+        data->x + data->w > TILEMAP_SIZE_X * SPRITESHEET_CELL_X ||
+        data->y < 0.0f ||
+        data->y + data->h > TILEMAP_SIZE_Y * SPRITESHEET_CELL_Y || !step_func) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Tried to simulate body with invalid data: { w = %d, h = "
+                    "%d }",
+                    data->w,
+                    data->h);
+        return 2;
+    }
+    const double dt = 1.0 / FIXED_T_TARGET_FPS;
+    int (*get_tile)(Uint16, Uint16, tile*) =
+        tile_func ? tile_func : TILEMAP_get_at;
+    body_data b = (body_data){.body = *data, .drop_timer = drop_time};
+    physics_hits total = (physics_hits){0};
+    physics_hits step = (physics_hits){0};
+    // Steps are counted, since adding up `dt` could add an extra one
+    int steps = (int)SDL_ceil(time / dt - EPSILON);
+    for (int i = 0; i < steps; i++) {
+        if (!step_func(&b.body, i * dt, step, arg)) break;
+        b.drop_timer -= dt;
+        double dx = dt * b.body.vel_x;
+        double dy = dt * b.body.vel_y;
+        step = (physics_hits){0};
+        if (b.body.type == physics_actor) {
+            // The move functions cut `d` short at the level's edges on their
+            // own copy, so the sign is still the direction it was going.
+            bool hit_x = move_body_horizontally(&b, dx, get_tile);
+            bool hit_y = move_body_vertically(&b, dy, get_tile);
+            step.right = hit_x && dx >= 0.0f;
+            step.left = hit_x && dx < 0.0f;
+            step.floor = hit_y && dy >= 0.0f;
+            step.ceiling = hit_y && dy < 0.0f;
+        } else {
+            bool right = dx >= 0.0f;
+            bool down = dy >= 0.0f;
+            bool hit_x = clamp_to_level_x(&b.body, &dx);
+            bool hit_y = clamp_to_level_y(&b.body, &dy);
+            step.right = hit_x && right;
+            step.left = hit_x && !right;
+            step.floor = hit_y && down;
+            step.ceiling = hit_y && !down;
+            if (hit_x) b.body.vel_x = 0.0f;
+            if (hit_y) b.body.vel_y = 0.0f;
+            b.body.x += dx;
+            b.body.y += dy;
+        }
+        total.floor |= step.floor;
+        total.ceiling |= step.ceiling;
+        total.left |= step.left;
+        total.right |= step.right;
+    }
+    *data = b.body;
+    if (hits) *hits = total;
+    return 0;
 }
 
 

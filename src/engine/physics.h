@@ -1,5 +1,6 @@
 #pragma once
 #include "data-structs/dynarr.h"
+#include "engine/tilemap.h"
 #include <SDL3/SDL.h>
 
 // Body types, for which type of physics interactions it will have.
@@ -73,6 +74,19 @@ typedef struct {
     void (*on_delete_func)(size_t point_id, size_t arg);
     size_t on_delete_arg;
 } prop_point;
+
+// Which sides of a body collided with the tilemap or the level's edges while
+// moving, used by `PHYSICS_simulate()`. A body resting on the floor collides
+// with it every step, since gravity keeps pushing it down.
+//
+// ```
+// struct physics_hits {
+//     bool floor, ceiling, left, right;
+// };
+// ```
+typedef struct {
+    bool floor, ceiling, left, right;
+} physics_hits;
 
 
 
@@ -150,6 +164,31 @@ int PHYSICS_is_body_on_ceiling(size_t body_id, bool* check);
 // array's range, `1` when there is no body at that index, `0` when everything
 // went right.
 int PHYSICS_is_body_within_the_simulation(size_t body_id, bool* check);
+
+// Simulates `data` moving for up to `time` seconds without creating a body, so
+// nothing else sees it, in steps of the fixed thread's target dt. Before each
+// step, `step_func` is called with the body, so it can change its velocity, how
+// many seconds were simulated so far as `t`, what the body collided with on the
+// previous step as `hits` (nothing on the first one) and `arg`. Returning
+// `false` ends the simulation before that step. Each step moves and collides
+// the body with the tilemap like `PHYSICS_update()` does, except it doesn't
+// interact with fluids or props. Tiles are read with `tile_func`, which works
+// like `TILEMAP_get_at()`, returning `1` for tiles outside the tilemap, so
+// bodies can be simulated on made up tiles, or the tilemap's if it's `NULL`.
+// `drop_time` is how many seconds it starts dropping down from platforms,
+// `PHYSICS_DROP_TIMER` to simulate it right after `PHYSICS_drop_down_body()`,
+// `0.0` otherwise. When it ends, `data` is where the body ended up and, if not
+// `NULL`, `hits` has everything it collided with along the way. `data` must be
+// valid like on `PHYSICS_new_body()` and `step_func` can't be `NULL`. Returns
+// `2` when they aren't, `0` when everything went right.
+int PHYSICS_simulate(
+    body* data,
+    double time,
+    double drop_time,
+    bool (*step_func)(body* data, double t, physics_hits hits, void* arg),
+    void* arg,
+    physics_hits* hits,
+    int (*tile_func)(Uint16 x, Uint16 y, tile* data));
 
 
 

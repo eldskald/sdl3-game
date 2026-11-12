@@ -18,7 +18,7 @@ SDL_AppResult SDL_AppEvent(void* _appstate, SDL_Event* event) { // NOLINT
 }
 
 SDL_AppResult SDL_AppIterate(void* _appstate) { // NOLINT
-    GAME_MANAGER_update();
+    if (GAME_MANAGER_update()) return SDL_APP_SUCCESS;
     return SDL_APP_CONTINUE;
 }
 

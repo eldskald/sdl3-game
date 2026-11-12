@@ -232,16 +232,16 @@
          "name":"PlayerSpawn",
          "objects":[
                 {
-                 "gid":1089,
+                 "gid":1090,
                  "height":16,
-                 "id":14,
+                 "id":15,
                  "name":"",
                  "opacity":1,
                  "rotation":0,
                  "type":"",
                  "visible":true,
                  "width":16,
-                 "x":184,
+                 "x":192,
                  "y":104
                 }],
          "opacity":1,
@@ -359,7 +359,7 @@
          "y":0
         }],
  "nextlayerid":8,
- "nextobjectid":15,
+ "nextobjectid":16,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
@@ -374,8 +374,8 @@
          "source":"..\/..\/editor\/helper-tiles.tsx"
         }, 
         {
-         "firstgid":1089,
-         "source":"..\/..\/editor\/object-tiles.tsx"
+         "firstgid":1090,
+         "source":"..\/..\/editor\/entity-tiles.tsx"
         }],
  "tilewidth":8,
  "type":"map",

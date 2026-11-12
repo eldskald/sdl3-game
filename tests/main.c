@@ -7,6 +7,8 @@
 #include "tests/data-integrity.h"
 #include "tests/drawing.h"
 #include "tests/dynarr.h"
+#include "tests/entity.h"
+#include "tests/events.h"
 #include "tests/fluids.h"
 #include "tests/graphics.h"
 #include "tests/hashmap.h"
@@ -58,6 +60,7 @@ int main(int argc, char* argv[]) {
 
     if (argc == 1 || SDL_strcmp(argv[1], "tilemap") == 0) test_tilemap();
     if (argc == 1 || SDL_strcmp(argv[1], "physics") == 0) test_physics();
+    if (argc == 1 || SDL_strcmp(argv[1], "entity") == 0) test_entity();
     if (argc == 1 || SDL_strcmp(argv[1], "fluids") == 0) test_fluids();
     if (argc == 1 || SDL_strcmp(argv[1], "reactions") == 0) test_reactions();
     if (argc == 1 || SDL_strcmp(argv[1], "chunks") == 0) test_chunks();
@@ -65,6 +68,7 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "drawing") == 0) test_drawing();
     if (argc == 1 || SDL_strcmp(argv[1], "text") == 0) test_text();
     if (argc == 1 || SDL_strcmp(argv[1], "inputs") == 0) test_inputs();
+    if (argc == 1 || SDL_strcmp(argv[1], "events") == 0) test_events();
     if (argc == 1 || SDL_strcmp(argv[1], "audio") == 0) test_audio();
     if (argc == 1 || SDL_strcmp(argv[1], "sfx") == 0) test_sfx();
     if (argc == 1 || SDL_strcmp(argv[1], "bgs") == 0) test_bgs();

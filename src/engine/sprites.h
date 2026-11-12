@@ -42,13 +42,27 @@ typedef struct {
     keyframe frames[SPRITES_ANIM_MAX_KEYFRAMES];
 } animation;
 
+// How a sprite is turned: not at all, or a quarter turn clockwise. It's flipped
+// by its `flip_mode` before it's turned, so flipping it both ways turns it a
+// quarter turn counterclockwise instead.
+//
+// ```
+// enum sprite_rotation { rotation_none, rotation_90 };
+// ```
+typedef enum {
+    rotation_none,
+    rotation_90,
+} sprite_rotation;
+
 // A sprite from the the spritesheet. The `pos_x` `pos_y` mean its position on
 // the screen in pixels, its `coords_x` `coords_y` mean its coordinates in the
 // spritesheet in tiles, or cells, so `0,0` means the first tile, `1,0` means
 // the one to its right, and so on. Its `coords_w,coords_h` means the size of
 // the sprite, also in tile/cell size, so `0,0,2,2` means tiles coords `0,0`,
 // `0,1`, `1,0` and `1,1`. Its `z_index` is the renderer's, see
-// `RENDERER_draw_from_spritesheet()`.
+// `RENDERER_draw_from_spritesheet()`. It's flipped by `flip_mode`, then turned
+// by `rotation`, keeping its top left at `pos_x,pos_y`, so turned, it's as wide
+// as it is tall unturned, and the other way around.
 // Its color is multiplied by `tint_r,tint_g,tint_b,tint_a`, which should be
 // `1.0` to draw it as is and can go beyond `1.0` to make it bloom. Always set
 // them, since they'd be zero, making the sprite invisible.
@@ -66,6 +80,7 @@ typedef struct {
 //     Uint8 coords_x, coords_y, coords_w, coords_h;
 //     Sint8 z_index;
 //     SDL_FlipMode flip_mode;
+//     sprite_rotation rotation;
 //     double tint_r, double tint_g, double tint_b, double tint_a;
 //     void (*on_anim_finished_func)(size_t sprite_id, size_t arg);
 //     size_t on_anim_finished_arg;
@@ -76,6 +91,7 @@ typedef struct {
     Uint8 coords_x, coords_y, coords_w, coords_h;
     Sint8 z_index;
     SDL_FlipMode flip_mode;
+    sprite_rotation rotation;
     double tint_r, tint_g, tint_b, tint_a;
     void (*on_anim_finished_func)(size_t sprite_id, size_t arg);
     size_t on_anim_finished_arg;

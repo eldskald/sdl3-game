@@ -1,9 +1,14 @@
 #include "engine/chunks.h"
 #include "data-structs/dynarr.h"
 #include "defs.h"
+#include "engine/entity.h"
 #include "engine/fluids.h"
 #include "engine/physics.h"
+#include "engine/sprites.h"
 #include "engine/tilemap.h"
+#include "entities/frog.h"
+#include "entities/spider.h"
+#include "entities/wisp.h"
 #include "props/vines.h"
 #include "tests.h"
 #include "tests/chunks.h"
@@ -212,6 +217,17 @@ void test_chunks(void) {
         ((vine_spawn*)dynarr_at(3, &data.vines))->b_y == 60,
         ((vine_spawn*)dynarr_at(3, &data.vines))->bend_y == 60,
         ((vine_spawn*)dynarr_at(3, &data.vines))->segments == 5,
+        // The player tile and the object without a tile spawn nothing, and a
+        // flipped tile is still a frog.
+        data.entities.len == 2,
+        ((entity_spawn*)dynarr_at(0, &data.entities))->type ==
+            entity_spawn_frog,
+        ((entity_spawn*)dynarr_at(0, &data.entities))->x == 20.0,
+        ((entity_spawn*)dynarr_at(0, &data.entities))->y == 48.0,
+        ((entity_spawn*)dynarr_at(1, &data.entities))->type ==
+            entity_spawn_frog,
+        ((entity_spawn*)dynarr_at(1, &data.entities))->x == 44.0,
+        ((entity_spawn*)dynarr_at(1, &data.entities))->y == 64.0,
     };
 
     expect("Initiated mocked chunk, checking contents...",
@@ -221,8 +237,25 @@ void test_chunks(void) {
     FLUIDS_start();
     PHYSICS_start();
     VINES_start();
+    SPRITES_start();
+    ENTITY_start();
+    FROG_start();
+    SPIDER_start();
+    WISP_start();
     CHUNKS_load_at(0, 0, 0);
     FLUIDS_update();
+
+    // Each frog's body has its bottom center on its spawn point
+    bool frogs_ok[2] = {0};
+    for (size_t i = 0; i < 2; i++) {
+        entity_spawn* spawn = dynarr_at(i, &data.entities);
+        entity e = (entity){0};
+        body b = (body){0};
+        frogs_ok[i] = ENTITY_get_entity(i, &e) == 0 &&
+                      PHYSICS_get_body(e.body_id, &b) == 0 &&
+                      b.x + b.w / 2.0 == spawn->x && b.y + b.h == spawn->y;
+    }
+    expect("Loaded mocked chunk, checking spawned entities...", 2, frogs_ok);
 
     tile tiles[8][8] = {0};
     for (Uint16 i = 0; i < 8; i++) {
@@ -476,6 +509,8 @@ void test_chunks(void) {
            (bool[]){res0 == 0, res1 == 2, res2 == 2});
 
     TILEMAP_clear();
+    ENTITY_stop();
+    SPRITES_stop();
     VINES_stop();
     PHYSICS_stop();
     FLUIDS_stop();

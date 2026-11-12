@@ -199,7 +199,7 @@
         }, 
         {
          "firstgid":1089,
-         "source":"..\/..\/editor\/object-tiles.tsx"
+         "source":"..\/..\/editor\/entity-tiles.tsx"
         }],
  "tilewidth":8,
  "type":"map",

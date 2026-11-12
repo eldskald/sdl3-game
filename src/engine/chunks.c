@@ -5,6 +5,9 @@
 #include "engine/camera.h"
 #include "engine/fluids.h"
 #include "engine/tilemap.h"
+#include "entities/frog.h"
+#include "entities/spider.h"
+#include "entities/wisp.h"
 #include "paths.h"
 #include "player/player-core.h"
 #include "props/vines.h"
@@ -115,6 +118,18 @@ static const helper_tile helper_tiles[CHUNKS_HELPER_TILES_TOTAL] = {
     [30] = {.bend = helper_bend_left, .bend_x = 2},
 };
 static const helper_tile empty_helper_tile = (helper_tile){0};
+
+// Indexed by tile ID on `editor/entity-tiles.png`, which starts at the entities
+// tileset's `firstgid` on the chunk's JSON. Tiles not on it spawn nothing. Tile
+// 0 is the player, which only spawns from the `PlayerSpawn` layer.
+static const struct {
+    bool spawns;
+    entity_spawn_type type;
+} entity_tiles[CHUNKS_ENTITY_TILES_TOTAL] = {
+    [1] = {.spawns = true, .type = entity_spawn_frog},
+    [2] = {.spawns = true, .type = entity_spawn_spider},
+    [3] = {.spawns = true, .type = entity_spawn_wisp},
+};
 
 static chunk chunks[CHUNKS_TOTAL] = {0};
 static dynarr platforms = (dynarr){0};
@@ -291,16 +306,39 @@ static void load_vines(vines_layer* l, dynarr* vines) {
     }
 }
 
-static int get_helper_firstgid(jsondata* data) {
+// The `firstgid` of the tileset whose source file is `name`, `0` if missing.
+static int get_tileset_firstgid(jsondata* data, const char* name) {
     dynarr tilesets = JSON_get("tilesets", data)->arr;
     for (size_t i = 0; i < tilesets.len; i++) {
         jsondata* ts = JSON_at(i, &tilesets);
         // Embedded tilesets have no source
         jsondata* source = JSON_get("source", ts);
-        if (source && SDL_strstr(source->str, CHUNKS_HELPER_TILESET_NAME))
+        if (source && SDL_strstr(source->str, name))
             return (int)JSON_get("firstgid", ts)->num;
     }
     return 0;
+}
+
+// Each tile object from the entities tileset on the entities layer is an
+// entity spawn. Like the player spawn, the entity is assumed to be on the
+// object's bottom left cell, centered horizontally and touching its floor.
+static void load_entities(dynarr* objects, int firstgid, dynarr* entities) {
+    for (size_t i = 0; i < objects->len; i++) {
+        jsondata* obj = JSON_at(i, objects);
+        jsondata* gid = JSON_get("gid", obj);
+        if (!gid) continue;
+        // The highest bits of a gid are Tiled's flip flags
+        int id = (int)((Uint32)gid->num & 0x0FFFFFFF) - firstgid;
+        if (id < 0 || id >= CHUNKS_ENTITY_TILES_TOTAL) continue;
+        if (!entity_tiles[id].spawns) continue;
+        // Tile objects are anchored at their bottom left corner
+        entity_spawn s = (entity_spawn){
+            .type = entity_tiles[id].type,
+            .x = JSON_get("x", obj)->num + SPRITESHEET_CELL_X / 2.0,
+            .y = JSON_get("y", obj)->num,
+        };
+        push_to_dynarr(&s, entities);
+    }
 }
 
 static chunk load_from_json(const char* json) {
@@ -312,6 +350,8 @@ static chunk load_from_json(const char* json) {
     init_dynarr(&fluids, sizeof(fluid_pool));
     dynarr vines = (dynarr){0};
     init_dynarr(&vines, sizeof(vine_spawn));
+    dynarr entities = (dynarr){0};
+    init_dynarr(&entities, sizeof(entity_spawn));
 
     chunk c = (chunk){0};
     hashmap fluid_names = FLUIDS_get_string_fluid_types_map();
@@ -351,9 +391,19 @@ static chunk load_from_json(const char* json) {
                 .tiles = JSON_get("data", layer)->arr,
                 .w = w,
                 .h = h,
-                .firstgid = get_helper_firstgid(data),
+                .firstgid =
+                    get_tileset_firstgid(data, CHUNKS_HELPER_TILESET_NAME),
             };
             load_vines(&l, &vines);
+        }
+
+        // If layer is the entities layer
+        if (SDL_strcmp(name, "Entities") == 0 &&
+            SDL_strcmp(type, "objectgroup") == 0) {
+            dynarr objects = JSON_get("objects", layer)->arr;
+            int firstgid =
+                get_tileset_firstgid(data, CHUNKS_ENTITY_TILESET_NAME);
+            load_entities(&objects, firstgid, &entities);
         }
 
         // If layer is a fluid layer
@@ -414,6 +464,7 @@ static chunk load_from_json(const char* json) {
     c.map = (tile***)map;
     c.fluids = fluids;
     c.vines = vines;
+    c.entities = entities;
     return c;
 }
 
@@ -436,6 +487,7 @@ void CHUNKS_stop(void) {
         SDL_free(chunks[i].map);
         deinit_dynarr(&chunks[i].fluids);
         deinit_dynarr(&chunks[i].vines);
+        deinit_dynarr(&chunks[i].entities);
     }
     deinit_dynarr(&platforms);
     deinit_dynarr(&types_map);
@@ -489,6 +541,21 @@ static int load_chunk_at(const chunk* c, Uint16 x, Uint16 y) {
         VINES_add(path, SDL_arraysize(path), v->segments, v->double_pinned);
     }
 
+    for (size_t i = 0; i < c->entities.len; i++) {
+        entity_spawn* e = dynarr_at(i, &c->entities);
+        switch (e->type) {
+        case entity_spawn_frog:
+            FROG_create(e->x + px, e->y + py);
+            break;
+        case entity_spawn_spider:
+            SPIDER_create(e->x + px, e->y + py);
+            break;
+        case entity_spawn_wisp:
+            WISP_create(e->x + px, e->y + py);
+            break;
+        }
+    }
+
     if (c->has_player) {
         PLAYER_create(c->player_x + px, c->player_y + py);
         CAMERA_center_at(c->player_x + px, c->player_y + py);
@@ -515,5 +582,6 @@ void CHUNK_load_from_file(char* data) {
     SDL_free(level.map);
     deinit_dynarr(&level.fluids);
     deinit_dynarr(&level.vines);
+    deinit_dynarr(&level.entities);
 }
 #endif

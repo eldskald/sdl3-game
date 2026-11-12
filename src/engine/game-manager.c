@@ -5,6 +5,8 @@
 #include "engine/bgs.h"
 #include "engine/camera.h"
 #include "engine/chunks.h"
+#include "engine/entity.h"
+#include "engine/events.h"
 #include "engine/fluids.h"
 #include "engine/inputs.h"
 #include "engine/physics.h"
@@ -14,6 +16,9 @@
 #include "engine/sprites.h"
 #include "engine/text.h"
 #include "engine/tilemap.h"
+#include "entities/frog.h"
+#include "entities/spider.h"
+#include "entities/wisp.h"
 #include "player/player-core.h"
 #include "props/vines.h"
 #include "utils/logger.h"
@@ -57,9 +62,6 @@ static const Uint64 fluids_t_target_rate = SEC2NANOSEC / FLUIDS_T_TARGET_FPS;
 static Uint64 fluids_t_start = 0;
 static Uint64 fluids_t_diff = SEC2NANOSEC / FLUIDS_T_TARGET_FPS;
 
-static const Uint64 fixed_t_target_rate = SEC2NANOSEC / FIXED_T_TARGET_FPS;
-static Uint64 fixed_t_start = 0;
-static Uint64 fixed_t_diff = SEC2NANOSEC / FIXED_T_TARGET_FPS;
 
 static const Uint64 main_t_target_rate = SEC2NANOSEC / MAIN_T_TARGET_FPS;
 static Uint64 main_t_start = 0;
@@ -69,84 +71,116 @@ static bool running = true;
 
 
 
+// When the fixed thread's tick `n` is due, in nanoseconds, counting from
+// `start`.
+static Uint64 fixed_tick_due(Uint64 start, Uint64 n) {
+    return start + n * SEC2NANOSEC / FIXED_T_TARGET_FPS;
+}
+
+// A tick of the fixed thread, always `1.0 / FIXED_T_TARGET_FPS` seconds long.
+static void fixed_tick(void) {
+#if DEV && !TEST
+    PROFILER_setup_timer("inputs");
+#endif
+    INPUTS_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("inputs");
+#endif
+
+    PHYSICS_update();
+
+#if DEV && !TEST
+    PROFILER_setup_timer("vines");
+#endif
+    VINES_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("vines");
+#endif
+
+#if DEV && !TEST
+    PROFILER_setup_timer("player");
+#endif
+    PLAYER_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("player");
+#endif
+
+#if DEV && !TEST
+    PROFILER_setup_timer("entities");
+#endif
+    ENTITY_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("entities");
+#endif
+
+#if DEV && !TEST
+    PROFILER_setup_timer("camera");
+#endif
+    CAMERA_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("camera");
+#endif
+
+#if DEV && !TEST
+    PROFILER_setup_timer("sprites");
+#endif
+    SPRITES_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("sprites");
+#endif
+
+#if DEV && !TEST
+    PROFILER_setup_timer("fluids_bgs");
+#endif
+    FLUIDS_play_bgs();
+#if DEV && !TEST
+    PROFILER_finish_timer("fluids_bgs");
+#endif
+
+#if DEV && !TEST
+    PROFILER_setup_timer("bgs");
+#endif
+    BGS_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("bgs");
+#endif
+
+#if DEV && !TEST
+    DEV_update();
+#endif
+}
+
+// The fixed thread always ticks the same `dt`, so everything it moves moves the
+// same at any frame rate, like predicted trajectories. When it falls behind,
+// it ticks as many times as it needs to catch up, but at most
+// `FIXED_T_MAX_CATCH_UP_TICKS` times, dropping the rest of a long stall, so it
+// slows down instead of falling further behind. Ticks are due on time from
+// when it started counting, `ticks` of them so far, so they don't drift.
 static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Started fixed loop thread.");
-    fixed_t_start = SDL_GetTicksNS();
+    Uint64 start = SDL_GetTicksNS();
+    Uint64 ticks = 0;
 
     while (running) {
-        // Fixed thread loop
-
-#if DEV && !TEST
-        PROFILER_setup_timer("inputs");
-#endif
-        INPUTS_update();
-#if DEV && !TEST
-        PROFILER_finish_timer("inputs");
-#endif
-
-        PHYSICS_update();
-
-#if DEV && !TEST
-        PROFILER_setup_timer("vines");
-#endif
-        VINES_update();
-#if DEV && !TEST
-        PROFILER_finish_timer("vines");
-#endif
-
-#if DEV && !TEST
-        PROFILER_setup_timer("player");
-#endif
-        PLAYER_update();
-#if DEV && !TEST
-        PROFILER_finish_timer("player");
-#endif
-
-#if DEV && !TEST
-        PROFILER_setup_timer("camera");
-#endif
-        CAMERA_update();
-#if DEV && !TEST
-        PROFILER_finish_timer("camera");
-#endif
-
-#if DEV && !TEST
-        PROFILER_setup_timer("sprites");
-#endif
-        SPRITES_update();
-#if DEV && !TEST
-        PROFILER_finish_timer("sprites");
-#endif
-
-#if DEV && !TEST
-        PROFILER_setup_timer("fluids_bgs");
-#endif
-        FLUIDS_play_bgs();
-#if DEV && !TEST
-        PROFILER_finish_timer("fluids_bgs");
-#endif
-
-#if DEV && !TEST
-        PROFILER_setup_timer("bgs");
-#endif
-        BGS_update();
-#if DEV && !TEST
-        PROFILER_finish_timer("bgs");
-#endif
-
-#if DEV && !TEST
-        DEV_update();
-#endif
-
-        // Calculate and cap tick rate
-        if (fixed_t_target_rate > SDL_GetTicksNS() - fixed_t_start) {
-            fixed_t_diff = fixed_t_target_rate;
-            SDL_DelayPrecise(fixed_t_target_rate -
-                             (SDL_GetTicksNS() - fixed_t_start));
-        } else {
-            fixed_t_diff = SDL_GetTicksNS() - fixed_t_start;
+        Uint64 now = SDL_GetTicksNS();
+        for (int caught_up = 0;
+             running && fixed_tick_due(start, ticks) <= now &&
+             caught_up < FIXED_T_MAX_CATCH_UP_TICKS;
+             caught_up++) {
+            fixed_tick();
+            ticks++;
         }
-        fixed_t_start = SDL_GetTicksNS();
+
+        // Still behind, it counts again from the tick it just did
+        now = SDL_GetTicksNS();
+        if (fixed_tick_due(start, ticks) <= now) {
+            start = now;
+            ticks = 1;
+        }
+
+        // Waits for the next tick
+        Uint64 due = fixed_tick_due(start, ticks);
+        if (due > now) SDL_DelayPrecise(due - now);
     }
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Ending fixed loop thread.");
@@ -216,6 +250,13 @@ int GAME_MANAGER_start(void) {
     FLUIDS_start();
     REACTIONS_start();
     PLAYER_start();
+    ENTITY_start();
+    FROG_start();
+    SPIDER_start();
+    WISP_start();
+#ifndef DEV
+    ENTITY_generate_trajectories();
+#endif
     CAMERA_start();
 
 #if DEV && !TEST
@@ -240,6 +281,7 @@ void GAME_MANAGER_stop(void) {
     SDL_WaitThread(fixed_t, NULL);
     SDL_WaitThread(fluids_t, NULL);
 
+    ENTITY_stop();
     INPUTS_stop();
     TEXT_stop();
     RENDERER_stop();
@@ -265,21 +307,15 @@ void GAME_MANAGER_stop(void) {
 
 
 int GAME_MANAGER_events(SDL_Event* event) {
-    if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
-        running = false;
-        return 1;
-    }
-    if (!running) return 1;
-
-    INPUTS_process(event);
-
-    return 0;
+    EVENTS_handle(event);
+    return running ? 0 : 1;
 }
 
 
 
-void GAME_MANAGER_update(void) {
+int GAME_MANAGER_update(void) {
     // Main thread loop
+    if (!running) return 1;
 
     TEXT_update();
 
@@ -300,6 +336,8 @@ void GAME_MANAGER_update(void) {
         main_t_diff = SDL_GetTicksNS() - main_t_start;
     }
     main_t_start = SDL_GetTicksNS();
+
+    return 0;
 }
 
 
@@ -333,11 +371,7 @@ bool GAME_MANAGER_is_fluids_thread(void) {
 }
 
 double GAME_MANAGER_get_fixed_dt() {
-#ifndef TEST
-    return (double)fixed_t_diff / (double)SEC2NANOSEC;
-#else
-    return 1.0f / (double)FIXED_T_TARGET_FPS;
-#endif
+    return 1.0 / FIXED_T_TARGET_FPS;
 }
 
 double GAME_MANAGER_get_fluids_dt() {

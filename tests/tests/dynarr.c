@@ -75,4 +75,40 @@ void test_dynarr(void) {
     expect("Deinitialized dynarr, checking length, cap and data pointer...",
            3,
            (bool[]){arr.len == 0, arr.cap == 0, arr.data == NULL});
+
+    init_dynarr(&arr, sizeof(int));
+    for (int i = 0; i < DYNARR_INITIAL_CAP + 1; i++)
+        push_to_dynarr(&i, &arr);
+    shrink_dynarr(&arr);
+    bool kept = true;
+    for (int i = 0; i < DYNARR_INITIAL_CAP + 1; i++)
+        if (int_at(i, &arr) != i) kept = false;
+    expect("Pushed one more value than the initial cap to a new dynarr and "
+           "shrank it, checking if its cap became its length and it kept its "
+           "values...",
+           3,
+           (bool[]){arr.len == DYNARR_INITIAL_CAP + 1,
+                    arr.cap == DYNARR_INITIAL_CAP + 1,
+                    kept});
+
+    push_to_dynarr(&(int){7}, &arr);
+    expect("Pushed to it after, checking if it grew again...",
+           3,
+           (bool[]){arr.len == DYNARR_INITIAL_CAP + 2,
+                    arr.cap > DYNARR_INITIAL_CAP + 2,
+                    int_at(DYNARR_INITIAL_CAP + 1, &arr) == 7});
+
+    clear_dynarr(&arr);
+    shrink_dynarr(&arr);
+    expect("Cleared and shrank it, checking if it freed everything...",
+           2,
+           (bool[]){arr.cap == 0, arr.data == NULL});
+
+    push_to_dynarr(&(int){5}, &arr);
+    expect("Pushed to it once empty, checking if it grew back...",
+           3,
+           (bool[]){arr.len == 1,
+                    arr.cap == DYNARR_INITIAL_CAP,
+                    int_at(0, &arr) == 5});
+    deinit_dynarr(&arr);
 }
