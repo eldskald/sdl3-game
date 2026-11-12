@@ -57,6 +57,7 @@ typedef struct {
     float x, y;
     Uint8 coords_x, coords_y, coords_w, coords_h;
     SDL_FlipMode flip_mode;
+    sprite_rotation rotation;
     SDL_FColor tint;
     Sint8 z_index;
     size_t shapes_start, shapes_len;
@@ -340,11 +341,14 @@ int SPRITES_stop_anim(size_t sprite_id) {
 // The rect bounding the sprite and its attached lines and triangles, in world
 // pixels.
 static SDL_FRect get_rect(sprite_data* sd) {
+    float w = SPRITESHEET_CELL_X * sd->sprite.coords_w;
+    float h = SPRITESHEET_CELL_Y * sd->sprite.coords_h;
+    bool rotated = sd->sprite.rotation == rotation_90;
     SDL_FRect rect = (SDL_FRect){
         .x = sd->sprite.pos_x,
         .y = sd->sprite.pos_y,
-        .w = SPRITESHEET_CELL_X * sd->sprite.coords_w,
-        .h = SPRITESHEET_CELL_Y * sd->sprite.coords_h,
+        .w = rotated ? h : w,
+        .h = rotated ? w : h,
     };
     if (sd->shapes.len == 0) return rect;
     SDL_FRect l = sd->shapes_rect;
@@ -433,6 +437,7 @@ add_to_frame(sprite_frame* f, sprite_data* sd, SDL_FRect rect, SDL_FRect cam) {
             .coords_w = s.coords_w,
             .coords_h = s.coords_h,
             .flip_mode = s.flip_mode,
+            .rotation = s.rotation,
             .tint = {s.tint_r, s.tint_g, s.tint_b, s.tint_a},
             .z_index = s.z_index,
             .shapes_start = shapes_start,
@@ -535,6 +540,7 @@ void SPRITES_draw(void) {
                                        d->coords_w,
                                        d->coords_h,
                                        d->flip_mode,
+                                       d->rotation == rotation_90,
                                        d->tint,
                                        d->z_index);
     }

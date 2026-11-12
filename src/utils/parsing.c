@@ -2,6 +2,7 @@
 #include "data-structs/dynarr.h"
 #include "data-structs/hashmap.h"
 #include "engine/bgs.h"
+#include "engine/entity.h"
 #include "engine/fluids.h"
 #include "engine/particles.h"
 #include "engine/tilemap.h"
@@ -34,6 +35,18 @@ static size_t get_size(parsing_type type) {
         return sizeof(particle_shader);
     case parsing_bgs_track:
         return sizeof(bgs_track);
+    case parsing_jump_class:
+        return sizeof(jump_class);
+    case parsing_fall_class:
+        return sizeof(fall_class);
+    case parsing_run_class:
+        return sizeof(run_class);
+    case parsing_swim_class:
+        return sizeof(swim_class);
+    case parsing_fly_class:
+        return sizeof(fly_class);
+    case parsing_size_class:
+        return sizeof(size_class);
     case parsing_color:
         return sizeof(SDL_FColor);
     }
@@ -99,6 +112,24 @@ static void read_value(char** cells, parsing_type type, void* dst) {
         break;
     case parsing_bgs_track:
         read_name(BGS_get_string_tracks_map(), cells[0], dst);
+        break;
+    case parsing_jump_class:
+        read_name(ENTITY_get_string_jump_classes_map(), cells[0], dst);
+        break;
+    case parsing_fall_class:
+        read_name(ENTITY_get_string_fall_classes_map(), cells[0], dst);
+        break;
+    case parsing_run_class:
+        read_name(ENTITY_get_string_run_classes_map(), cells[0], dst);
+        break;
+    case parsing_swim_class:
+        read_name(ENTITY_get_string_swim_classes_map(), cells[0], dst);
+        break;
+    case parsing_fly_class:
+        read_name(ENTITY_get_string_fly_classes_map(), cells[0], dst);
+        break;
+    case parsing_size_class:
+        read_name(ENTITY_get_string_size_classes_map(), cells[0], dst);
         break;
     case parsing_color:
         *(SDL_FColor*)dst = (SDL_FColor){SDL_strtod(cells[0], NULL) / 255.0f,

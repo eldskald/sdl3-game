@@ -183,6 +183,14 @@
 
 
 
+// Entities
+#define ENTITY_CLASSES_CSV_PATH "data/entities/classes.csv"
+#define FROG_CSV_PATH "data/entities/frog.csv"
+#define SPIDER_CSV_PATH "data/entities/spider.csv"
+#define WISP_CSV_PATH "data/entities/wisp.csv"
+
+
+
 // Camera
 #define CAMERA_CSV_PATH "data/player/camera.csv"
 

@@ -349,6 +349,34 @@ static void test_textures(graphics_texture* t) {
                rect_is(px, (SDL_Rect){6, 6, 2, 2}, green),
            });
 
+    // Turned clockwise, the strip's left goes on top, and flipped both ways
+    // first, it's turned counterclockwise, so its left goes on the bottom
+    GRAPHICS_begin_frame();
+    GRAPHICS_set_target(t);
+    GRAPHICS_clear(GRAPHICS_fcolor(black));
+    graphics_vertex v[6];
+    SDL_FRect src = (SDL_FRect){0, 0, 2, 1};
+    GRAPHICS_quad_rotated(
+        v, (SDL_FRect){0, 0, 4, 8}, GRAPHICS_uv(strip, src, SDL_FLIP_NONE), w);
+    GRAPHICS_draw_vertices(strip, v, 6);
+    GRAPHICS_quad_rotated(
+        v,
+        (SDL_FRect){4, 0, 4, 8},
+        GRAPHICS_uv(strip, src, SDL_FLIP_HORIZONTAL_AND_VERTICAL),
+        w);
+    GRAPHICS_draw_vertices(strip, v, 6);
+    GRAPHICS_end_frame();
+    read_pixels(t, px);
+    expect("Drew the texture turned a quarter turn, and turned flipped both "
+           "ways, checking if it turned clockwise and counterclockwise...",
+           4,
+           (bool[]){
+               rect_is(px, (SDL_Rect){0, 0, 4, 4}, red),
+               rect_is(px, (SDL_Rect){0, 4, 4, 4}, blue),
+               rect_is(px, (SDL_Rect){4, 0, 4, 4}, blue),
+               rect_is(px, (SDL_Rect){4, 4, 4, 4}, red),
+           });
+
     GRAPHICS_destroy_texture(strip);
 }
 

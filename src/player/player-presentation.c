@@ -492,24 +492,6 @@ static void update_states_machine(player_state player, body player_body) {
 #define PINS_MAX                                                               \
     (SPRITESHEET_X / SPRITESHEET_CELL_X * SPRITESHEET_Y / SPRITESHEET_CELL_Y)
 
-// Fields of the frames of `anim`, on the rows `<name>_anim_x`, `<name>_anim_y`
-// and `<name>_anim_dur`, each column a frame.
-#define ANIM_FIELDS(name, anim)                                                \
-    {name "_anim_x",                                                           \
-     parsing_uint8,                                                            \
-     &(anim).frames[0].coords_x,                                               \
-     .count = SPRITES_ANIM_MAX_KEYFRAMES,                                      \
-     .stride = sizeof(keyframe)},                                              \
-        {name "_anim_y",                                                       \
-         parsing_uint8,                                                        \
-         &(anim).frames[0].coords_y,                                           \
-         .count = SPRITES_ANIM_MAX_KEYFRAMES,                                  \
-         .stride = sizeof(keyframe)},                                          \
-    {                                                                          \
-        name "_anim_dur", parsing_double, &(anim).frames[0].duration,          \
-            .count = SPRITES_ANIM_MAX_KEYFRAMES, .stride = sizeof(keyframe)    \
-    }
-
 // Field of the list on row `key`, written on `field` of each element of the
 // array `arr`.
 #define PINS_FIELD(key, type, arr, field)                                      \
@@ -621,12 +603,12 @@ void PLAYER_PRESENTATION_start(void) {
         {"cloak_gravity", parsing_double, &d->cloak_gravity},
         {"cloak_fluid_gravity", parsing_double, &d->cloak_fluid_gravity},
         {"cloak_fluid_damping", parsing_double, &d->cloak_fluid_damping},
-        ANIM_FIELDS("idle", d->idle_anim),
-        ANIM_FIELDS("moving", d->moving_anim),
-        ANIM_FIELDS("airborne", d->airborne_anim),
-        ANIM_FIELDS("crouch_idle", d->crouch_idle_anim),
-        ANIM_FIELDS("crouch_moving", d->crouch_moving_anim),
-        ANIM_FIELDS("swimming", d->swimming_anim),
+        PARSING_ANIM_FIELDS("idle", d->idle_anim),
+        PARSING_ANIM_FIELDS("moving", d->moving_anim),
+        PARSING_ANIM_FIELDS("airborne", d->airborne_anim),
+        PARSING_ANIM_FIELDS("crouch_idle", d->crouch_idle_anim),
+        PARSING_ANIM_FIELDS("crouch_moving", d->crouch_moving_anim),
+        PARSING_ANIM_FIELDS("swimming", d->swimming_anim),
     };
     dynarr parsed = CSV_parse(presentation_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));

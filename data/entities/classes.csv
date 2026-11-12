@@ -1,0 +1,26 @@
+jump classes: jump_speed,
+jump_tiny,80
+jump_low,110
+jump_medium,140
+jump_high,160
+,
+fall classes: gravity / max_fall_speed,
+fall_floaty,300,80
+fall_normal,600,160
+fall_heavy,900,240
+,
+run classes: max_speed / acceleration / friction,
+run_slow,30,100,200
+run_normal,60,200,400
+run_fast,90,300,600
+,
+swim classes: max_speed / acceleration / friction / jump_speed,
+swim_normal,60,80,80,160
+,
+fly classes: max_speed / acceleration / friction,
+fly_normal,60,200,400
+,
+size classes: width / height,
+size_small,4,4
+size_normal,4,8
+size_wide,8,8

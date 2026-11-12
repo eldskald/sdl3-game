@@ -124,7 +124,7 @@ static void update_body(Sint8 dir) {
         state.swimming ? data.swimming_max_fall_speed : data.max_fall_speed;
 
     // When horizontal speed is greater than max (knockback or something)
-    if (SDL_fabs(b.vel_x) >= mspe) {
+    if (SDL_fabs(b.vel_x) > mspe) {
         if (b.vel_x > 0.0f)
             new_x -= frc * dt;
         else

@@ -35,8 +35,9 @@ app_args GAME_MANAGER_get_args(void);
 // otherwise.
 int GAME_MANAGER_start(void);
 
-// Main thread loop. Call on `SDL_AppIterate()`.
-void GAME_MANAGER_update(void);
+// Main thread loop. Call on `SDL_AppIterate()`. Returns `1` when game is
+// quitting, `0` otherwise.
+int GAME_MANAGER_update(void);
 
 // Event handling. Call on `SDL_AppEvent()`. Returns `1` when game is quitting,
 // `0` otherwise.
@@ -47,7 +48,8 @@ void GAME_MANAGER_stop(void);
 
 
 
-// Requests to quit the game.
+// Requests to quit the game, from any thread. The main loop ends on its next
+// iteration or event.
 void GAME_MANAGER_quit(void);
 
 
@@ -68,7 +70,7 @@ bool GAME_MANAGER_is_fluids_thread(void);
 // Main thread's delta time.
 double GAME_MANAGER_get_main_dt(void);
 
-// Fixed thread's delta time.
+// Fixed thread's delta time, which is always `1.0 / FIXED_T_TARGET_FPS`.
 double GAME_MANAGER_get_fixed_dt(void);
 
 // Fluids thread's delta time

@@ -3,6 +3,7 @@
 #include "data-structs/hashmap.h"
 #include "defs.h"
 #include "engine/bgs.h"
+#include "engine/entity.h"
 #include "engine/fluids.h"
 #include "engine/particles.h"
 #include "engine/tilemap.h"
@@ -26,6 +27,12 @@ typedef enum {
     val_particle,
     val_particle_shader,
     val_bgs_track,
+    val_jump_class,
+    val_fall_class,
+    val_run_class,
+    val_swim_class,
+    val_fly_class,
+    val_size_class,
 } val_type;
 
 // Row of a key/value CSV, a key followed by `min` up to `max` values if it's an
@@ -60,6 +67,18 @@ static const char core_csv[] = {
 };
 static const char presentation_csv[] = {
 #embed PLAYER_PRESENTATION_CSV_PATH suffix(, '\0')
+};
+static const char entity_classes_csv[] = {
+#embed ENTITY_CLASSES_CSV_PATH suffix(, '\0')
+};
+static const char frog_csv[] = {
+#embed FROG_CSV_PATH suffix(, '\0')
+};
+static const char spider_csv[] = {
+#embed SPIDER_CSV_PATH suffix(, '\0')
+};
+static const char wisp_csv[] = {
+#embed WISP_CSV_PATH suffix(, '\0')
 };
 static const char fluid_particles_csv[] = {
 #embed FLUIDS_PARTICLES_CSV_PATH suffix(, '\0')
@@ -97,6 +116,12 @@ static hashmap tile_names = (hashmap){0};
 static hashmap particle_names = (hashmap){0};
 static hashmap particle_shader_names = (hashmap){0};
 static hashmap bgs_track_names = (hashmap){0};
+static hashmap jump_class_names = (hashmap){0};
+static hashmap fall_class_names = (hashmap){0};
+static hashmap run_class_names = (hashmap){0};
+static hashmap swim_class_names = (hashmap){0};
+static hashmap fly_class_names = (hashmap){0};
+static hashmap size_class_names = (hashmap){0};
 
 static void finish(const char* path, report* r) {
     char desc[FAIL_MESSAGE_MAX] = "";
@@ -113,6 +138,12 @@ static bool is_val(const char* s, val_type type) {
     if (type == val_particle_shader)
         return !s[0] || get_from_hashmap(s, &particle_shader_names);
     if (type == val_bgs_track) return get_from_hashmap(s, &bgs_track_names);
+    if (type == val_jump_class) return get_from_hashmap(s, &jump_class_names);
+    if (type == val_fall_class) return get_from_hashmap(s, &fall_class_names);
+    if (type == val_run_class) return get_from_hashmap(s, &run_class_names);
+    if (type == val_swim_class) return get_from_hashmap(s, &swim_class_names);
+    if (type == val_fly_class) return get_from_hashmap(s, &fly_class_names);
+    if (type == val_size_class) return get_from_hashmap(s, &size_class_names);
 
     // `SDL_strtod()` and `SDL_strtol()` skip leading spaces, which we don't
     // want, and the whole string must be the number.
@@ -156,6 +187,18 @@ static const char* val_type_name(val_type type) {
         return "a particle shader or empty";
     case val_bgs_track:
         return "a background sound track";
+    case val_jump_class:
+        return "a jump class";
+    case val_fall_class:
+        return "a fall class";
+    case val_run_class:
+        return "a run class";
+    case val_swim_class:
+        return "a swim class";
+    case val_fly_class:
+        return "a fly class";
+    case val_size_class:
+        return "a size class";
     }
     return "";
 }
@@ -374,6 +417,193 @@ static void check_player_core(void) {
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
     finish(PLAYER_BASE_CSV_PATH, &r);
+}
+
+// Each class on `names` must be on a row of its own, `<prefix>_<name>`, with
+// `n` values of `type`, and there must be no other classes.
+static size_t add_class_specs(key_spec* specs,
+                              char (*keys)[KEY_MAX_SIZE],
+                              const hashmap* names,
+                              const char* prefix,
+                              val_type type,
+                              size_t n) {
+    for (size_t i = 0; i < names->len; i++) {
+        sprintf(keys[i], "%s_%s", prefix, hashmap_key_at(i, names));
+        specs[i] = (key_spec){keys[i], type, n, n};
+    }
+    return names->len;
+}
+
+static void check_entity_classes(void) {
+    static key_spec specs[MAX_EXPECTATIONS];
+    static char keys[MAX_EXPECTATIONS][KEY_MAX_SIZE];
+    size_t n = 0;
+    n += add_class_specs(
+        specs + n, keys + n, &jump_class_names, "jump", val_double, 1);
+    n += add_class_specs(
+        specs + n, keys + n, &fall_class_names, "fall", val_double, 2);
+    n += add_class_specs(
+        specs + n, keys + n, &run_class_names, "run", val_double, 3);
+    n += add_class_specs(
+        specs + n, keys + n, &swim_class_names, "swim", val_double, 4);
+    n += add_class_specs(
+        specs + n, keys + n, &fly_class_names, "fly", val_double, 3);
+    n += add_class_specs(
+        specs + n, keys + n, &size_class_names, "size", val_uint8, 2);
+    report r = (report){0};
+    dynarr parsed = CSV_parse(entity_classes_csv);
+    check_keys_csv(&r, &parsed, specs, n);
+    CSV_free(&parsed);
+    finish(ENTITY_CLASSES_CSV_PATH, &r);
+}
+
+static void check_frog(void) {
+    const char* anims[] = {
+        "idle_anim", "walk_anim", "airborne_up_anim", "airborne_down_anim"};
+    char keys[SDL_arraysize(anims)][3][KEY_MAX_SIZE] = {0};
+    const key_spec base_specs[] = {
+        {"jump_class", val_jump_class, 1, 1},
+        {"fall_class", val_fall_class, 1, 1},
+        {"run_class", val_run_class, 1, 1},
+        {"swim_class", val_swim_class, 1, 1},
+        {"size_class", val_size_class, 1, 1},
+        {"follow_distance", val_double, 1, 1},
+        {"out_of_reach_retry", val_double, 1, 1},
+        {"coords", val_uint8, 4, 4},
+        {"offset", val_sint8, 2, 2},
+    };
+    key_spec specs[SDL_arraysize(base_specs) + 3 * SDL_arraysize(anims)];
+    SDL_memcpy(specs, base_specs, sizeof(base_specs));
+    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
+        sprintf(keys[a][0], "%s_x", anims[a]);
+        sprintf(keys[a][1], "%s_y", anims[a]);
+        sprintf(keys[a][2], "%s_dur", anims[a]);
+        size_t at = SDL_arraysize(base_specs) + 3 * a;
+        specs[at] =
+            (key_spec){keys[a][0], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+        specs[at + 1] =
+            (key_spec){keys[a][1], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+        specs[at + 2] =
+            (key_spec){keys[a][2], val_double, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+    }
+    report r = (report){0};
+    dynarr parsed = CSV_parse(frog_csv);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
+
+    // Each keyframe of an animation needs its x, y and duration.
+    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
+        dynarr* x = get_row(&parsed, keys[a][0]);
+        dynarr* y = get_row(&parsed, keys[a][1]);
+        dynarr* dur = get_row(&parsed, keys[a][2]);
+        if (!x || !y || !dur) continue;
+        check(&r,
+              x->len == y->len && y->len == dur->len,
+              "\"%s\" has %lu x, %lu y and %lu durations, expected the same",
+              anims[a],
+              x->len - 1,
+              y->len - 1,
+              dur->len - 1);
+    }
+    CSV_free(&parsed);
+    finish(FROG_CSV_PATH, &r);
+}
+
+static void check_spider(void) {
+    const char* anims[] = {"idle_anim", "walk_anim", "airborne_anim"};
+    char keys[SDL_arraysize(anims)][3][KEY_MAX_SIZE] = {0};
+    const key_spec base_specs[] = {
+        {"fall_class", val_fall_class, 1, 1},
+        {"run_class", val_run_class, 1, 1},
+        {"size_class", val_size_class, 1, 1},
+        {"follow_distance", val_double, 1, 1},
+        {"out_of_reach_retry", val_double, 1, 1},
+        {"coords", val_uint8, 4, 4},
+        {"offset", val_sint8, 2, 2},
+        {"ceiling_offset", val_sint8, 2, 2},
+        {"left_wall_offset", val_sint8, 2, 2},
+        {"right_wall_offset", val_sint8, 2, 2},
+    };
+    key_spec specs[SDL_arraysize(base_specs) + 3 * SDL_arraysize(anims)];
+    SDL_memcpy(specs, base_specs, sizeof(base_specs));
+    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
+        sprintf(keys[a][0], "%s_x", anims[a]);
+        sprintf(keys[a][1], "%s_y", anims[a]);
+        sprintf(keys[a][2], "%s_dur", anims[a]);
+        size_t at = SDL_arraysize(base_specs) + 3 * a;
+        specs[at] =
+            (key_spec){keys[a][0], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+        specs[at + 1] =
+            (key_spec){keys[a][1], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+        specs[at + 2] =
+            (key_spec){keys[a][2], val_double, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+    }
+    report r = (report){0};
+    dynarr parsed = CSV_parse(spider_csv);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
+
+    // Each keyframe of an animation needs its x, y and duration.
+    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
+        dynarr* x = get_row(&parsed, keys[a][0]);
+        dynarr* y = get_row(&parsed, keys[a][1]);
+        dynarr* dur = get_row(&parsed, keys[a][2]);
+        if (!x || !y || !dur) continue;
+        check(&r,
+              x->len == y->len && y->len == dur->len,
+              "\"%s\" has %lu x, %lu y and %lu durations, expected the same",
+              anims[a],
+              x->len - 1,
+              y->len - 1,
+              dur->len - 1);
+    }
+    CSV_free(&parsed);
+    finish(SPIDER_CSV_PATH, &r);
+}
+
+static void check_wisp(void) {
+    const char* anims[] = {"fly_anim"};
+    char keys[SDL_arraysize(anims)][3][KEY_MAX_SIZE] = {0};
+    const key_spec base_specs[] = {
+        {"fly_class", val_fly_class, 1, 1},
+        {"size_class", val_size_class, 1, 1},
+        {"follow_distance", val_double, 1, 1},
+        {"out_of_reach_retry", val_double, 1, 1},
+        {"coords", val_uint8, 4, 4},
+        {"offset", val_sint8, 2, 2},
+    };
+    key_spec specs[SDL_arraysize(base_specs) + 3 * SDL_arraysize(anims)];
+    SDL_memcpy(specs, base_specs, sizeof(base_specs));
+    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
+        sprintf(keys[a][0], "%s_x", anims[a]);
+        sprintf(keys[a][1], "%s_y", anims[a]);
+        sprintf(keys[a][2], "%s_dur", anims[a]);
+        size_t at = SDL_arraysize(base_specs) + 3 * a;
+        specs[at] =
+            (key_spec){keys[a][0], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+        specs[at + 1] =
+            (key_spec){keys[a][1], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+        specs[at + 2] =
+            (key_spec){keys[a][2], val_double, 1, SPRITES_ANIM_MAX_KEYFRAMES};
+    }
+    report r = (report){0};
+    dynarr parsed = CSV_parse(wisp_csv);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
+
+    // Each keyframe of an animation needs its x, y and duration.
+    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
+        dynarr* x = get_row(&parsed, keys[a][0]);
+        dynarr* y = get_row(&parsed, keys[a][1]);
+        dynarr* dur = get_row(&parsed, keys[a][2]);
+        if (!x || !y || !dur) continue;
+        check(&r,
+              x->len == y->len && y->len == dur->len,
+              "\"%s\" has %lu x, %lu y and %lu durations, expected the same",
+              anims[a],
+              x->len - 1,
+              y->len - 1,
+              dur->len - 1);
+    }
+    CSV_free(&parsed);
+    finish(WISP_CSV_PATH, &r);
 }
 
 // Checks the pins of the player's prop `prop`, mapped by frame on its
@@ -919,6 +1149,12 @@ void test_data_integrity(void) {
     particle_names = PARTICLES_get_string_particle_types_map();
     particle_shader_names = PARTICLES_get_string_particle_shaders_map();
     bgs_track_names = BGS_get_string_tracks_map();
+    jump_class_names = ENTITY_get_string_jump_classes_map();
+    fall_class_names = ENTITY_get_string_fall_classes_map();
+    run_class_names = ENTITY_get_string_run_classes_map();
+    swim_class_names = ENTITY_get_string_swim_classes_map();
+    fly_class_names = ENTITY_get_string_fly_classes_map();
+    size_class_names = ENTITY_get_string_size_classes_map();
 
     check_bloom();
     check_ripples();
@@ -926,6 +1162,10 @@ void test_data_integrity(void) {
     check_camera();
     check_player_core();
     check_player_presentation();
+    check_entity_classes();
+    check_frog();
+    check_spider();
+    check_wisp();
     check_fluid_particles();
     check_fluids();
     check_fluids_audio();
@@ -942,4 +1182,10 @@ void test_data_integrity(void) {
     deinit_hashmap(&particle_names);
     deinit_hashmap(&particle_shader_names);
     deinit_hashmap(&bgs_track_names);
+    deinit_hashmap(&jump_class_names);
+    deinit_hashmap(&fall_class_names);
+    deinit_hashmap(&run_class_names);
+    deinit_hashmap(&swim_class_names);
+    deinit_hashmap(&fly_class_names);
+    deinit_hashmap(&size_class_names);
 }

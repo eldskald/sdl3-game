@@ -350,12 +350,15 @@ void RENDERER_draw_from_texture(graphics_texture* texture,
                                 SDL_FRect src,
                                 SDL_FRect dst,
                                 SDL_FlipMode flip_mode,
+                                bool rotated,
                                 SDL_FColor tint,
                                 Sint8 z_index) {
-    GRAPHICS_quad(queue_vertices(texture, z_index, 6),
-                  dst,
-                  GRAPHICS_uv(texture, src, flip_mode),
-                  tint);
+    graphics_vertex* v = queue_vertices(texture, z_index, 6);
+    SDL_FRect uv = GRAPHICS_uv(texture, src, flip_mode);
+    if (rotated)
+        GRAPHICS_quad_rotated(v, dst, uv, tint);
+    else
+        GRAPHICS_quad(v, dst, uv, tint);
 }
 
 void RENDERER_draw_from_spritesheet(float x,
@@ -365,6 +368,7 @@ void RENDERER_draw_from_spritesheet(float x,
                                     Uint8 coords_w,
                                     Uint8 coords_h,
                                     SDL_FlipMode flip_mode,
+                                    bool rotated,
                                     SDL_FColor tint,
                                     Sint8 z_index) {
     SDL_FRect src = (SDL_FRect){
@@ -375,8 +379,10 @@ void RENDERER_draw_from_spritesheet(float x,
     };
     RENDERER_draw_from_texture(spritesheet,
                                src,
-                               (SDL_FRect){x, y, src.w, src.h},
+                               rotated ? (SDL_FRect){x, y, src.h, src.w}
+                                       : (SDL_FRect){x, y, src.w, src.h},
                                flip_mode,
+                               rotated,
                                tint,
                                z_index);
 }

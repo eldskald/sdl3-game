@@ -18,6 +18,166 @@ static void record_on_delete(size_t point_id, size_t arg) {
     on_delete_arg = arg;
 }
 
+// Keeps the simulated body's velocity as it is, counting the steps on `arg`, a
+// `size_t`, and stopping once `t` reaches `stop_at`, if it's set.
+static double stop_at = 0.0;
+static bool
+count_steps(body* _b, double t, physics_hits _h, void* arg) { // NOLINT
+    if (stop_at > 0.0 && t >= stop_at - EPSILON) return false;
+    (*(size_t*)arg)++;
+    return true;
+}
+
+// Made up tiles with a floor on row 20 and nothing else.
+static int get_made_up_tile(Uint16 x, Uint16 y, tile* data) {
+    if (x >= TILEMAP_SIZE_X || y >= TILEMAP_SIZE_Y) return 1;
+    *data = y == 20 ? (tile){.type = tile_stone} : (tile){0};
+    return 0;
+}
+
+// A floor on row 12 from tile 2 to 13 and a platform on row 8 from tile 5 to 7,
+// then a body dropping on it, simulated against a real one doing the same.
+static void test_simulate(void) {
+    TILEMAP_clear();
+    CAMERA_center_at(0.0f, 0.0f);
+    tile floor[12][1] = {0};
+    for (int i = 0; i < 12; i++)
+        floor[i][0] = (tile){.type = tile_dirt};
+    TILEMAP_set_at(2, 12, 12, 1, &floor);
+    tile platform[3][1] = {0};
+    for (int i = 0; i < 3; i++)
+        platform[i][0] = (tile){.type = tile_wood, .platform = true};
+    TILEMAP_set_at(5, 8, 3, 1, &platform);
+
+    const double dt = 1.0 / FIXED_T_TARGET_FPS;
+    body start = (body){
+        .type = physics_actor,
+        .x = 3.0f * SPRITESHEET_CELL_X + 2.0f,
+        .y = 2.0f * SPRITESHEET_CELL_Y,
+        .w = 4,
+        .h = 8,
+        .vel_x = 30.0f,
+        .vel_y = 60.0f,
+    };
+    size_t id = 0;
+    PHYSICS_new_body(start, &id);
+    body simulated = start;
+    size_t steps = 0;
+    physics_hits hits = (physics_hits){0};
+    int r = PHYSICS_simulate(
+        &simulated, 60 * dt, 0.0, count_steps, &steps, &hits, NULL);
+    body real = (body){0};
+    PHYSICS_get_body(id, &real);
+    expect("Simulated a body moving diagonally onto a platform for a second, "
+           "checking that it landed on it, stepped once per tick and the real "
+           "body it was copied from stayed still...",
+           8,
+           (bool[]){
+               r == 0,
+               steps == 60,
+               hits.floor && !hits.ceiling && !hits.left && !hits.right,
+               simulated.y == 7.0f * SPRITESHEET_CELL_Y,
+               simulated.vel_y == 0.0f,
+               simulated.x > start.x,
+               real.x == start.x,
+               real.y == start.y,
+           });
+
+    for (int i = 0; i < 60; i++)
+        PHYSICS_update();
+    PHYSICS_get_body(id, &real);
+    expect("Ticked the real body for a second, checking that it ended up where "
+           "the simulated one did...",
+           3,
+           (bool[]){
+               SDL_fabs(real.x - simulated.x) <= EPSILON,
+               SDL_fabs(real.y - simulated.y) <= EPSILON,
+               real.vel_y == simulated.vel_y,
+           });
+    PHYSICS_del_body(id);
+
+    body resting = simulated;
+    resting.vel_x = 0.0f;
+    resting.vel_y = 60.0f;
+    body dropped = resting;
+    steps = 0;
+    PHYSICS_simulate(&resting, 60 * dt, 0.0, count_steps, &steps, NULL, NULL);
+    steps = 0;
+    PHYSICS_simulate(&dropped,
+                     60 * dt,
+                     PHYSICS_DROP_TIMER,
+                     count_steps,
+                     &steps,
+                     &hits,
+                     NULL);
+    expect("Simulated the body on the platform falling down with and without "
+           "dropping down from it, checking that only the dropping one went "
+           "through it and landed on the floor...",
+           3,
+           (bool[]){
+               resting.y == 7.0f * SPRITESHEET_CELL_Y,
+               dropped.y == 11.0f * SPRITESHEET_CELL_Y,
+               hits.floor,
+           });
+
+    body walled = (body){.type = physics_actor,
+                         .x = 3.0f * SPRITESHEET_CELL_X,
+                         .y = 11.0f * SPRITESHEET_CELL_Y,
+                         .w = 4,
+                         .h = 8,
+                         .vel_x = -60.0f};
+    tile wall[1][1] = {{(tile){.type = tile_stone}}};
+    TILEMAP_set_at(2, 11, 1, 1, &wall);
+    steps = 0;
+    stop_at = 10 * dt;
+    PHYSICS_simulate(&walled, 60 * dt, 0.0, count_steps, &steps, &hits, NULL);
+    stop_at = 0.0;
+    expect("Simulated a body going left into a wall, stopping it after 10 "
+           "steps, checking that it stopped there and hit the wall...",
+           4,
+           (bool[]){
+               steps == 10,
+               walled.x == 3.0f * SPRITESHEET_CELL_X,
+               walled.vel_x == 0.0f,
+               hits.left && !hits.right,
+           });
+
+    TILEMAP_clear();
+    body made_up = (body){.type = physics_actor,
+                          .x = 40.0f * SPRITESHEET_CELL_X,
+                          .y = 10.0f * SPRITESHEET_CELL_Y,
+                          .w = 4,
+                          .h = 8,
+                          .vel_y = 120.0f};
+    body real_tiles = made_up;
+    steps = 0;
+    PHYSICS_simulate(
+        &made_up, 60 * dt, 0.0, count_steps, &steps, &hits, get_made_up_tile);
+    steps = 0;
+    PHYSICS_simulate(
+        &real_tiles, 60 * dt, 0.0, count_steps, &steps, NULL, NULL);
+    expect("Simulated a body falling on made up tiles with a floor and on the "
+           "empty tilemap, checking that it only landed on the made up "
+           "floor...",
+           3,
+           (bool[]){
+               made_up.y == 19.0f * SPRITESHEET_CELL_Y,
+               hits.floor,
+               real_tiles.y > 20.0f * SPRITESHEET_CELL_Y,
+           });
+
+    body invalid = (body){.type = physics_actor, .x = 8.0f, .y = 8.0f};
+    expect("Simulated a body without size and without a step function, "
+           "checking errors...",
+           2,
+           (bool[]){
+               PHYSICS_simulate(
+                   &invalid, 1.0, 0.0, count_steps, &steps, NULL, NULL) == 2,
+               PHYSICS_simulate(&walled, 1.0, 0.0, NULL, NULL, NULL, NULL) == 2,
+           });
+    TILEMAP_clear();
+}
+
 // Moves a body of `type` into each edge of an empty level, faster than a tile
 // per tick, checking it stops flush against it as if it were a wall.
 static void test_level_edges(body_type type) {
@@ -1310,6 +1470,8 @@ void test_physics(void) {
                    PHYSICS_STARTING_PROP_POINTS_DYNARR_CAP << 4,
                    &out_point_within) == 3,
            });
+
+    test_simulate();
 
     PHYSICS_stop();
 }

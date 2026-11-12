@@ -23,7 +23,9 @@ void RENDERER_update(void);
 // dev and test builds.
 
 // Queues drawing the `src` rect of `texture` on the `dst` rect, both in pixels,
-// flipped by `flip_mode`. Its color is multiplied by `tint`, which should be
+// flipped by `flip_mode`, then turned a quarter turn clockwise if `rotated`,
+// in which case `dst` should have the width and height of `src` swapped. Its
+// color is multiplied by `tint`, which should be
 // `1.0` to draw it as is and can go beyond `1.0` to make it bloom. Consecutive
 // calls drawing the same texture are batched, so interleaving textures on a
 // z_index splits its draws.
@@ -31,13 +33,15 @@ void RENDERER_draw_from_texture(graphics_texture* texture,
                                 SDL_FRect src,
                                 SDL_FRect dst,
                                 SDL_FlipMode flip_mode,
+                                bool rotated,
                                 SDL_FColor tint,
                                 Sint8 z_index);
 
 // Queues drawing the `coords_w,coords_h` cells of the spritesheet starting at
-// cell `coords_x,coords_y` at `(x,y)`, flipped by `flip_mode`. Its color is
-// multiplied by `tint`, which should be `1.0` to draw it as is and can go
-// beyond `1.0` to make it bloom.
+// cell `coords_x,coords_y` at `(x,y)`, flipped by `flip_mode`, then turned a
+// quarter turn clockwise if `rotated`, with its top left still at `(x,y)`. Its
+// color is multiplied by `tint`, which should be `1.0` to draw it as is and can
+// go beyond `1.0` to make it bloom.
 void RENDERER_draw_from_spritesheet(float x,
                                     float y,
                                     Uint8 coords_x,
@@ -45,6 +49,7 @@ void RENDERER_draw_from_spritesheet(float x,
                                     Uint8 coords_w,
                                     Uint8 coords_h,
                                     SDL_FlipMode flip_mode,
+                                    bool rotated,
                                     SDL_FColor tint,
                                     Sint8 z_index);
 

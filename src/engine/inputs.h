@@ -47,8 +47,9 @@ action_state INPUTS_get_action_state(action action);
 // successful, 1 otherwise.
 int INPUTS_start(void);
 
-// Poll and processes inputs. Call on game manager events.
-void INPUTS_process(SDL_Event* event);
+// Processes an input event, from the keyboard or gamepads, updating the
+// actions' states. Called by `EVENTS_handle()` on input events.
+void INPUTS_handle_inputs(SDL_Event* event);
 
 // Updates held times. Must be called on some update thread.
 void INPUTS_update(void);

@@ -40,11 +40,12 @@ static void tick(void) {
 }
 
 // A sprite decoded back from its 6 vertices, in pixels on the spritesheet and
-// on the screen.
+// on the screen, and whether it was turned a quarter turn, `rotated`.
 typedef struct {
     SDL_FRect src;
     SDL_FRect dst;
     SDL_FlipMode flip_mode;
+    bool rotated;
 } drawn_sprite;
 
 typedef struct {
@@ -73,12 +74,23 @@ static graphics_vertex* read(vertex_reader* r, size_t n) {
     return v;
 }
 
+// Turned a quarter turn, `GRAPHICS_quad_rotated()` keeps `u` the same along
+// the top, where it's the same along the left unturned, so the corners of the
+// spritesheet rect are on other vertices.
 static drawn_sprite read_sprite(vertex_reader* r) {
     graphics_vertex* v = read(r, 6);
     float w = r->texture ? r->texture->w : 0.0f;
     float h = r->texture ? r->texture->h : 0.0f;
+    bool rotated = v[0].u == v[1].u && v[0].v != v[1].v;
     float u0 = v[0].u * w, v0 = v[0].v * h, u1 = v[4].u * w, v1 = v[4].v * h;
+    if (rotated) {
+        u0 = v[1].u * w;
+        v0 = v[1].v * h;
+        u1 = v[4].u * w;
+        v1 = v[0].v * h;
+    }
     return (drawn_sprite){
+        .rotated = rotated,
         .src = {SDL_roundf(SDL_min(u0, u1)),
                 SDL_roundf(SDL_min(v0, v1)),
                 SDL_roundf(SDL_fabsf(u1 - u0)),
@@ -949,12 +961,12 @@ void test_drawing(void) {
 
     // The sprite at the camera's top left is still there on z_index 0
     SDL_FColor white = (SDL_FColor){1.0f, 1.0f, 1.0f, 1.0f};
-    RENDERER_draw_from_spritesheet(10, 10, 0, 0, 1, 1, 0, white, 3);
+    RENDERER_draw_from_spritesheet(10, 10, 0, 0, 1, 1, 0, false, white, 3);
     RENDERER_draw_line(1, 2, 3, 4, white, -5);
-    RENDERER_draw_from_spritesheet(20, 20, 0, 0, 1, 1, 0, white, 3);
-    RENDERER_draw_from_spritesheet(30, 30, 0, 0, 1, 1, 0, white, -5);
+    RENDERER_draw_from_spritesheet(20, 20, 0, 0, 1, 1, 0, false, white, 3);
+    RENDERER_draw_from_spritesheet(30, 30, 0, 0, 1, 1, 0, false, white, -5);
     RENDERER_draw_from_spritesheet(
-        40, 40, 0, 0, 1, 1, 0, white, FLUIDS_Z_INDEX);
+        40, 40, 0, 0, 1, 1, 0, false, white, FLUIDS_Z_INDEX);
     tick();
     vertex_reader r = read_vertices();
     SDL_FPoint line0 = read_pixel(&r);
@@ -1141,6 +1153,65 @@ void test_drawing(void) {
            (bool[]){out_sprite.coords_x == 1});
     clear_stubbed_calls();
     SPRITES_del_sprite(out_id);
+
+    // Two cells tall, turned, and turned flipped both ways, drawn after the
+    // rest on their own z_indexes
+    size_t turned_id = 0;
+    size_t turned_back_id = 0;
+    SPRITES_new_sprite(
+        (sprite){
+            .pos_x = CAM_X + 40,
+            .pos_y = CAM_Y + 50,
+            .coords_x = 4,
+            .coords_y = 2,
+            .coords_w = 1,
+            .coords_h = 2,
+            .z_index = 50,
+            .rotation = rotation_90,
+            .tint_a = 1.0,
+        },
+        &turned_id);
+    SPRITES_new_sprite(
+        (sprite){
+            .pos_x = CAM_X + 70,
+            .pos_y = CAM_Y + 50,
+            .coords_x = 4,
+            .coords_y = 2,
+            .coords_w = 1,
+            .coords_h = 2,
+            .z_index = 51,
+            .flip_mode = SDL_FLIP_HORIZONTAL_AND_VERTICAL,
+            .rotation = rotation_90,
+            .tint_a = 1.0,
+        },
+        &turned_back_id);
+    tick();
+    calls_n = get_drawn_sprites(&calls);
+    drawn_sprite turned = calls_n >= 2 ? calls[calls_n - 2] : (drawn_sprite){0};
+    drawn_sprite turned_back =
+        calls_n >= 2 ? calls[calls_n - 1] : (drawn_sprite){0};
+    expect("Added a sprite two cells tall turned a quarter turn, and another "
+           "flipped both ways too, checking if they're drawn turned, as wide "
+           "as they're tall, from the same cells, the second one flipped...",
+           12,
+           (bool[]){
+               turned.rotated,
+               turned.src.x == 4 * SPRITESHEET_CELL_X,
+               turned.src.y == 2 * SPRITESHEET_CELL_Y,
+               turned.src.w == SPRITESHEET_CELL_X,
+               turned.src.h == 2 * SPRITESHEET_CELL_Y,
+               turned.dst.x == 40 && turned.dst.y == 50,
+               turned.dst.w == 2 * SPRITESHEET_CELL_Y,
+               turned.dst.h == SPRITESHEET_CELL_X,
+               turned.flip_mode == SDL_FLIP_NONE,
+               turned_back.rotated,
+               turned_back.dst.x == 70 &&
+                   turned_back.dst.w == 2 * SPRITESHEET_CELL_Y,
+               turned_back.flip_mode == SDL_FLIP_HORIZONTAL_AND_VERTICAL,
+           });
+    clear_stubbed_calls();
+    SPRITES_del_sprite(turned_id);
+    SPRITES_del_sprite(turned_back_id);
 
     CAMERA_center_at(WINDOW_SIZE_X / 2, WINDOW_SIZE_Y / 2);
     SPRITES_stop();

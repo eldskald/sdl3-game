@@ -542,6 +542,7 @@ static void queue_glyph(const glyph* g, SDL_FRect dst, void* arg) {
         (SDL_FRect){g->x, g->y, g->bitmap_w, g->bitmap_h},
         dst,
         SDL_FLIP_NONE,
+        false,
         a->col,
         a->z_index);
 }
