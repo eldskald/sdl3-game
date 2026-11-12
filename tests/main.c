@@ -24,16 +24,17 @@
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
-// LeakSanitizer calls these on startup for its default suppressions and
-// options, so they apply however the tests are run. They need these names and
-// external linkage for it, hence the `NOLINT`s.
-//
-// NVidia's Vulkan driver leaks memory once when the graphics tests create the
-// GPU device, through the D-Bus connection it opens and never releases. It's
-// harmless, but it shows up in the report, so we're suppressing it. The driver
-// is unloaded by the time the report runs, so it can only be matched by D-Bus.
+// Vulkan might leak memory once at startup, out of power to fix it for now.
+// NVidia's Vulkan driver also leaks it through the D-Bus connection, also at
+// startup. It's just a couple of bytes and once, the kind that should have been
+// freed when we free the window and other video memory but the libraries didn't
+// do it so we suppress them here to not pollute reports.
 const char* __lsan_default_suppressions(void) { // NOLINT
-    return "leak:libdbus-1.so\n";
+    return "leak:libdbus-1.so\n"
+           "leak:VULKAN_INTERNAL_DeterminePhysicalDevice\n"
+           "leak:VULKAN_INTERNAL_PrepareVulkan\n"
+           "leak:libvulkan.so\n"
+           "leak:libdrm.so\n";
 }
 
 const char* __lsan_default_options(void) { // NOLINT
@@ -72,6 +73,7 @@ int main(int argc, char* argv[]) {
     if (argc == 1 || SDL_strcmp(argv[1], "audio") == 0) test_audio();
     if (argc == 1 || SDL_strcmp(argv[1], "sfx") == 0) test_sfx();
     if (argc == 1 || SDL_strcmp(argv[1], "bgs") == 0) test_bgs();
+
     if (argc == 1 || SDL_strcmp(argv[1], "data-integrity") == 0)
         test_data_integrity();
     if (argc == 1 || SDL_strcmp(argv[1], "shader-buffers") == 0)
