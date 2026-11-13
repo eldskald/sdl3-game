@@ -40,7 +40,7 @@ float4 lava_col(float2 uv,
                 float l,
                 float d,
                 float r) {
-    float4 col = _Colors[IDX_LAVA - 1];
+    float4 col = _Colors[FLUIDS_LAVA - 1];
 
     // Ripples.
     col.rgb = lerp(col.rgb, bg.rgb, LAVA_BACKGROUND_BLEND);

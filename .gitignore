@@ -1,8 +1,6 @@
 /SDL3
 /SDL_shadercross
 SDL3.dll
-game.*
-test
 
 # Tiled
 editor.tiled-session
@@ -11,8 +9,9 @@ editor.tiled-session
 **/.~lock.*
 
 # builds
+/out
+/shaders
+dev.*
+test
 windows.zip
 linux.zip
-
-# ripgrep
-.rgignore

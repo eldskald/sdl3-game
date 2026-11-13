@@ -12,7 +12,9 @@ If you want to change or add new fonts, you'll need to use the [bin/ttf2hex](bin
 
 Lastly, for the level editor we are using [Tiled](https://www.mapeditor.org/). At root we have the [editor.tiled-project](editor.tiled-project) with all the setup for editing and making new chunks.
 
-After everything is setup, run a dev build with `bin/dev`, which also compiles the shaders. You can also run `bin/test` to run tests.
+After everything is setup, make a dev build with `bin/dev` and run it. You can use the Run (F8) command in Tiled after you have a build compiled to make it load the map you're currently editing. You can also use Compile (F9) command to run `bin/dev` from Tiled. You can also run `bin/test` to run tests.
+
+Lastly, run `bin/build` to make the builds at `windows.zip` and `linux.zip`.
 
 You can lint with `bin/lint` and format with `bin/format` if you have clang-tidy and clang-format.
 

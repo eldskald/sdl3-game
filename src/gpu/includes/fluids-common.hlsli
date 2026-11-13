@@ -2,15 +2,9 @@
 #define FLUIDS_COMMON
 
 #include "includes/common.hlsli"
+#include "../../../out/out_fluids.hlsli"
 
 #define FAC 32.0
-
-// Indices of each fluid, its `fluid_type` on the CPU plus one. Samples store
-// them divided by `FAC`.
-#define IDX_WATER 1
-#define IDX_LAVA 2
-#define IDX_ACID 3
-#define IDX_SLUDGE 4
 
 // `1.0` when the sample is air, `0.0` otherwise.
 float is_air(float s) {

@@ -13,7 +13,7 @@
 #define ACID_HIGHLIGHT 0.15
 #define ACID_SHADOW 0.1
 
-#define ACID_PARTICLES_TYPE 5
+#define ACID_PARTICLES_TYPE PARTICLES_ACID_BUBBLE
 #define ACID_PARTICLES_FREQ 6.0
 #define ACID_PARTICLES_VEL float2(0.0, -50.0)
 #define ACID_PARTICLES_SPEED_JITTER 0.0
@@ -49,7 +49,7 @@ float4 acid_col(float2 uv,
                  float l,
                  float d,
                  float r) {
-    float4 type_col = _Colors[IDX_ACID - 1];
+    float4 type_col = _Colors[FLUIDS_ACID - 1];
     float4 col = type_col;
     col.rgb = lerp(col.rgb, bg.rgb, ACID_BACKGROUND_BLEND);
 

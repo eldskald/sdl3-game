@@ -1,0 +1,66 @@
+#!/bin/bash
+
+c_out=out/out.h
+fluids_hlsl_out=out/out_fluids.hlsli
+particles_hlsl_out=out/out_particles.hlsli
+
+fluids_csv=data/simulation/fluids.csv
+particles_csv=data/graphics/particles.csv
+
+mkdir -p out
+
+rm -f $c_out
+touch $c_out
+echo "#pragma once" >> $c_out
+echo "" >> $c_out
+
+rm -f $fluids_hlsl_out
+touch $fluids_hlsl_out
+echo "#ifndef FLUIDS_OUT" >> $fluids_hlsl_out
+echo "#define FLUIDS_OUT" >> $fluids_hlsl_out
+echo "" >> $fluids_hlsl_out
+
+rm -f $particles_hlsl_out
+touch $particles_hlsl_out
+echo "#ifndef PARTICLES_OUT" >> $particles_hlsl_out
+echo "#define PARTICLES_OUT" >> $particles_hlsl_out
+echo "" >> $particles_hlsl_out
+
+
+
+fluids=""
+count=0
+
+while IFS=, read -r fluid _; do
+    [[ "$fluid" == "fluid" ]] && continue
+    fluids+="fluid_$fluid, "
+    ((count++))
+    echo "#define FLUIDS_${fluid^^} ${count}" >> $fluids_hlsl_out
+done < $fluids_csv
+fluids="${fluids%??}" # Trim last two chars
+
+echo "#define FLUIDS_TYPES $fluids" >> $c_out
+echo "#define FLUIDS_TOTAL $count" >> $c_out
+echo "" >> $c_out
+
+echo "" >> $fluids_hlsl_out
+echo "#endif" >> $fluids_hlsl_out
+
+
+
+particles=""
+count=1
+
+while IFS=, read -r particle _; do
+    [[ "$particle" == "particle" ]] && continue
+    particles+="particle_${particle}, "
+    echo "#define PARTICLES_${particle^^} ${count}" >> $particles_hlsl_out
+    ((count++))
+done < $particles_csv
+
+echo "#define PARTICLES_TYPES $particles" >> $c_out
+echo "#define PARTICLES_TOTAL $count" >> $c_out
+echo "" >> $c_out
+
+echo "" >> $particles_hlsl_out
+echo "#endif" >> $particles_hlsl_out

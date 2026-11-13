@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../out/out.h"
+
 // Main settings
 #define WINDOW_TITLE "Game"
 #define WINDOW_SIZE_X 320
@@ -147,14 +149,10 @@ typedef enum {
 // Fluids
 #define FLUIDS_SPLIT_X 2
 #define FLUIDS_SPLIT_Y 2
-#define FLUIDS_TYPES fluid_water, fluid_lava, fluid_acid, fluid_sludge
-#define FLUIDS_TOTAL 4
 #define FLUIDS_CELL_W (SPRITESHEET_CELL_X / FLUIDS_SPLIT_X)
 #define FLUIDS_CELL_H (SPRITESHEET_CELL_Y / FLUIDS_SPLIT_Y)
 #define FLUIDS_RIPPLES_MAX_TICKS 4
 #define FLUIDS_RIPPLES_TEXTURE_RES_FACTOR 2
-// Fluid cells the surfaces pass reads, enough to cover the camera however it's
-// aligned to them, plus the rows above and below it. See `FLUIDS_prepare()`.
 #define FLUIDS_SURFACE_CELLS_X (WINDOW_SIZE_X / FLUIDS_CELL_W + 1)
 #define FLUIDS_SURFACE_CELLS_Y (WINDOW_SIZE_Y / FLUIDS_CELL_H + 3)
 #define FLUIDS_SURFACE_THREADS 64
@@ -170,11 +168,6 @@ typedef enum {
 #define FLUIDS_Z_INDEX 10
 
 // Particles
-#define PARTICLES_TYPES                                                        \
-    particle_tile_dirt, particle_tile_stone, particle_tile_wood,               \
-        particle_tile_metal, particle_fluid_acid_bubble,                       \
-        particle_fluid_sludge_bubble, particle_fluid_sludge_pop
-#define PARTICLES_TOTAL 8
 #define PARTICLES_SPLIT_X 2
 #define PARTICLES_SPLIT_Y 2
 #define PARTICLES_CELL_W (SPRITESHEET_CELL_X / PARTICLES_SPLIT_X)

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+bin/generate-defs
+bin/compile-shaders
+make

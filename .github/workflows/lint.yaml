@@ -42,6 +42,31 @@ jobs:
           sudo cp ~/cache/libSDL3* /usr/lib/
           sudo cp -r ~/cache/SDL3 /usr/include/
 
+      - name: Cache SDL_shadercross
+        id: sdl-shadercross-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/SDL_shadercross
+          key: sdl-shadercross-cache
+
+      - if: ${{ steps.sdl-shadercross-cache.outputs.cache-hit != 'true' }}
+        name: Get SDL_shadercross
+        run: |
+          curl -LO https://nightly.link/libsdl-org/SDL_shadercross/workflows/main/main/SDL3_shadercross-linux-x64.zip
+          unzip *.zip
+          tar -xzf *.tar.gz
+          rm *.tar.gz *.zip
+          mv SDL3_shadercross* ~/SDL_shadercross
+
+      - name: Install SDL_shadercross
+        run: cp -r ~/SDL_shadercross .
+
+      - name: Build defines
+        run: bin/generate-defs
+
+      - name: Compile shaders
+        run: bin/compile-shaders
+
       - name: Set up GCC
         uses: egor-tensin/setup-gcc@v2
         with:

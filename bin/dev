@@ -1,6 +1,5 @@
 #!/bin/bash
 
+bin/generate-defs
 bin/compile-shaders
-make dev GAME_NAME=.dev
-./.dev.* "$@"
-rm .dev.*
+make dev
