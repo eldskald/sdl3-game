@@ -51,10 +51,10 @@ endif
 all: windows linux
 
 clean:
-	rm -rf windows.zip linux.zip $(GAME_NAME)$(EXT)
+	rm -rf windows.zip linux.zip dev$(EXT)
 
 dev:
-	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(LANG_FLAGS) $(DEV_LINK_FLAGS) -o $(GAME_NAME)$(EXT)
+	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(LANG_FLAGS) $(DEV_LINK_FLAGS) -o dev$(EXT)
 
 test:
 	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_STUBBED_FILES) $(TEST_FILES) -Itests $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o test -DTEST -fsanitize=address

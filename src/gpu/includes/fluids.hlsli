@@ -12,13 +12,13 @@
 float fluid_bubbles(float s, float2 uv) {
     [branch]
     switch (fluid_idx(s)) {
-    case IDX_WATER:
+    case FLUIDS_WATER:
         return water_bubbles(uv);
-    case IDX_LAVA:
+    case FLUIDS_LAVA:
         return lava_bubbles(uv);
-    case IDX_ACID:
+    case FLUIDS_ACID:
         return acid_bubbles(uv);
-    case IDX_SLUDGE:
+    case FLUIDS_SLUDGE:
         return sludge_bubbles(uv);
     default:
         return 0.0;
@@ -39,13 +39,13 @@ Request fluid_particles(
     int idx, float2 pos, float2 cell_size, float volume, float dt, uint seed) {
     [branch]
     switch (idx) {
-    case IDX_WATER:
+    case FLUIDS_WATER:
         return water_particles(pos, cell_size, volume, dt, seed);
-    case IDX_LAVA:
+    case FLUIDS_LAVA:
         return lava_particles(pos, cell_size, volume, dt, seed);
-    case IDX_ACID:
+    case FLUIDS_ACID:
         return acid_particles(pos, cell_size, volume, dt, seed);
-    case IDX_SLUDGE:
+    case FLUIDS_SLUDGE:
         return sludge_particles(pos, cell_size, volume, dt, seed);
     default:
         return (Request)0;
@@ -65,13 +65,13 @@ float4 fluid_col(float2 uv,
                  float r) {
     [branch]
     switch (fluid_idx(o)) {
-    case IDX_WATER:
+    case FLUIDS_WATER:
         return water_col(uv, bg, n, o, u, l, d, r);
-    case IDX_LAVA:
+    case FLUIDS_LAVA:
         return lava_col(uv, bg, n, o, u, l, d, r);
-    case IDX_ACID:
+    case FLUIDS_ACID:
         return acid_col(uv, bg, n, o, u, l, d, r);
-    case IDX_SLUDGE:
+    case FLUIDS_SLUDGE:
         return sludge_col(uv, bg, n, o, u, l, d, r);
     default:
         return 0.0;

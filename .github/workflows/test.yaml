@@ -18,7 +18,7 @@ jobs:
       # The graphics tests need a Vulkan device, and runners have no GPU, so
       # they run on Mesa's software one, lavapipe, from `mesa-vulkan-drivers`.
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev mesa-vulkan-drivers
+        run: sudo apt-get update && sudo apt-get install build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev mesa-vulkan-drivers unzip
 
       - name: Cache SDL3
         id: sdl3-cache
@@ -44,11 +44,36 @@ jobs:
           sudo cp ~/cache/libSDL3* /usr/lib/
           sudo cp -r ~/cache/SDL3 /usr/include/
 
+      - name: Cache SDL_shadercross
+        id: sdl-shadercross-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/SDL_shadercross
+          key: sdl-shadercross-cache
+
+      - if: ${{ steps.sdl-shadercross-cache.outputs.cache-hit != 'true' }}
+        name: Get SDL_shadercross
+        run: |
+          curl -LO https://nightly.link/libsdl-org/SDL_shadercross/workflows/main/main/SDL3_shadercross-linux-x64.zip
+          unzip *.zip
+          tar -xzf *.tar.gz
+          rm *.tar.gz *.zip
+          mv SDL3_shadercross* ~/SDL_shadercross
+
+      - name: Install SDL_shadercross
+        run: cp -r ~/SDL_shadercross .
+
       - name: Set up GCC
         uses: egor-tensin/setup-gcc@v2
         with:
           version: 16
           platform: x64
+
+      - name: Build defines
+        run: bin/generate-defs
+
+      - name: Compile shaders
+        run: bin/compile-shaders
 
       - name: Test
         run: bin/test

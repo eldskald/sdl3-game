@@ -7,6 +7,7 @@
 #define PARTICLES_COMMON
 
 #include "includes/common.hlsli"
+#include "../../../out/out_particles.hlsli"
 
 struct Particle {
     float2 pos;

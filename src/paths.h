@@ -3,20 +3,20 @@
 // clang-format off
 
 // Graphics
-#define GRAPHICS_BASE_VERT_SPIRV_PATH "res/shaders/base.vert.spv"
-#define GRAPHICS_BASE_VERT_DXIL_PATH  "res/shaders/base.vert.dxil"
-#define GRAPHICS_BASE_FRAG_SPIRV_PATH "res/shaders/base.frag.spv"
-#define GRAPHICS_BASE_FRAG_DXIL_PATH  "res/shaders/base.frag.dxil"
+#define GRAPHICS_BASE_VERT_SPIRV_PATH "shaders/base.vert.spv"
+#define GRAPHICS_BASE_VERT_DXIL_PATH  "shaders/base.vert.dxil"
+#define GRAPHICS_BASE_FRAG_SPIRV_PATH "shaders/base.frag.spv"
+#define GRAPHICS_BASE_FRAG_DXIL_PATH  "shaders/base.frag.dxil"
 
 
 
 // Renderer
-#define RENDERER_TONEMAP_FRAG_SPIRV_PATH         "res/shaders/tonemap.frag.spv"
-#define RENDERER_TONEMAP_FRAG_DXIL_PATH          "res/shaders/tonemap.frag.dxil"
-#define RENDERER_BLOOM_PREFILTER_FRAG_SPIRV_PATH "res/shaders/bloom-prefilter.frag.spv"
-#define RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH  "res/shaders/bloom-prefilter.frag.dxil"
-#define RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH      "res/shaders/box-sample.frag.spv"
-#define RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH       "res/shaders/box-sample.frag.dxil"
+#define RENDERER_TONEMAP_FRAG_SPIRV_PATH         "shaders/tonemap.frag.spv"
+#define RENDERER_TONEMAP_FRAG_DXIL_PATH          "shaders/tonemap.frag.dxil"
+#define RENDERER_BLOOM_PREFILTER_FRAG_SPIRV_PATH "shaders/bloom-prefilter.frag.spv"
+#define RENDERER_BLOOM_PREFILTER_FRAG_DXIL_PATH  "shaders/bloom-prefilter.frag.dxil"
+#define RENDERER_BOX_SAMPLE_FRAG_SPIRV_PATH      "shaders/box-sample.frag.spv"
+#define RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH       "shaders/box-sample.frag.dxil"
 #define RENDERER_BLOOM_CSV_PATH                  "data/graphics/bloom.csv"
 
 
@@ -120,12 +120,12 @@
 #define FLUIDS_RIPPLES_CSV_PATH   "data/graphics/ripples.csv"
 #define FLUIDS_AUDIO_CSV_PATH     "data/audio/fluids.csv"
 
-#define FLUIDS_FRAG_SPIRV_PATH         "res/shaders/fluids.frag.spv"
-#define FLUIDS_FRAG_DXIL_PATH          "res/shaders/fluids.frag.dxil"
-#define FLUIDS_RIPPLES_FRAG_SPIRV_PATH "res/shaders/ripples.frag.spv"
-#define FLUIDS_RIPPLES_FRAG_DXIL_PATH  "res/shaders/ripples.frag.dxil"
-#define FLUIDS_SURFACES_COMP_SPIRV_PATH "res/shaders/fluids-surfaces.comp.spv"
-#define FLUIDS_SURFACES_COMP_DXIL_PATH  "res/shaders/fluids-surfaces.comp.dxil"
+#define FLUIDS_FRAG_SPIRV_PATH          "shaders/fluids.frag.spv"
+#define FLUIDS_FRAG_DXIL_PATH           "shaders/fluids.frag.dxil"
+#define FLUIDS_RIPPLES_FRAG_SPIRV_PATH  "shaders/ripples.frag.spv"
+#define FLUIDS_RIPPLES_FRAG_DXIL_PATH   "shaders/ripples.frag.dxil"
+#define FLUIDS_SURFACES_COMP_SPIRV_PATH "shaders/fluids-surfaces.comp.spv"
+#define FLUIDS_SURFACES_COMP_DXIL_PATH  "shaders/fluids-surfaces.comp.dxil"
 
 #define FLUIDS_WATER_SPLASH_1_SFX_PATH "res/sfx/fluids/water/Footsteps_Water_Jump_Big_01.wav"
 #define FLUIDS_WATER_SPLASH_2_SFX_PATH "res/sfx/fluids/water/Footsteps_Water_Jump_Big_02.wav"
@@ -149,18 +149,18 @@
 // Particles
 #define PARTICLES_CSV_PATH "data/graphics/particles.csv"
 
-#define PARTICLES_SIMULATE_COMP_SPIRV_PATH "res/shaders/particles-simulate.comp.spv"
-#define PARTICLES_SIMULATE_COMP_DXIL_PATH  "res/shaders/particles-simulate.comp.dxil"
-#define PARTICLES_SPAWN_COMP_SPIRV_PATH    "res/shaders/particles-spawn.comp.spv"
-#define PARTICLES_SPAWN_COMP_DXIL_PATH     "res/shaders/particles-spawn.comp.dxil"
-#define PARTICLES_COMPACT_COMP_SPIRV_PATH  "res/shaders/particles-compact.comp.spv"
-#define PARTICLES_COMPACT_COMP_DXIL_PATH   "res/shaders/particles-compact.comp.dxil"
-#define PARTICLES_VERT_SPIRV_PATH          "res/shaders/particles.vert.spv"
-#define PARTICLES_VERT_DXIL_PATH           "res/shaders/particles.vert.dxil"
-#define PARTICLES_FRAG_SPIRV_PATH          "res/shaders/particles.frag.spv"
-#define PARTICLES_FRAG_DXIL_PATH           "res/shaders/particles.frag.dxil"
-#define PARTICLES_SHADER_GLOW_SPIRV_PATH   "res/shaders/particles-glow.frag.spv"
-#define PARTICLES_SHADER_GLOW_DXIL_PATH    "res/shaders/particles-glow.frag.dxil"
+#define PARTICLES_SIMULATE_COMP_SPIRV_PATH "shaders/particles-simulate.comp.spv"
+#define PARTICLES_SIMULATE_COMP_DXIL_PATH  "shaders/particles-simulate.comp.dxil"
+#define PARTICLES_SPAWN_COMP_SPIRV_PATH    "shaders/particles-spawn.comp.spv"
+#define PARTICLES_SPAWN_COMP_DXIL_PATH     "shaders/particles-spawn.comp.dxil"
+#define PARTICLES_COMPACT_COMP_SPIRV_PATH  "shaders/particles-compact.comp.spv"
+#define PARTICLES_COMPACT_COMP_DXIL_PATH   "shaders/particles-compact.comp.dxil"
+#define PARTICLES_VERT_SPIRV_PATH          "shaders/particles.vert.spv"
+#define PARTICLES_VERT_DXIL_PATH           "shaders/particles.vert.dxil"
+#define PARTICLES_FRAG_SPIRV_PATH          "shaders/particles.frag.spv"
+#define PARTICLES_FRAG_DXIL_PATH           "shaders/particles.frag.dxil"
+#define PARTICLES_SHADER_GLOW_SPIRV_PATH   "shaders/particles-glow.frag.spv"
+#define PARTICLES_SHADER_GLOW_DXIL_PATH    "shaders/particles-glow.frag.dxil"
 
 
 

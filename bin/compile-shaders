@@ -26,6 +26,5 @@ compile() {
     done
 }
 
-compile "src/gpu" "res/shaders"
-# Shaders the graphics tests draw and dispatch with, compiled next to them.
+compile "src/gpu" "shaders"
 compile "tests/mocks/shaders" "tests/mocks/shaders"

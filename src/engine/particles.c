@@ -593,16 +593,14 @@ void PARTICLES_draw(graphics_texture* spritesheet) {
 hashmap PARTICLES_get_string_particle_types_map(void) {
     hashmap map;
     init_hashmap(&map, sizeof(particle_type));
-    set_on_hashmap(&(particle_type){particle_tile_dirt}, "dirt", &map);
-    set_on_hashmap(&(particle_type){particle_tile_stone}, "stone", &map);
-    set_on_hashmap(&(particle_type){particle_tile_wood}, "wood", &map);
-    set_on_hashmap(&(particle_type){particle_tile_metal}, "metal", &map);
+    set_on_hashmap(&(particle_type){particle_dirt}, "dirt", &map);
+    set_on_hashmap(&(particle_type){particle_stone}, "stone", &map);
+    set_on_hashmap(&(particle_type){particle_wood}, "wood", &map);
+    set_on_hashmap(&(particle_type){particle_metal}, "metal", &map);
+    set_on_hashmap(&(particle_type){particle_acid_bubble}, "acid_bubble", &map);
     set_on_hashmap(
-        &(particle_type){particle_fluid_acid_bubble}, "acid_bubble", &map);
-    set_on_hashmap(
-        &(particle_type){particle_fluid_sludge_bubble}, "sludge_bubble", &map);
-    set_on_hashmap(
-        &(particle_type){particle_fluid_sludge_pop}, "sludge_pop", &map);
+        &(particle_type){particle_sludge_bubble}, "sludge_bubble", &map);
+    set_on_hashmap(&(particle_type){particle_sludge_pop}, "sludge_pop", &map);
     return map;
 }
 

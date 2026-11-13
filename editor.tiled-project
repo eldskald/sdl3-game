@@ -3,11 +3,21 @@
     "commands": [
         {
             "arguments": "dev_level=%mapfile",
-            "command": "/home/rafael/dev/sdl3-game/bin/dev",
+            "command": "/home/rafael/dev/sdl3-game/dev.x86_64",
             "enabled": true,
             "name": "Run",
             "saveBeforeExecute": true,
             "shortcut": "F8",
+            "showOutput": true,
+            "workingDirectory": "/home/rafael/dev/sdl3-game"
+        },
+        {
+            "arguments": "",
+            "command": "/home/rafael/dev/sdl3-game/bin/dev",
+            "enabled": true,
+            "name": "Compile",
+            "saveBeforeExecute": true,
+            "shortcut": "F9",
             "showOutput": true,
             "workingDirectory": "/home/rafael/dev/sdl3-game"
         }

@@ -13,7 +13,7 @@
 #define SLUDGE_HIGHLIGHT 0.15
 #define SLUDGE_SHADOW 0.1
 
-#define SLUDGE_PARTICLES_TYPE 6
+#define SLUDGE_PARTICLES_TYPE PARTICLES_SLUDGE_BUBBLE
 #define SLUDGE_PARTICLES_FREQ 0.05
 #define SLUDGE_PARTICLES_VEL float2(0.0, -10.0)
 #define SLUDGE_PARTICLES_SPEED_JITTER 0.0
@@ -51,7 +51,7 @@ float4 sludge_col(float2 uv,
                   float l,
                   float d,
                   float r) {
-    float4 type_col = _Colors[IDX_SLUDGE - 1];
+    float4 type_col = _Colors[FLUIDS_SLUDGE - 1];
     float4 col = type_col;
     col.rgb = lerp(col.rgb, bg.rgb, SLUDGE_BACKGROUND_BLEND);
 

@@ -27,7 +27,7 @@ float4 water_col(float2 uv,
                  float l,
                  float d,
                  float r) {
-    float4 col = _Colors[IDX_WATER - 1];
+    float4 col = _Colors[FLUIDS_WATER - 1];
     col.rgb = lerp(col.rgb, bg.rgb, WATER_BACKGROUND_BLEND);
 
     // Light the ripples.
