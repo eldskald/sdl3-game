@@ -32,6 +32,37 @@ float2 bounce(float2 v, float2 n) {
     return v * (1.0 - 2.0 * abs(n));
 }
 
+void die(inout Particle p, ParticleType t, float2 normal) {
+    if (t.death_particles != 0 && t.death_count > 0) {
+        uint i;
+        InterlockedAdd(_Counters[COUNTER_REQUESTS], 1, i);
+        if (i < _MaxRequests) {
+            Request r;
+
+            // A particle dying still was moving against its acceleration,
+            // like at the top of an arc, so that's where the death particles
+            // go instead. Without acceleration either, they spawn still.
+            float2 dir = float2(0.0, 0.0);
+            if (length(p.vel) > EPSILON)
+                dir = normalize(p.vel);
+            else if (length(t.acc) > EPSILON)
+                dir = -normalize(t.acc);
+            r.vel = bounce(dir, normal) * t.death_speed;
+
+            r.pos = p.pos;
+            r.shape = SHAPE_POINT;
+            r.size = float2(0.0, 0.0);
+            r.spread = t.death_spread;
+            r.speed_jitter = t.death_speed_jitter;
+            r.type = t.death_particles;
+            r.count = t.death_count;
+            r.seed = p.seed;
+            _Requests[i] = r;
+        }
+    }
+    p.type = 0;
+}
+
 void trail(inout Particle p, ParticleType t) {
     if (t.trail_freq == 0.0 || t.trail_particles == 0) return;
     p.time_since_last_trail += _Dt;
@@ -65,38 +96,6 @@ void trail(inout Particle p, ParticleType t) {
             _Requests[i] = r;
         }
     }
-}
-
-// Kills `p` spawning its death particles.
-void die(inout Particle p, ParticleType t, float2 normal) {
-    if (t.death_particles != 0 && t.death_count > 0) {
-        uint i;
-        InterlockedAdd(_Counters[COUNTER_REQUESTS], 1, i);
-        if (i < _MaxRequests) {
-            Request r;
-
-            // A particle dying still was moving against its acceleration,
-            // like at the top of an arc, so that's where the death particles
-            // go instead. Without acceleration either, they spawn still.
-            float2 dir = float2(0.0, 0.0);
-            if (length(p.vel) > EPSILON)
-                dir = normalize(p.vel);
-            else if (length(t.acc) > EPSILON)
-                dir = -normalize(t.acc);
-            r.vel = bounce(dir, normal) * t.death_speed;
-
-            r.pos = p.pos;
-            r.shape = SHAPE_POINT;
-            r.size = float2(0.0, 0.0);
-            r.spread = t.death_spread;
-            r.speed_jitter = t.death_speed_jitter;
-            r.type = t.death_particles;
-            r.count = t.death_count;
-            r.seed = p.seed;
-            _Requests[i] = r;
-        }
-    }
-    p.type = 0;
 }
 
 [numthreads(64, 1, 1)]
