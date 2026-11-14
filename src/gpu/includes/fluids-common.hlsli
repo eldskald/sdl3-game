@@ -2,6 +2,7 @@
 #define FLUIDS_COMMON
 
 #include "includes/common.hlsli"
+#include "includes/particles-common.hlsli"
 #include "../../../out/out_fluids.hlsli"
 
 #define FAC 32.0

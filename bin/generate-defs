@@ -2,6 +2,7 @@
 
 c_out=out/out.h
 fluids_hlsl_out=out/out_fluids.hlsli
+fluids_hlsl_includes_out=out/out_includes.hlsli
 particles_hlsl_out=out/out_particles.hlsli
 
 fluids_csv=data/simulation/fluids.csv
@@ -20,6 +21,12 @@ echo "#ifndef FLUIDS_OUT" >> $fluids_hlsl_out
 echo "#define FLUIDS_OUT" >> $fluids_hlsl_out
 echo "" >> $fluids_hlsl_out
 
+rm -f $fluids_hlsl_includes_out
+touch $fluids_hlsl_includes_out
+echo "#ifndef FLUIDS_INCLUDES_OUT" >> $fluids_hlsl_includes_out
+echo "#define FLUIDS_INCLUDES_OUT" >> $fluids_hlsl_includes_out
+echo "" >> $fluids_hlsl_includes_out
+
 rm -f $particles_hlsl_out
 touch $particles_hlsl_out
 echo "#ifndef PARTICLES_OUT" >> $particles_hlsl_out
@@ -28,39 +35,92 @@ echo "" >> $particles_hlsl_out
 
 
 
-fluids=""
+echo "Generating fluid defs..."
+
+cdefs=""
+cmap=""
 count=0
 
+# Fluid defines
 while IFS=, read -r fluid _; do
     [[ "$fluid" == "fluid" ]] && continue
-    fluids+="fluid_$fluid, "
+    cdefs+="fluid_${fluid}, "
+    cmap+="set_on_hashmap(&(fluid_type){fluid_${fluid}}, \"${fluid}\", X);"
     ((count++))
     echo "#define FLUIDS_${fluid^^} ${count}" >> $fluids_hlsl_out
 done < $fluids_csv
-fluids="${fluids%??}" # Trim last two chars
+cdefs="${cdefs%??}" # Trim last two chars (a comma and a space)
+cmap="${cmap%?}" # Trim the last semi colon
 
-echo "#define FLUIDS_TYPES $fluids" >> $c_out
-echo "#define FLUIDS_TOTAL $count" >> $c_out
+echo "#define FLUIDS_TYPES ${cdefs}" >> $c_out
+echo "#define FLUIDS_TOTAL ${count}" >> $c_out
+echo "#define FLUIDS_CSV_STRING_MAP(X) ${cmap}" >> $c_out
 echo "" >> $c_out
-
 echo "" >> $fluids_hlsl_out
 echo "#endif" >> $fluids_hlsl_out
 
+# Fluid include files
+while IFS=, read -r fluid _; do
+    [[ "$fluid" == "fluid" ]] && continue
+    echo "#include \"includes/${fluid}.hlsli\"" >> $fluids_hlsl_includes_out
+done < $fluids_csv
+
+# fluid_bubbles HLSL function
+macro="#define FLUID_BUBBLES(uv) "
+while IFS=, read -r fluid _; do
+    [[ "$fluid" == "fluid" ]] && continue
+    macro+="case FLUIDS_${fluid^^}: return ${fluid}_bubbles(uv);" >> $fluids_hlsl_includes_out
+done < $fluids_csv
+macro+="default: return 0.0"
+echo "" >> $fluids_hlsl_includes_out
+echo $macro >> $fluids_hlsl_includes_out
+
+# fluid_particles HLSL function
+macro="#define FLUID_PARTICLES(pos, cell_size, volume, dt, seed) "
+while IFS=, read -r fluid _; do
+    [[ "$fluid" == "fluid" ]] && continue
+    macro+="case FLUIDS_${fluid^^}: return ${fluid}_particles(pos, cell_size, volume, dt, seed);" >> $fluids_hlsl_includes_out
+done < $fluids_csv
+macro+="default: return (Request)0"
+echo "" >> $fluids_hlsl_includes_out
+echo $macro >> $fluids_hlsl_includes_out
+
+# fluid_col HLSL function
+macro="#define FLUID_COL(uv, bg, n, o, u, l, d, r) "
+while IFS=, read -r fluid _; do
+    [[ "$fluid" == "fluid" ]] && continue
+    macro+="case FLUIDS_${fluid^^}: return ${fluid}_col(uv, bg, n, o, u, l, d, r);" >> $fluids_hlsl_includes_out
+done < $fluids_csv
+macro+="default: return 0.0"
+echo "" >> $fluids_hlsl_includes_out
+echo $macro >> $fluids_hlsl_includes_out
+
+echo "" >> $fluids_hlsl_includes_out
+echo "#endif" >> $fluids_hlsl_includes_out
+echo "Fluid defs generated successfully."
 
 
-particles=""
+
+echo "Generating particle defs..."
+
+cdefs=""
+cmap=""
 count=1
 
 while IFS=, read -r particle _; do
     [[ "$particle" == "particle" ]] && continue
-    particles+="particle_${particle}, "
+    cdefs+="particle_${particle}, "
+    cmap+="set_on_hashmap(&(particle_type){particle_${particle}}, \"${particle}\", X);"
     echo "#define PARTICLES_${particle^^} ${count}" >> $particles_hlsl_out
     ((count++))
 done < $particles_csv
 
-echo "#define PARTICLES_TYPES $particles" >> $c_out
-echo "#define PARTICLES_TOTAL $count" >> $c_out
+echo "#define PARTICLES_TYPES ${cdefs}" >> $c_out
+echo "#define PARTICLES_CSV_STRING_MAP(X) ${cmap}" >> $c_out
+echo "#define PARTICLES_TOTAL ${count}" >> $c_out
 echo "" >> $c_out
 
 echo "" >> $particles_hlsl_out
 echo "#endif" >> $particles_hlsl_out
+
+echo "Particle defs generated successfully."

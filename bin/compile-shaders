@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 
 shadercross="SDL_shadercross/bin/shadercross"
 
-# Compiles every `.hlsl` on `$1` into `$2`, which is recreated.
 compile() {
+    echo "Compiling $3 shaders..."
     local src="$1"
     local out="$2"
     rm -f "$out"/*.spv "$out"/*.dxil
@@ -16,15 +17,16 @@ compile() {
             *.frag) stage="fragment" ;;
             *.comp) stage="compute" ;;
             *)
-                echo "Unknown shader stage for $file, skipping" >&2
-                continue
+                echo "Unknown shader stage for $file" >&2
+                exit 1
                 ;;
         esac
 
         "$shadercross" "$file" -I "$src" -s HLSL -d SPIRV -t "$stage" -o "$out/$name.spv"
         "$shadercross" "$file" -I "$src" -s HLSL -d DXIL -t "$stage" -o "$out/$name.dxil"
     done
+    echo "${3^} shaders compiled successfully."
 }
 
-compile "src/gpu" "shaders"
-compile "tests/mocks/shaders" "tests/mocks/shaders"
+compile "src/gpu" "shaders" "main"
+compile "tests/mocks/shaders" "tests/mocks/shaders" "test"

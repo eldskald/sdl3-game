@@ -1,3 +1,4 @@
+#include "includes/fluids-common.hlsli"
 #include "includes/fluids.hlsli"
 #include "includes/normals.hlsli"
 
@@ -10,10 +11,6 @@ SamplerState _RipplesSampler : register(s1, space2);
 Texture2D<float4> _PreFluids : register(t2, space2);
 SamplerState _PreFluidsSampler : register(s2, space2);
 
-// `_Texture` and `_Ripples` are bigger than the screen and centered on it, so
-// ripples are simulated off screen too, and only their part on screen is drawn.
-// Converts `uv` on them to uv on the screen, which `_PreFluids` covers and
-// effects anchored to the world, like lava's bubbles, are scaled by.
 float2 to_screen_uv(float2 uv) {
     uint width, height, screen_width, screen_height;
     _Texture.GetDimensions(width, height);
@@ -23,24 +20,15 @@ float2 to_screen_uv(float2 uv) {
     return (uv * size - (size - screen) / 2.0) / screen;
 }
 
-// How much the ripples' slopes tilt their normals.
 #define RIPPLES_NORMAL_STRENGTH 16.0
 
-// How far, in pixels, surfaces can be waved up or down by the ripples, and how
-// many pixels each unit of the ripples' height waves them.
 #define WAVES_HEIGHT 2
 #define WAVES_STRENGTH 24.0
 
-// How far, in pixels, surfaces can be bubbled up or down by their fluid's
-// `fluid_bubbles()`.
 #define BUBBLES_HEIGHT 2
 
-// How far, in pixels, surfaces can move up or down, waved and bubbled.
 #define SURFACE_HEIGHT (WAVES_HEIGHT + BUBBLES_HEIGHT)
 
-// How deep, in pixels, fluids must be under a surface for it to wave or bubble
-// by `1px`, and for it to wave up to `WAVES_HEIGHT` or bubble up to
-// `BUBBLES_HEIGHT`. Shallower surfaces don't move.
 #define SURFACE_SHALLOW_DEPTH 3
 #define SURFACE_DEEP_DEPTH 6
 

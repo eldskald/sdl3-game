@@ -2204,9 +2204,6 @@ void FLUIDS_ripple_at(Uint32 x, Uint32 y, Uint32 size, double strength) {
 hashmap FLUIDS_get_string_fluid_types_map(void) {
     hashmap map;
     init_hashmap(&map, sizeof(fluid_type));
-    set_on_hashmap(&(fluid_type){fluid_water}, "water", &map);
-    set_on_hashmap(&(fluid_type){fluid_lava}, "lava", &map);
-    set_on_hashmap(&(fluid_type){fluid_acid}, "acid", &map);
-    set_on_hashmap(&(fluid_type){fluid_sludge}, "sludge", &map);
+    FLUIDS_CSV_STRING_MAP(&map);
     return map;
 }

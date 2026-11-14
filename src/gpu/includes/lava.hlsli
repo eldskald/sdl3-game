@@ -15,6 +15,12 @@
 #define LAVA_HIGHLIGHT 0.0
 #define LAVA_SHADOW 0.4
 
+#define LAVA_PARTICLES_TYPE PARTICLES_LAVA_SPARK
+#define LAVA_PARTICLES_FREQ 0.03
+#define LAVA_PARTICLES_VEL float2(0.0, -120.0)
+#define LAVA_PARTICLES_SPEED_JITTER 0.5
+#define LAVA_PARTICLES_SPREAD 30.0
+
 float lava_bubbles(float2 uv) {
     uv += _CamPos;
     uv.x *= ASPECT;
@@ -29,7 +35,19 @@ float lava_edge(float o, float s) {
 // Particles a lava surface spawns this frame, see `fluid_particles()`.
 Request lava_particles(
     float2 pos, float2 cell_size, float volume, float dt, uint seed) {
-    return (Request)0;
+    uint spawn = rand_per_sec(random(seed), dt, LAVA_PARTICLES_FREQ);
+    spawn = volume >= 0.9 ? spawn : 0;
+    Request req;
+    req.shape = SHAPE_RECT;
+    req.size = cell_size;
+    req.pos = pos;
+    req.vel = LAVA_PARTICLES_VEL;
+    req.speed_jitter = LAVA_PARTICLES_SPEED_JITTER;
+    req.spread = LAVA_PARTICLES_SPREAD;
+    req.type = LAVA_PARTICLES_TYPE;
+    req.count = spawn;
+    req.seed = seed;
+    return req;
 }
 
 float4 lava_col(float2 uv,
