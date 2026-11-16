@@ -8,9 +8,9 @@
          "name":"Entities",
          "objects":[
                 {
-                 "gid":1090,
+                 "gid":1092,
                  "height":16,
-                 "id":27,
+                 "id":28,
                  "name":"",
                  "opacity":1,
                  "rotation":0,
@@ -18,7 +18,7 @@
                  "visible":true,
                  "width":16,
                  "x":216,
-                 "y":48
+                 "y":24
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -41,7 +41,7 @@
                  "type":"",
                  "visible":true,
                  "width":16,
-                 "x":408,
+                 "x":184,
                  "y":48
                 }],
          "opacity":1,
@@ -499,7 +499,7 @@
          "y":0
         }],
  "nextlayerid":13,
- "nextobjectid":28,
+ "nextobjectid":29,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",

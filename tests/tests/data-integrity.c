@@ -93,7 +93,7 @@ static const char platforms_csv[] = {
 #embed CHUNKS_PLATFORMS_CSV_PATH suffix(, '\0')
 };
 static const char types_map_csv[] = {
-#embed CHUNKS_TYPES_MAP_CSV_PATH suffix(, '\0')
+#embed TILEMAP_TILES_CSV_PATH suffix(, '\0')
 };
 static const char particles_csv[] = {
 #embed PARTICLES_CSV_PATH suffix(, '\0')
@@ -1005,7 +1005,7 @@ static void check_types_map(void) {
     dynarr parsed = CSV_parse(types_map_csv);
     check_columns_csv(&r, &parsed, specs, SDL_arraysize(specs));
     CSV_free(&parsed);
-    finish(CHUNKS_TYPES_MAP_CSV_PATH, &r);
+    finish(TILEMAP_TILES_CSV_PATH, &r);
 }
 
 
@@ -1025,6 +1025,7 @@ static void check_particles(void) {
         {"acc_x", val_double},
         {"acc_y", val_double},
         {"damping", val_double},
+        {"tan_acc", val_double},
         {"slither_amp", val_double},
         {"slither_freq", val_double},
         {"bounce_count", val_uint8},

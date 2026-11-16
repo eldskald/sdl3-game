@@ -83,203 +83,11 @@ static const char fluids_audio_csv[] = {
 #embed FLUIDS_AUDIO_CSV_PATH suffix(, '\0')
 };
 
-static const Uint8 dirt_step_1_wav[] = {
-#embed TILEMAP_DIRT_STEP_1_SFX_PATH
-};
-static const Uint8 dirt_step_2_wav[] = {
-#embed TILEMAP_DIRT_STEP_2_SFX_PATH
-};
-static const Uint8 dirt_step_3_wav[] = {
-#embed TILEMAP_DIRT_STEP_3_SFX_PATH
-};
-static const Uint8 dirt_step_4_wav[] = {
-#embed TILEMAP_DIRT_STEP_4_SFX_PATH
-};
-static const Uint8 dirt_step_5_wav[] = {
-#embed TILEMAP_DIRT_STEP_5_SFX_PATH
-};
-
-static const Uint8 stone_step_1_wav[] = {
-#embed TILEMAP_STONE_STEP_1_SFX_PATH
-};
-static const Uint8 stone_step_2_wav[] = {
-#embed TILEMAP_STONE_STEP_2_SFX_PATH
-};
-static const Uint8 stone_step_3_wav[] = {
-#embed TILEMAP_STONE_STEP_3_SFX_PATH
-};
-static const Uint8 stone_step_4_wav[] = {
-#embed TILEMAP_STONE_STEP_4_SFX_PATH
-};
-static const Uint8 stone_step_5_wav[] = {
-#embed TILEMAP_STONE_STEP_5_SFX_PATH
-};
-
-static const Uint8 wood_step_1_wav[] = {
-#embed TILEMAP_WOOD_STEP_1_SFX_PATH
-};
-static const Uint8 wood_step_2_wav[] = {
-#embed TILEMAP_WOOD_STEP_2_SFX_PATH
-};
-static const Uint8 wood_step_3_wav[] = {
-#embed TILEMAP_WOOD_STEP_3_SFX_PATH
-};
-static const Uint8 wood_step_4_wav[] = {
-#embed TILEMAP_WOOD_STEP_4_SFX_PATH
-};
-static const Uint8 wood_step_5_wav[] = {
-#embed TILEMAP_WOOD_STEP_5_SFX_PATH
-};
-
-static const Uint8 metal_step_1_wav[] = {
-#embed TILEMAP_METAL_STEP_1_SFX_PATH
-};
-static const Uint8 metal_step_2_wav[] = {
-#embed TILEMAP_METAL_STEP_2_SFX_PATH
-};
-static const Uint8 metal_step_3_wav[] = {
-#embed TILEMAP_METAL_STEP_3_SFX_PATH
-};
-static const Uint8 metal_step_4_wav[] = {
-#embed TILEMAP_METAL_STEP_4_SFX_PATH
-};
-static const Uint8 metal_step_5_wav[] = {
-#embed TILEMAP_METAL_STEP_5_SFX_PATH
-};
-
-static const Uint8 dirt_land_1_wav[] = {
-#embed TILEMAP_DIRT_LAND_1_SFX_PATH
-};
-static const Uint8 dirt_land_2_wav[] = {
-#embed TILEMAP_DIRT_LAND_2_SFX_PATH
-};
-
-static const Uint8 stone_land_1_wav[] = {
-#embed TILEMAP_STONE_LAND_1_SFX_PATH
-};
-static const Uint8 stone_land_2_wav[] = {
-#embed TILEMAP_STONE_LAND_2_SFX_PATH
-};
-static const Uint8 stone_land_3_wav[] = {
-#embed TILEMAP_STONE_LAND_3_SFX_PATH
-};
-
-static const Uint8 wood_land_1_wav[] = {
-#embed TILEMAP_WOOD_LAND_1_SFX_PATH
-};
-static const Uint8 wood_land_2_wav[] = {
-#embed TILEMAP_WOOD_LAND_2_SFX_PATH
-};
-
-static const Uint8 metal_land_1_wav[] = {
-#embed TILEMAP_METAL_LAND_1_SFX_PATH
-};
-static const Uint8 metal_land_2_wav[] = {
-#embed TILEMAP_METAL_LAND_2_SFX_PATH
-};
-static const Uint8 metal_land_3_wav[] = {
-#embed TILEMAP_METAL_LAND_3_SFX_PATH
-};
-
-static const Uint8 water_step_1_wav[] = {
-#embed TILEMAP_WATER_STEP_1_SFX_PATH
-};
-static const Uint8 water_step_2_wav[] = {
-#embed TILEMAP_WATER_STEP_2_SFX_PATH
-};
-static const Uint8 water_step_3_wav[] = {
-#embed TILEMAP_WATER_STEP_3_SFX_PATH
-};
-static const Uint8 water_step_4_wav[] = {
-#embed TILEMAP_WATER_STEP_4_SFX_PATH
-};
-static const Uint8 water_step_5_wav[] = {
-#embed TILEMAP_WATER_STEP_5_SFX_PATH
-};
-
-static const Uint8 sludge_step_1_wav[] = {
-#embed TILEMAP_SLUDGE_STEP_1_SFX_PATH
-};
-static const Uint8 sludge_step_2_wav[] = {
-#embed TILEMAP_SLUDGE_STEP_2_SFX_PATH
-};
-
-static const Uint8 water_land_1_wav[] = {
-#embed TILEMAP_WATER_LAND_1_SFX_PATH
-};
-static const Uint8 water_land_2_wav[] = {
-#embed TILEMAP_WATER_LAND_2_SFX_PATH
-};
-static const Uint8 water_land_3_wav[] = {
-#embed TILEMAP_WATER_LAND_3_SFX_PATH
-};
-
-static const Uint8 sludge_land_1_wav[] = {
-#embed TILEMAP_SLUDGE_LAND_1_SFX_PATH
-};
-static const Uint8 sludge_land_2_wav[] = {
-#embed TILEMAP_SLUDGE_LAND_2_SFX_PATH
-};
-
-static const tile_sfx_file step_sfx_files[] = {
-    {tile_dirt, dirt_step_1_wav, sizeof(dirt_step_1_wav)},
-    {tile_dirt, dirt_step_2_wav, sizeof(dirt_step_2_wav)},
-    {tile_dirt, dirt_step_3_wav, sizeof(dirt_step_3_wav)},
-    {tile_dirt, dirt_step_4_wav, sizeof(dirt_step_4_wav)},
-    {tile_dirt, dirt_step_5_wav, sizeof(dirt_step_5_wav)},
-    {tile_stone, stone_step_1_wav, sizeof(stone_step_1_wav)},
-    {tile_stone, stone_step_2_wav, sizeof(stone_step_2_wav)},
-    {tile_stone, stone_step_3_wav, sizeof(stone_step_3_wav)},
-    {tile_stone, stone_step_4_wav, sizeof(stone_step_4_wav)},
-    {tile_stone, stone_step_5_wav, sizeof(stone_step_5_wav)},
-    {tile_wood, wood_step_1_wav, sizeof(wood_step_1_wav)},
-    {tile_wood, wood_step_2_wav, sizeof(wood_step_2_wav)},
-    {tile_wood, wood_step_3_wav, sizeof(wood_step_3_wav)},
-    {tile_wood, wood_step_4_wav, sizeof(wood_step_4_wav)},
-    {tile_wood, wood_step_5_wav, sizeof(wood_step_5_wav)},
-    {tile_metal, metal_step_1_wav, sizeof(metal_step_1_wav)},
-    {tile_metal, metal_step_2_wav, sizeof(metal_step_2_wav)},
-    {tile_metal, metal_step_3_wav, sizeof(metal_step_3_wav)},
-    {tile_metal, metal_step_4_wav, sizeof(metal_step_4_wav)},
-    {tile_metal, metal_step_5_wav, sizeof(metal_step_5_wav)},
-};
-static const tile_sfx_file land_sfx_files[] = {
-    {tile_dirt, dirt_land_1_wav, sizeof(dirt_land_1_wav)},
-    {tile_dirt, dirt_land_2_wav, sizeof(dirt_land_2_wav)},
-    {tile_stone, stone_land_1_wav, sizeof(stone_land_1_wav)},
-    {tile_stone, stone_land_2_wav, sizeof(stone_land_2_wav)},
-    {tile_stone, stone_land_3_wav, sizeof(stone_land_3_wav)},
-    {tile_wood, wood_land_1_wav, sizeof(wood_land_1_wav)},
-    {tile_wood, wood_land_2_wav, sizeof(wood_land_2_wav)},
-    {tile_metal, metal_land_1_wav, sizeof(metal_land_1_wav)},
-    {tile_metal, metal_land_2_wav, sizeof(metal_land_2_wav)},
-    {tile_metal, metal_land_3_wav, sizeof(metal_land_3_wav)},
-};
-
+static const tile_sfx_file tile_step_sfx_files[] = {TILE_FOOTSTEPS_WAV_FILES};
+static const tile_sfx_file tile_land_sfx_files[] = {TILE_LAND_WAV_FILES};
 static const tile_sfx_file fluids_step_sfx_files[] = {
-    {fluid_water, water_step_1_wav, sizeof(water_step_1_wav)},
-    {fluid_water, water_step_2_wav, sizeof(water_step_2_wav)},
-    {fluid_water, water_step_3_wav, sizeof(water_step_3_wav)},
-    {fluid_water, water_step_4_wav, sizeof(water_step_4_wav)},
-    {fluid_water, water_step_5_wav, sizeof(water_step_5_wav)},
-    {fluid_acid, water_step_1_wav, sizeof(water_step_1_wav)},
-    {fluid_acid, water_step_2_wav, sizeof(water_step_2_wav)},
-    {fluid_acid, water_step_3_wav, sizeof(water_step_3_wav)},
-    {fluid_acid, water_step_4_wav, sizeof(water_step_4_wav)},
-    {fluid_acid, water_step_5_wav, sizeof(water_step_5_wav)},
-    {fluid_sludge, sludge_step_1_wav, sizeof(sludge_step_1_wav)},
-    {fluid_sludge, sludge_step_2_wav, sizeof(sludge_step_2_wav)},
-};
-static const tile_sfx_file fluids_land_sfx_files[] = {
-    {fluid_water, water_land_1_wav, sizeof(water_land_1_wav)},
-    {fluid_water, water_land_2_wav, sizeof(water_land_2_wav)},
-    {fluid_water, water_land_3_wav, sizeof(water_land_3_wav)},
-    {fluid_acid, water_land_1_wav, sizeof(water_land_1_wav)},
-    {fluid_acid, water_land_2_wav, sizeof(water_land_2_wav)},
-    {fluid_acid, water_land_3_wav, sizeof(water_land_3_wav)},
-    {fluid_sludge, sludge_land_1_wav, sizeof(sludge_land_1_wav)},
-    {fluid_sludge, sludge_land_2_wav, sizeof(sludge_land_2_wav)},
-};
+    FLUID_FOOTSTEPS_WAV_FILES};
+static const tile_sfx_file fluids_land_sfx_files[] = {FLUID_LAND_WAV_FILES};
 
 // Neighbor offsets, in the order of their bits on the autotiles' lookup tables:
 //
@@ -299,8 +107,8 @@ static Uint8 autotile_ids[SPRITESHEET_X / SPRITESHEET_CELL_X]
 
 static step_particles step_on_particles[TILEMAP_TILE_TYPES_TOTAL] = {0};
 static land_particles land_on_particles[TILEMAP_TILE_TYPES_TOTAL] = {0};
-static tile_sfx step_sfx[TILEMAP_TILE_TYPES_TOTAL] = {0};
-static tile_sfx land_sfx[TILEMAP_TILE_TYPES_TOTAL] = {0};
+static tile_sfx tile_step_sfx[TILEMAP_TILE_TYPES_TOTAL] = {0};
+static tile_sfx tile_land_sfx[TILEMAP_TILE_TYPES_TOTAL] = {0};
 
 static tile_sfx fluids_step_sfx[FLUIDS_TOTAL] = {0};
 static tile_sfx fluids_land_sfx[FLUIDS_TOTAL] = {0};
@@ -504,8 +312,8 @@ static void load_sfx_volumes(void) {
         &parsed, tile_fields, SDL_arraysize(tile_fields), sizeof(tiles[0]));
     CSV_free(&parsed);
     for (size_t i = 0; i < n; i++) {
-        step_sfx[tiles[i].type].volume = tiles[i].step_vol;
-        land_sfx[tiles[i].type].volume = tiles[i].land_vol;
+        tile_step_sfx[tiles[i].type].volume = tiles[i].step_vol;
+        tile_land_sfx[tiles[i].type].volume = tiles[i].land_vol;
     }
 
     struct {
@@ -657,8 +465,14 @@ void TILEMAP_start(void) {
     load_autotile(stone_json);
     load_step_on_particles(step_on_particles_csv);
     load_land_on_particles(land_on_particles_csv);
-    load_sfx(step_sfx_files, SDL_arraysize(step_sfx_files), step_sfx, "step");
-    load_sfx(land_sfx_files, SDL_arraysize(land_sfx_files), land_sfx, "land");
+    load_sfx(tile_step_sfx_files,
+             SDL_arraysize(tile_step_sfx_files),
+             tile_step_sfx,
+             "step");
+    load_sfx(tile_land_sfx_files,
+             SDL_arraysize(tile_land_sfx_files),
+             tile_land_sfx,
+             "land");
     load_sfx(fluids_step_sfx_files,
              SDL_arraysize(fluids_step_sfx_files),
              fluids_step_sfx,
@@ -676,8 +490,8 @@ void TILEMAP_start(void) {
 void TILEMAP_stop(void) {
     TILEMAP_clear();
     delete_sfx_voices();
-    unload_sfx(step_sfx, TILEMAP_TILE_TYPES_TOTAL);
-    unload_sfx(land_sfx, TILEMAP_TILE_TYPES_TOTAL);
+    unload_sfx(tile_step_sfx, TILEMAP_TILE_TYPES_TOTAL);
+    unload_sfx(tile_land_sfx, TILEMAP_TILE_TYPES_TOTAL);
     unload_sfx(fluids_step_sfx, FLUIDS_TOTAL);
     unload_sfx(fluids_land_sfx, FLUIDS_TOTAL);
     SDL_memset(step_on_particles, 0, sizeof(step_on_particles));
@@ -770,7 +584,7 @@ void TILEMAP_step_on(SDL_FRect rect, Sint8 dir) {
     tile_type type = get_tile_under(rect);
     if (!type) return;
 
-    play_sfx(pick_sfx(rect, fluids_step_sfx, &step_sfx[type]),
+    play_sfx(pick_sfx(rect, fluids_step_sfx, &tile_step_sfx[type]),
              rect.x + rect.w / 2,
              rect.y + rect.h);
 
@@ -792,11 +606,10 @@ void TILEMAP_land_on(SDL_FRect rect) {
     tile_type type = get_tile_under(rect);
     if (!type) return;
 
-    play_sfx(pick_sfx(rect, fluids_land_sfx, &land_sfx[type]),
+    play_sfx(pick_sfx(rect, fluids_land_sfx, &tile_land_sfx[type]),
              rect.x + rect.w / 2,
              rect.y + rect.h);
 
-    // Thrown up from the bottom row of pixels of the body
     land_particles p = land_on_particles[type];
     Uint32 count = (Uint32)SDL_lroundf(p.count_per_pixel * rect.w);
     if (p.particle == particle_none || !count) return;

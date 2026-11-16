@@ -36,6 +36,7 @@ struct ParticleType {
 
     uint face_vel;
     float damping;
+    float tan_acc;
     float slither_freq;
     float slither_amp;
 
@@ -58,7 +59,6 @@ struct ParticleType {
     float trail_speed_jitter;
 
     uint group;
-    int pad1;
 };
 
 struct Request {

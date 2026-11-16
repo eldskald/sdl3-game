@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../out/out.h"
+#include "../out/defs.h"
 
 // Main settings
 #define WINDOW_TITLE "Game"
@@ -9,7 +9,6 @@
 
 #define MAIN_T_TARGET_FPS 60
 #define FIXED_T_TARGET_FPS 60
-// Ticks the fixed thread does at most at once to catch up when it falls behind
 #define FIXED_T_MAX_CATCH_UP_TICKS 4
 #define FLUIDS_T_TARGET_FPS 60
 
@@ -21,11 +20,7 @@
 #define SIMULATION_SPACE_X 120
 #define SIMULATION_SPACE_Y 66
 
-// Localization
-// The languages the game can be in, by their ISO 639-1 code, with Chinese also
-// by script or region, since each has its own font with its own glyph shapes.
-// `STARTING_LANGUAGE` is the one it starts in, set it with `make GAME_LANG=pt`,
-// see the Makefile. Changing it while running is `TEXT_set_language()`.
+// Languages
 typedef enum {
     language_en,      // English
     language_pt,      // Portuguese
@@ -58,9 +53,12 @@ typedef enum {
     language_zh_tw,   // Chinese, Traditional, Taiwan
 } language;
 #define LANGUAGES_TOTAL 29
+
 #ifndef STARTING_LANGUAGE
 #define STARTING_LANGUAGE language_en
 #endif
+
+
 
 // Helpers
 #define EPSILON 0.0001f
@@ -90,17 +88,16 @@ typedef enum {
 #define SPRITESHEET_CELL_Y 8
 
 // Text
-// `font_main` is drawn with a font depending on the language, see `text.c`.
-// Unifont is only for debugging, it's too big for the game's resolution.
 #if DEV
+// Unifont is only for debugging, it's too big for the game's resolution.
 #define TEXT_FONT_TYPES font_main, font_unifont
 #define TEXT_FONTS_TOTAL 2
 #else
 #define TEXT_FONT_TYPES font_main
 #define TEXT_FONTS_TOTAL 1
 #endif
-#define TEXT_ATLAS_X 2048 // Its height is however much the glyphs need
-#define TEXT_FALLBACK_CODEPOINT 0xFFFD // Replacement character, '�'
+#define TEXT_ATLAS_X 2048
+#define TEXT_FALLBACK_CODEPOINT 0xFFFD
 
 // Sprites
 #define SPRITES_STARTING_DYNARR_CAP 1024
@@ -112,24 +109,19 @@ typedef enum {
 
 
 // Audio
-#define AUDIO_STARTING_VOLUME 1.0f // Of every bus
+#define AUDIO_STARTING_VOLUME 1.0f
 
 // SFX
 #define SFX_STARTING_POOL_CAP 64
 
 // BGS
-#define BGS_TRACKS                                                             \
-    bgs_track_cave, bgs_track_water_streaming, bgs_track_lava_bubbling,        \
-        bgs_track_acid_fizz, bgs_track_sludge_bubbling
-#define BGS_TRACKS_TOTAL 6
-#define BGS_BUFFER_MS 500   // How far ahead of what's heard tracks are decoded
-#define BGS_MAX_FILL_MS 100 // Most a track decodes per tick to get there
-#define BGS_DECODE_CHUNK_SAMPLES 4096 // Floats decoded at a time
+#define BGS_BUFFER_MS 500
+#define BGS_MAX_FILL_MS 100
+#define BGS_DECODE_CHUNK_SAMPLES 4096
 
 
 
 // Chunks
-#define CHUNKS_TOTAL 5
 #define CHUNKS_HELPER_TILESET_NAME "helper-tiles.tsx"
 #define CHUNKS_HELPER_TILES_TOTAL 64
 #define CHUNKS_ENTITY_TILESET_NAME "entity-tiles.tsx"
@@ -140,9 +132,7 @@ typedef enum {
 // Tilemap
 #define TILEMAP_SIZE_X 1024
 #define TILEMAP_SIZE_Y 1024
-#define TILEMAP_TILE_TYPES tile_dirt = 1, tile_stone, tile_wood, tile_metal,
-#define TILEMAP_TILE_TYPES_TOTAL 5     // Counting the empty tile
-#define TILEMAP_AUTOMAP_NON_EMPTY_ID 2 // On Tiled's automap-tiles.tsx
+#define TILEMAP_AUTOMAP_NON_EMPTY_ID 2
 #define TILEMAP_Z_INDEX 20
 #define TILEMAP_PLATFORMS_Z_INDEX (-20)
 

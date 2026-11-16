@@ -100,19 +100,14 @@ static const char audio_csv[] = {
 #embed FLUIDS_AUDIO_CSV_PATH suffix(, '\0')
 };
 
-// A sound embedded on the executable that plays on `type`. A `NULL` `mem` with
-// a `0` `size` is for no sound, so `type` plays nothing on its bank.
+
+
 typedef struct {
     fluid_type type;
     const Uint8* mem;
     size_t size;
 } fluid_sfx_file;
 
-// A set of sounds per fluid type and the voices they play on, with a
-// `cooldown` between any two of them loaded from `FLUIDS_AUDIO_CSV_PATH`.
-// Voices are created on the first sound played instead of on `FLUIDS_start()`,
-// so fluids don't need `SFX_start()` before them. Sounds are played from more
-// than one thread, so each bank has its own mutex.
 typedef struct {
     const char* name;
     double cooldown;
@@ -128,77 +123,21 @@ typedef struct {
     SDL_Mutex* mutex;
 } fluid_sfx_bank;
 
-static const Uint8 water_slosh_1_wav[] = {
-#embed FLUIDS_WATER_SLOSH_1_SFX_PATH
-};
-static const Uint8 water_slosh_2_wav[] = {
-#embed FLUIDS_WATER_SLOSH_2_SFX_PATH
-};
-static const Uint8 water_slosh_3_wav[] = {
-#embed FLUIDS_WATER_SLOSH_3_SFX_PATH
-};
-static const Uint8 water_slosh_4_wav[] = {
-#embed FLUIDS_WATER_SLOSH_4_SFX_PATH
-};
-static const Uint8 water_slosh_5_wav[] = {
-#embed FLUIDS_WATER_SLOSH_5_SFX_PATH
-};
+static const fluid_sfx_file ripple_sfx_files[] = {FLUID_RIPPLE_WAV_FILES};
+static const fluid_sfx_file splash_sfx_files[] = {FLUID_SPLASH_WAV_FILES};
 
-static const Uint8 water_splash_1_wav[] = {
-#embed FLUIDS_WATER_SPLASH_1_SFX_PATH
-};
-static const Uint8 water_splash_2_wav[] = {
-#embed FLUIDS_WATER_SPLASH_2_SFX_PATH
-};
-static const Uint8 water_splash_3_wav[] = {
-#embed FLUIDS_WATER_SPLASH_3_SFX_PATH
-};
-
-static const Uint8 lava_splash_1_wav[] = {
-#embed FLUIDS_LAVA_SPLASH_1_SFX_PATH
-};
-
-static const Uint8 acid_splash_1_wav[] = {
-#embed FLUIDS_ACID_SPLASH_1_SFX_PATH
-};
-
-static const Uint8 sludge_splash_1_wav[] = {
-#embed FLUIDS_SLUDGE_SPLASH_1_SFX_PATH
-};
-static const Uint8 sludge_splash_2_wav[] = {
-#embed FLUIDS_SLUDGE_SPLASH_2_SFX_PATH
-};
-
-static const fluid_sfx_file slosh_sfx_files[] = {
-    {fluid_water, water_slosh_1_wav, sizeof(water_slosh_1_wav)},
-    {fluid_water, water_slosh_2_wav, sizeof(water_slosh_2_wav)},
-    {fluid_water, water_slosh_3_wav, sizeof(water_slosh_3_wav)},
-    {fluid_water, water_slosh_4_wav, sizeof(water_slosh_4_wav)},
-    {fluid_water, water_slosh_5_wav, sizeof(water_slosh_5_wav)},
-    {fluid_lava, NULL, 0},
-    {fluid_acid, NULL, 0},
-    {fluid_sludge, NULL, 0},
-};
-static const fluid_sfx_file splash_sfx_files[] = {
-    {fluid_water, water_splash_1_wav, sizeof(water_splash_1_wav)},
-    {fluid_water, water_splash_2_wav, sizeof(water_splash_2_wav)},
-    {fluid_water, water_splash_3_wav, sizeof(water_splash_3_wav)},
-    {fluid_lava, lava_splash_1_wav, sizeof(lava_splash_1_wav)},
-    {fluid_acid, acid_splash_1_wav, sizeof(acid_splash_1_wav)},
-    {fluid_sludge, sludge_splash_1_wav, sizeof(sludge_splash_1_wav)},
-    {fluid_sludge, sludge_splash_2_wav, sizeof(sludge_splash_2_wav)},
-};
-
-static fluid_sfx_bank slosh_sfx = {
-    .name = "slosh",
-    .files = slosh_sfx_files,
-    .files_total = SDL_arraysize(slosh_sfx_files),
+static fluid_sfx_bank ripple_sfx = {
+    .name = "ripple",
+    .files = ripple_sfx_files,
+    .files_total = SDL_arraysize(ripple_sfx_files),
 };
 static fluid_sfx_bank splash_sfx = {
     .name = "splash",
     .files = splash_sfx_files,
     .files_total = SDL_arraysize(splash_sfx_files),
 };
+
+
 
 // Only the fluids thread writes on `grid`, locking `grid_mutex` while it does,
 // so it reads it without locking and other threads lock to read it. Writes
@@ -263,53 +202,18 @@ typedef struct {
     dynarr free_ids;
 } body_pool;
 
-// Bodies of fluid found by `FLUIDS_play_bgs()`, on a copy of the simulated
-// rect of their own, since they're found off the fluids thread. `body_ids` maps
-// each cell of `bodies_buffer` to the id + 1 of the body of each fluid type
-// it's on, `0` being no body. Once the bodies are compacted, only whether it's
-// `0` still holds. They aren't locked, so they're only used by the thread
-// finding them.
 static fluids bodies_buffer[SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
                            [SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y] = {0};
 static size_t body_ids[FLUIDS_TOTAL][SIMULATION_SPACE_X * FLUIDS_SPLIT_X]
                       [SIMULATION_SPACE_Y * FLUIDS_SPLIT_Y] = {0};
 static body_pool bodies = (body_pool){0};
 
-// The tracks each fluid type's bodies play, `bgs_track_none` for no track.
 typedef struct {
     bgs_track static_bgs;
     bgs_track running_bgs;
 } fluid_bgs;
-static const fluid_bgs body_bgs[FLUIDS_TOTAL] = {
-    [fluid_water] =
-        {
-            .static_bgs = bgs_track_none,
-            .running_bgs = bgs_track_water_streaming,
-        },
-    [fluid_lava] =
-        {
-            .static_bgs = bgs_track_lava_bubbling,
-            .running_bgs = bgs_track_none,
-        },
-    [fluid_acid] =
-        {
-            .static_bgs = bgs_track_acid_fizz,
-            .running_bgs = bgs_track_none,
-        },
-    [fluid_sludge] =
-        {
-            .static_bgs = bgs_track_sludge_bubbling,
-            .running_bgs = bgs_track_none,
-        },
-};
+static const fluid_bgs body_bgs[FLUIDS_TOTAL] = {BGS_BODY_TRACKS};
 
-// Each fluid type's volumes, from `FLUIDS_AUDIO_CSV_PATH`. Its static track
-// plays at up to `static_max_vol`, reached when a body's total volume is at
-// `static_max_vol_at`, and its running track at up to `running_max_vol`,
-// reached when a body's moving cells are at `running_max_vol_at`. A `0` on
-// either `_at` means its track doesn't scale with it. Splashes play at
-// `splash_vol` and ripples at up to `ripple_vol`, by their strength. A `0`
-// volume is for a sound it doesn't have.
 typedef struct {
     float static_max_vol;
     double static_max_vol_at;
@@ -320,8 +224,6 @@ typedef struct {
 } fluid_audio;
 static fluid_audio audio[FLUIDS_TOTAL] = {0};
 
-// Pixels off the camera at which every fluid track and sound goes silent, from
-// `FLUIDS_AUDIO_CSV_PATH`.
 static double falloff_range = 0.0;
 
 // We treat these differently from sprites and bodies because these particles
@@ -507,15 +409,13 @@ static void load_ripples_data(const char* csv) {
 static void load_audio_data(const char* csv) {
     parsing_field keys[] = {
         {"splash_cooldown", parsing_double, &splash_sfx.cooldown},
-        {"ripple_cooldown", parsing_double, &slosh_sfx.cooldown},
+        {"ripple_cooldown", parsing_double, &ripple_sfx.cooldown},
         {"falloff_range", parsing_double, &falloff_range},
     };
     dynarr parsed = CSV_parse_section(csv, 0);
     read_csv_keys(&parsed, keys, SDL_arraysize(keys));
     CSV_free(&parsed);
 
-    // Rows can be in any order, so they're read here and then placed on
-    // `audio` by their fluid.
     struct {
         fluid_type type;
         fluid_audio audio;
@@ -670,7 +570,7 @@ void FLUIDS_start(void) {
     load_fluid_particles_data(fluid_particles_csv);
     load_ripples_data(ripples_csv);
     load_audio_data(audio_csv);
-    load_sfx_bank(&slosh_sfx);
+    load_sfx_bank(&ripple_sfx);
     load_sfx_bank(&splash_sfx);
     order_fluids_by_density();
     stagger_move_timers();
@@ -711,7 +611,7 @@ void FLUIDS_start(void) {
 }
 
 void FLUIDS_stop(void) {
-    unload_sfx_bank(&slosh_sfx);
+    unload_sfx_bank(&ripple_sfx);
     unload_sfx_bank(&splash_sfx);
     clear_queue(&mods, &mods_mutex);
     clear_queue(&queued_particles, &queued_particles_mutex);
@@ -2196,7 +2096,7 @@ void FLUIDS_ripple_at(Uint32 x, Uint32 y, Uint32 size, double strength) {
     if (strength > 0.0 && is_ripple_deep(x, y) &&
         get_ripple_fluid(x, y, size, &type))
         play_sfx_bank(
-            &slosh_sfx, type, x, y, (float)strength * audio[type].ripple_vol);
+            &ripple_sfx, type, x, y, (float)strength * audio[type].ripple_vol);
 }
 
 

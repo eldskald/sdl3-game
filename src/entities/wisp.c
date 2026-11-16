@@ -135,10 +135,6 @@ static void on_move_finished(size_t entity_id,
 
 // It always plays its flying animation, facing where it last went sideways.
 static void update_sprite(wisp_state* s, body b) {
-    if (b.vel_x > EPSILON)
-        s->facing = 1;
-    else if (b.vel_x < -EPSILON)
-        s->facing = -1;
     sprite spr = (sprite){0};
     SPRITES_get_sprite(s->sprite_id, &spr);
     spr.pos_x = (Sint32)SDL_round(b.x) + data.offset_x;

@@ -5,13 +5,10 @@
 #include "../src/paths.h"
 
 #undef CHUNKS_PLATFORMS_CSV_PATH
-#undef CHUNKS_TYPES_MAP_CSV_PATH
 #undef CHUNKS_001_PATH
-#undef CHUNKS_002_PATH
-#undef CHUNKS_003_PATH
-#undef CHUNKS_004_PATH
 #undef TILEMAP_DIRT_AUTOTILE_PATH
 #undef TILEMAP_STONE_AUTOTILE_PATH
+#undef TILEMAP_TILES_CSV_PATH
 #undef FLUIDS_CSV_PATH
 #undef FLUIDS_PARTICLES_CSV_PATH
 #undef FLUIDS_RIPPLES_CSV_PATH
@@ -24,13 +21,9 @@
 #undef BGS_LAVA_BUBBLING_PATH
 
 // Chunks
-#define CHUNKS_PLATFORMS_CSV_PATH "tests/mocks/tiles/platforms.csv"
-#define CHUNKS_TYPES_MAP_CSV_PATH "tests/mocks/tiles/types-map.csv"
-// There's a single mocked chunk, so every chunk is it.
+#define CHUNKS_PLATFORMS_CSV_PATH "tests/mocks/simulation/platforms.csv"
+#define TILEMAP_TILES_CSV_PATH "tests/mocks/simulation/tiles.csv"
 #define CHUNKS_001_PATH "tests/mocks/chunks/001.json"
-#define CHUNKS_002_PATH CHUNKS_001_PATH
-#define CHUNKS_003_PATH CHUNKS_001_PATH
-#define CHUNKS_004_PATH CHUNKS_001_PATH
 
 // Tilemap
 #define TILEMAP_DIRT_AUTOTILE_PATH "tests/mocks/editor/autotiles/dirt.json"
@@ -49,22 +42,15 @@
 #define PHYSICS_PROPS_CSV_PATH "tests/mocks/graphics/props.csv"
 
 // Text
-// Able 5's glyphs are replaced by a mock font 4 pixels tall, with glyphs
-// drawing to the left of where they're drawn and past their width.
 #define TEXT_ABLE_5_PATH "tests/mocks/fonts/mock.hex"
 
 // BGS
-// The cave track is 1s of a sine in stereo at 44100Hz, longer than the buffer
-// so it's never all decoded at once, looping from 50ms to 100ms, shorter than
-// the buffer so filling it has to loop.
 #define BGS_TRACKS_CSV_PATH "tests/mocks/audio/tracks.csv"
 #define BGS_CAVE_PATH "tests/mocks/audio/track.ogg"
-// The fluids' tracks are the same mock, so they don't bloat the tests.
-#define BGS_WATER_STREAMING_PATH BGS_CAVE_PATH
-#define BGS_LAVA_BUBBLING_PATH BGS_CAVE_PATH
+#define BGS_WATER_RUNNING_PATH BGS_CAVE_PATH
+#define BGS_LAVA_STATIC_PATH BGS_CAVE_PATH
 
 // Graphics
-// Shaders only the graphics tests use, compiled by `bin/compile-shaders`.
 #define TEST_GRAPHICS_RECTS_VERT_SPIRV_PATH "tests/mocks/shaders/rects.vert.spv"
 #define TEST_GRAPHICS_RECTS_VERT_DXIL_PATH "tests/mocks/shaders/rects.vert.dxil"
 #define TEST_GRAPHICS_MASK_FRAG_SPIRV_PATH "tests/mocks/shaders/mask.frag.spv"

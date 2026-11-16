@@ -1,19 +1,75 @@
 #!/bin/bash
 
-c_out=out/out.h
+# GENERATE DEFS
+#
+# To understand this script, it's easier to first understand the problem it's trying to solve.
+# So, this project is organized with a bunch of CSV and JSON data files. Want to change the
+# animation frames of the player's running cycle? There's a CSV file for that. Want to change
+# the volume of a sound effect? There's a CSV for that. Want to change or create a reaction
+# between two fluids? Again, there's a CSV for that. Editing CSV files is way more convenient
+# than editing header file constants.
+#
+# This workflow also allows us to treat things like fluids, tiles, enemies and even particle
+# effects as pure data, we create/edit them in CSV files and the game engine handles the rest.
+# But how is everything wired? On the C side, most things are enums, for example, tile materials
+# and fluids are all fluids so if any part of the code like reactions or player step sounds
+# needs to know what fluid or tile it is interacting with, they use enums.
+#
+# That means editing the CSV files to create a new fluid isn't enough: one also has to create
+# its equivalent enum and wire loading its data from the CSV with the newly created enum. But
+# that's not all: most things have other files associated with them, like sound effects or
+# shaders. So to create a new fluid you have to create its CSV data, then the C enum and wire
+# it to the CSV, then you'll have to put all its splash sound effects, bubbling loop sounds,
+# the shader that control its looks and create its particle effects (which all have to go
+# through a similar process for creating particle effects) and pass all their file paths and
+# wire them correctly to the newly created enum, also on the C side.
+#
+# You can see how it can get inconvenient to iterate on designs, and extremely error prone.
+# Shaders are a delicate thing too because each particle effect and fluid enum needs also
+# an equivalent on HLSL, and their values must match the C enums, which means editing can
+# be a nightmare.
+#
+# This is the problem this script is trying to solve. Everything that comes after the "create
+# the CSV entry" is manual repetitive labor, easy to automate.
+#
+# So we are going to treat all of these elements as pure data. If I want to create a new fluid,
+# I should just add the new fluid on the fluids CSV file and this script will scan it and do
+# all the rest of the wiring for me. All SFX and BGS files are associated to its entities,
+# fluids or tiles specifically by path, so adding or removing a footstep SFX is just a matter
+# of adding/removing a WAV file on the correct dir, this file will scan all the data and res
+# files and wire everything automatically.
+
+c_defs=out/defs.h
+c_paths=out/paths.h
+
 fluids_hlsl_out=out/out_fluids.hlsli
 fluids_hlsl_includes_out=out/out_includes.hlsli
 particles_hlsl_out=out/out_particles.hlsli
 
+tiles_csv=data/simulation/tiles.csv
 fluids_csv=data/simulation/fluids.csv
 particles_csv=data/graphics/particles.csv
+bgs_csv=data/audio/tracks.csv
+
+chunks_dir=data/chunks
+
+sfx_dir=res/sfx
+bgs_ambience_dir=res/bgs/ambience
+bgs_fluids_dir=res/bgs/fluids
+
+
 
 mkdir -p out
 
-rm -f $c_out
-touch $c_out
-echo "#pragma once" >> $c_out
-echo "" >> $c_out
+rm -f $c_defs
+touch $c_defs
+echo "#pragma once" >> $c_defs
+echo "" >> $c_defs
+
+rm -f $c_paths
+touch $c_paths
+echo "#pragma once" >> $c_paths
+echo "" >> $c_paths
 
 rm -f $fluids_hlsl_out
 touch $fluids_hlsl_out
@@ -33,17 +89,39 @@ echo "#ifndef PARTICLES_OUT" >> $particles_hlsl_out
 echo "#define PARTICLES_OUT" >> $particles_hlsl_out
 echo "" >> $particles_hlsl_out
 
+fluids=""
+tiles=""
+
+
+
+echo "Generating tile defs..."
+
+cdefs=""
+count=1
+while IFS=, read -r tile _; do
+    [[ $tile == "type" ]] && continue
+    tiles+="${tile} "
+    cdefs+="tile_${tile}, "
+    ((count++))
+done < $tiles_csv
+cdefs="${cdefs%??}" # Trim last two chars (a comma and a space)
+echo "#define TILEMAP_TILE_TYPES tile_none, ${cdefs}" >> $c_defs
+echo "#define TILEMAP_TILE_TYPES_TOTAL ${count}" >> $c_defs
+
+echo "Tile defs generated successfully."
+
 
 
 echo "Generating fluid defs..."
+echo "" >> $c_defs 
 
+# Fluid defines
 cdefs=""
 cmap=""
 count=0
-
-# Fluid defines
 while IFS=, read -r fluid _; do
-    [[ "$fluid" == "fluid" ]] && continue
+    [[ $fluid == "fluid" ]] && continue
+    fluids+="${fluid} "
     cdefs+="fluid_${fluid}, "
     cmap+="set_on_hashmap(&(fluid_type){fluid_${fluid}}, \"${fluid}\", X);"
     ((count++))
@@ -52,23 +130,23 @@ done < $fluids_csv
 cdefs="${cdefs%??}" # Trim last two chars (a comma and a space)
 cmap="${cmap%?}" # Trim the last semi colon
 
-echo "#define FLUIDS_TYPES ${cdefs}" >> $c_out
-echo "#define FLUIDS_TOTAL ${count}" >> $c_out
-echo "#define FLUIDS_CSV_STRING_MAP(X) ${cmap}" >> $c_out
-echo "" >> $c_out
+echo "#define FLUIDS_TYPES ${cdefs}" >> $c_defs
+echo "#define FLUIDS_TOTAL ${count}" >> $c_defs
+echo "#define FLUIDS_CSV_STRING_MAP(X) ${cmap}" >> $c_defs
+echo "" >> $c_defs
 echo "" >> $fluids_hlsl_out
 echo "#endif" >> $fluids_hlsl_out
 
 # Fluid include files
 while IFS=, read -r fluid _; do
-    [[ "$fluid" == "fluid" ]] && continue
+    [[ $fluid == "fluid" ]] && continue
     echo "#include \"includes/${fluid}.hlsli\"" >> $fluids_hlsl_includes_out
 done < $fluids_csv
 
 # fluid_bubbles HLSL function
 macro="#define FLUID_BUBBLES(uv) "
 while IFS=, read -r fluid _; do
-    [[ "$fluid" == "fluid" ]] && continue
+    [[ $fluid == "fluid" ]] && continue
     macro+="case FLUIDS_${fluid^^}: return ${fluid}_bubbles(uv);" >> $fluids_hlsl_includes_out
 done < $fluids_csv
 macro+="default: return 0.0"
@@ -78,7 +156,7 @@ echo $macro >> $fluids_hlsl_includes_out
 # fluid_particles HLSL function
 macro="#define FLUID_PARTICLES(pos, cell_size, volume, dt, seed) "
 while IFS=, read -r fluid _; do
-    [[ "$fluid" == "fluid" ]] && continue
+    [[ $fluid == "fluid" ]] && continue
     macro+="case FLUIDS_${fluid^^}: return ${fluid}_particles(pos, cell_size, volume, dt, seed);" >> $fluids_hlsl_includes_out
 done < $fluids_csv
 macro+="default: return (Request)0"
@@ -88,7 +166,7 @@ echo $macro >> $fluids_hlsl_includes_out
 # fluid_col HLSL function
 macro="#define FLUID_COL(uv, bg, n, o, u, l, d, r) "
 while IFS=, read -r fluid _; do
-    [[ "$fluid" == "fluid" ]] && continue
+    [[ $fluid == "fluid" ]] && continue
     macro+="case FLUIDS_${fluid^^}: return ${fluid}_col(uv, bg, n, o, u, l, d, r);" >> $fluids_hlsl_includes_out
 done < $fluids_csv
 macro+="default: return 0.0"
@@ -101,6 +179,24 @@ echo "Fluid defs generated successfully."
 
 
 
+echo "Generating BGS defs..."
+
+macro=""
+count=1
+while IFS=, read -r track _; do
+    [[ $track == "track" ]] && continue
+    macro+="bgs_track_${track}, "
+    ((count++))
+done < $bgs_csv
+echo "#define BGS_TRACKS ${macro}" >> $c_defs
+echo "#define BGS_TRACKS_TOTAL ${count}" >> $c_defs
+echo "" >> $c_defs
+
+echo "BGS defs generated successfully."
+
+
+
+
 echo "Generating particle defs..."
 
 cdefs=""
@@ -108,19 +204,141 @@ cmap=""
 count=1
 
 while IFS=, read -r particle _; do
-    [[ "$particle" == "particle" ]] && continue
+    [[ $particle == "particle" ]] && continue
     cdefs+="particle_${particle}, "
     cmap+="set_on_hashmap(&(particle_type){particle_${particle}}, \"${particle}\", X);"
     echo "#define PARTICLES_${particle^^} ${count}" >> $particles_hlsl_out
     ((count++))
 done < $particles_csv
 
-echo "#define PARTICLES_TYPES ${cdefs}" >> $c_out
-echo "#define PARTICLES_CSV_STRING_MAP(X) ${cmap}" >> $c_out
-echo "#define PARTICLES_TOTAL ${count}" >> $c_out
-echo "" >> $c_out
+echo "#define PARTICLES_TYPES ${cdefs}" >> $c_defs
+echo "#define PARTICLES_CSV_STRING_MAP(X) ${cmap}" >> $c_defs
+echo "#define PARTICLES_TOTAL ${count}" >> $c_defs
+echo "" >> $c_defs
 
 echo "" >> $particles_hlsl_out
 echo "#endif" >> $particles_hlsl_out
 
 echo "Particle defs generated successfully."
+
+
+
+echo "Generating chunk paths..."
+
+count=0
+macro=""
+echo "#ifndef TEST" >> $c_paths
+for file in $(find "$chunks_dir" -type f -name '*.json'); do
+    filename=${file/"${chunks_dir}/"/}
+    name="chunk${filename/".json"/}"
+    echo "static const char ${name}[] = {" >> $c_paths
+    echo "#embed \"${file}\" suffix(, '\0')" >> $c_paths
+    echo "};" >> $c_paths
+    macro+="chunks[${count}] = load_from_json(${name});"
+    ((count++))
+done
+macro="${macro%?}"
+echo "#define CHUNKS_TOTAL ${count}" >> $c_paths
+echo "#define CHUNKS_LOAD ${macro}" >> $c_paths
+echo "#else" >> $c_paths
+echo "static const char chunk001[] = {" >> $c_paths
+echo "#embed \"tests/mocks/chunks/001.json\" suffix(, '\0')" >> $c_paths
+echo "};" >> $c_paths
+echo "#define CHUNKS_TOTAL 1" >> $c_paths
+echo "#define CHUNKS_LOAD chunks[0] = load_from_json(chunk001);" >> $c_paths
+echo "#endif" >> $c_paths
+
+echo "Chunk paths generated successfully."
+
+
+
+echo "Generating WAV paths..."
+
+for sfx in footsteps land; do
+    for type in tile fluid; do
+        arr=""
+        echo "" >> $c_paths
+        for file in $(find "${sfx_dir}/${sfx}/${type}" -type f -name '*.wav'); do
+            IFS=/ read -r key filename <<< ${file/"${sfx_dir}/${sfx}/${type}/"/}
+            name="${sfx}_${key}_${filename/".wav"/}_wav"
+            echo "static const unsigned char ${name}[] = {" >> $c_paths
+            echo "#embed \"${file}\"" >> $c_paths
+            echo "};" >> $c_paths
+            arr+="{${type}_${key}, ${name}, sizeof(${name})},"
+        done
+        echo "#define ${type^^}_${sfx^^}_WAV_FILES ${arr}" >> $c_paths
+    done
+done
+
+for sfx in splash ripple; do
+    arr=""
+    echo "" >> $c_paths
+    for file in $(find "${sfx_dir}/${sfx}" -type f -name '*.wav'); do
+        IFS=/ read -r key filename <<< ${file/"${sfx_dir}/${sfx}/"/}
+        name="${sfx}_${key}_${filename/".wav"/}_wav"
+        echo "static const unsigned char ${name}[] = {" >> $c_paths
+        echo "#embed \"${file}\"" >> $c_paths
+        echo "};" >> $c_paths
+        arr+="{fluid_${key}, ${name}, sizeof(${name})},"
+    done
+    echo "#define FLUID_${sfx^^}_WAV_FILES ${arr}" >> $c_paths
+done
+
+echo "SFX paths generated successfully."
+
+
+
+echo "Generating OGG paths..."
+
+declare -A map
+for fluid in $fluids; do
+    map[$fluid]="0-0"
+done
+
+map_track() {
+    IFS=- read -r prev_sta prev_run <<< ${map[$1]}
+    if [[ $2 == "static" ]]; then
+        map[$1]="1-${prev_run}"
+    elif [[ $2 == "running" ]]; then
+        map[$1]="${prev_sta}-1"
+    fi
+}
+
+# Fluid track paths
+echo "" >> $c_paths
+sources=""
+for file in $(find $bgs_fluids_dir -type f -name '*.ogg'); do
+    filename=${file/"${bgs_fluids_dir}/"/}
+    filename=${filename/".ogg"/}
+    IFS=- read -r fluid track <<< $filename
+    name="${fluid}_${track}_ogg"
+    echo "static const unsigned char ${name}[] = {" >> $c_paths
+    echo "#embed \"${file}\"" >> $c_paths
+    echo "};" >> $c_paths
+    sources+="[bgs_track_${fluid}_${track}]={\"${fluid}_${track}\",${name},sizeof(${name}),audio_bus_gameplay_sounds},"
+    map_track $fluid $track
+done
+echo "#define BGS_FLUID_TRACKS ${sources}" >> $c_paths
+
+# Fluid track per fluid map
+macro=""
+for fluid in $fluids; do
+    IFS=- read -r static running <<< ${map[$fluid]}
+    macro+="[fluid_${fluid}] = { .static_bgs = $( [[ $static == "1" ]] && echo "bgs_track_${fluid}_static" || echo "bgs_track_none" ), .running_bgs = $( [[ $running == "1" ]] && echo "bgs_track_${fluid}_running" || echo "bgs_track_none" ) }, "
+done
+echo "#define BGS_BODY_TRACKS ${macro}" >> $c_paths
+
+# Ambience tracks
+echo "" >> $c_paths
+sources=""
+for file in $(find "$bgs_ambience_dir" -type f -name '*.ogg'); do
+    filename=${file/"${bgs_ambience_dir}/"/}
+    name=${filename/".ogg"/}
+    echo "static const unsigned char ${name}_ogg[] = {" >> $c_paths
+    echo "#embed \"${file}\"" >> $c_paths
+    echo "};" >> $c_paths
+    sources+="[bgs_track_${name}]={\"${name}\",${name}_ogg,sizeof(${name}_ogg),audio_bus_ambience_tracks},"
+done
+echo "#define BGS_AMBIENCE_TRACKS ${sources}" >> $c_paths
+
+echo "OGG paths generated successfully."
