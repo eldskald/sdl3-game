@@ -12,12 +12,22 @@
             "workingDirectory": "/home/rafael/dev/sdl3-game"
         },
         {
+            "arguments": "dev_level=%mapfile muted",
+            "command": "/home/rafael/dev/sdl3-game/dev.x86_64",
+            "enabled": true,
+            "name": "Run Muted",
+            "saveBeforeExecute": true,
+            "shortcut": "F9",
+            "showOutput": true,
+            "workingDirectory": "/home/rafael/dev/sdl3-game"
+        },
+        {
             "arguments": "",
             "command": "/home/rafael/dev/sdl3-game/bin/dev",
             "enabled": true,
             "name": "Compile",
             "saveBeforeExecute": true,
-            "shortcut": "F9",
+            "shortcut": "F10",
             "showOutput": true,
             "workingDirectory": "/home/rafael/dev/sdl3-game"
         }

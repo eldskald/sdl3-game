@@ -27,6 +27,7 @@ typedef struct {
 
     Uint32 face_vel;
     float damping;
+    float tan_acc;
     float slither_freq;
     float slither_amp;
 
@@ -49,7 +50,6 @@ typedef struct {
     float trail_speed_jitter;
 
     Uint32 group;
-    int pad1;
 } gpu_type;
 
 // Matches `Request` on `src/gpu/includes/particles-common.hlsli`.
@@ -102,6 +102,7 @@ typedef struct {
     bool face_vel;
     float acc_x, acc_y;
     float damping;
+    float tan_acc;
     float slither_amp;
     float slither_freq;
 
@@ -221,6 +222,7 @@ static void load_types(void) {
         {"face_vel", parsing_bool, &rows->face_vel},
         {"acc_x", parsing_float, &rows->acc_x},
         {"acc_y", parsing_float, &rows->acc_y},
+        {"tan_acc", parsing_float, &rows->tan_acc},
         {"damping", parsing_float, &rows->damping},
         {"slither_amp", parsing_float, &rows->slither_amp},
         {"slither_freq", parsing_float, &rows->slither_freq},

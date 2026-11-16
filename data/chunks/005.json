@@ -232,7 +232,7 @@
          "name":"PlayerSpawn",
          "objects":[
                 {
-                 "gid":1090,
+                 "gid":1089,
                  "height":16,
                  "id":15,
                  "name":"",
@@ -374,7 +374,7 @@
          "source":"..\/..\/editor\/helper-tiles.tsx"
         }, 
         {
-         "firstgid":1090,
+         "firstgid":1089,
          "source":"..\/..\/editor\/entity-tiles.tsx"
         }],
  "tilewidth":8,

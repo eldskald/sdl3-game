@@ -9,6 +9,7 @@
 #include "utils/logger.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_log.h>
 
 typedef struct {
     const char* name;
@@ -33,50 +34,13 @@ typedef struct {
 
 
 
-static const Uint8 cave_ogg[] = {
-#embed BGS_CAVE_PATH
-};
-static const Uint8 water_streaming_ogg[] = {
-#embed BGS_WATER_STREAMING_PATH
-};
-static const Uint8 lava_bubbling_ogg[] = {
-#embed BGS_LAVA_BUBBLING_PATH
-};
-static const Uint8 acid_fizz_ogg[] = {
-#embed BGS_ACID_FIZZ_PATH
-};
-static const Uint8 sludge_bubbling_ogg[] = {
-#embed BGS_SLUDGE_BUBBLING_PATH
-};
 static const char tracks_csv[] = {
 #embed BGS_TRACKS_CSV_PATH suffix(, '\0')
 };
 
-// Fluids' tracks are sounds of the gameplay, so they're on the same bus as the
-// SFX and follow their volume instead of the ambience's.
 static const track_source sources[BGS_TRACKS_TOTAL] = {
-    [bgs_track_cave] = {"cave",
-                        cave_ogg,
-                        sizeof(cave_ogg),
-                        audio_bus_ambience_tracks},
-    [bgs_track_water_streaming] = {"water_streaming",
-                                   water_streaming_ogg,
-                                   sizeof(water_streaming_ogg),
-                                   audio_bus_gameplay_sounds},
-    [bgs_track_lava_bubbling] = {"lava_bubbling",
-                                 lava_bubbling_ogg,
-                                 sizeof(lava_bubbling_ogg),
-                                 audio_bus_gameplay_sounds},
-    [bgs_track_acid_fizz] = {"acid_fizz",
-                             acid_fizz_ogg,
-                             sizeof(acid_fizz_ogg),
-                             audio_bus_gameplay_sounds},
-    [bgs_track_sludge_bubbling] = {"sludge_bubbling",
-                                   sludge_bubbling_ogg,
-                                   sizeof(sludge_bubbling_ogg),
-                                   audio_bus_gameplay_sounds},
+    BGS_AMBIENCE_TRACKS BGS_FLUID_TRACKS};
 
-};
 static track_data tracks[BGS_TRACKS_TOTAL] = {0};
 static SDL_Mutex* tracks_mutex = NULL;
 static float scratch[BGS_DECODE_CHUNK_SAMPLES] = {0};
@@ -198,7 +162,6 @@ static void load_rows(void) {
     SDL_free(rows);
 }
 
-// Its stream's output format is set to the device's when bound.
 static void load_track(bgs_track track) {
     const track_source* s = &sources[track];
     track_data* t = &tracks[track];
@@ -318,8 +281,6 @@ void BGS_update(void) {
     SDL_UnlockMutex(tracks_mutex);
 }
 
-// Streams go first, since destroying one waits for its device to be done with
-// it, and only then their decoders.
 void BGS_stop(void) {
     for (bgs_track track = bgs_track_none + 1; track < BGS_TRACKS_TOTAL;
          track++) {
