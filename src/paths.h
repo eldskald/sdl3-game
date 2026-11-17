@@ -83,8 +83,8 @@
 #define PARTICLES_VERT_DXIL_PATH           "shaders/particles.vert.dxil"
 #define PARTICLES_FRAG_SPIRV_PATH          "shaders/particles.frag.spv"
 #define PARTICLES_FRAG_DXIL_PATH           "shaders/particles.frag.dxil"
-#define PARTICLES_SHADER_GLOW_SPIRV_PATH   "shaders/particles-glow.frag.spv"
-#define PARTICLES_SHADER_GLOW_DXIL_PATH    "shaders/particles-glow.frag.dxil"
+#define PARTICLES_SHADER_FLAMES_SPIRV_PATH "shaders/particles-flames.frag.spv"
+#define PARTICLES_SHADER_FLAMES_DXIL_PATH  "shaders/particles-flames.frag.dxil"
 
 
 

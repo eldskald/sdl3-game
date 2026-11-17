@@ -38,8 +38,6 @@ static const float2 CORNERS[6] = {
 
 output main(uint vertex: SV_VertexID, uint instance: SV_InstanceID) {
     output o;
-    // Instances are the live particles of `_Group`, listed by the compaction
-    // pass, so there are no dead ones to skip.
     uint slot = _AliveIndices[_Group * _ParticleBufferCap + instance];
     Particle p = _Particles[slot];
     ParticleType t = _Types[p.type];
@@ -52,9 +50,9 @@ output main(uint vertex: SV_VertexID, uint instance: SV_InstanceID) {
     float s = -p.vel.y / speed;
     float c = p.vel.x / speed;
     float2x2 rot = float2x2(c, -s, s, c);
-    corner_vec = t.face_vel > 0 ? mul(corner_vec, rot) : corner_vec;
+    corner_vec = t.face_vel > 0 && speed > 0 ? mul(corner_vec, rot) : corner_vec;
 
-    float2 tan = normalize(float2(-p.vel.y, p.vel.x));
+    float2 tan = norm(float2(-p.vel.y, p.vel.x));
     float2 slither = tan * t.slither_amp * sin(TAU * t.slither_freq * p.age);
     float derivative = TAU * t.slither_amp * t.slither_freq *
                        cos(TAU * t.slither_freq * p.age);
