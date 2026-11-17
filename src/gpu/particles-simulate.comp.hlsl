@@ -43,9 +43,9 @@ void die(inout Particle p, ParticleType t, float2 normal) {
             // like at the top of an arc, so that's where the death particles
             // go instead. Without acceleration either, they spawn still.
             float2 dir = float2(0.0, 0.0);
-            if (length(p.vel) > EPSILON)
+            if (dot(p.vel, p.vel) > EPSILON)
                 dir = normalize(p.vel);
-            else if (length(t.acc) > EPSILON)
+            else if (dot(t.acc, t.acc) > EPSILON)
                 dir = -normalize(t.acc);
             r.vel = bounce(dir, normal) * t.death_speed;
 
@@ -75,9 +75,9 @@ void trail(inout Particle p, ParticleType t) {
 
             // Same logic as death particles
             float2 dir = float2(0.0, 0.0);
-            if (length(p.vel) > EPSILON)
+            if (dot(p.vel, p.vel) > EPSILON)
                 dir = normalize(p.vel);
-            else if (length(t.acc) > EPSILON)
+            else if (dot(t.acc, t.acc) > EPSILON)
                 dir = -normalize(t.acc);
             r.vel = -dir * t.trail_speed;
 
@@ -110,9 +110,9 @@ void main(uint3 id: SV_DispatchThreadID) {
         die(p, t, float2(0.0, 0.0));
     } else {
 
-        float2 tan = normalize(float2(-p.vel.y, p.vel.x));
+        float2 tan = norm(float2(-p.vel.y, p.vel.x));
         float2 acc = t.acc + tan * t.tan_acc;
-        p.vel += acc * _Dt;
+        p.vel += t.acc * _Dt;
         p.vel *= pow((1.0 - t.damping), _Dt);
         float2 move = p.vel * _Dt;
         float2 next = p.pos + move;

@@ -3,6 +3,7 @@
 #include "defs.h"
 #include "engine/entity.h"
 #include "engine/game-manager.h"
+#include "engine/particles.h"
 #include "engine/physics.h"
 #include "engine/sprites.h"
 #include "paths.h"
@@ -10,6 +11,7 @@
 #include "services/csv.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_log.h>
 
 // What a wisp is doing. It's `wisp_idle` while the player is close enough, and
 // `wisp_following` while flying towards them. When it can't move from where it
@@ -39,10 +41,9 @@ typedef struct {
 // What each wisp keeps on its entity's `state`. `retry_timer` counts down to
 // when it tries to move again while it's `wisp_out_of_reach`.
 typedef struct {
-    size_t sprite_id;
-    Sint8 facing;
     wisp_mode mode;
     double retry_timer;
+    double time;
 } wisp_state;
 
 static const char wisp_csv[] = {
@@ -56,27 +57,12 @@ static wisp_data data = (wisp_data){0};
 static void on_create(size_t entity_id) {
     entity e = (entity){0};
     ENTITY_get_entity(entity_id, &e);
-    wisp_state* s = e.state;
-    SPRITES_new_sprite(
-        (sprite){
-            .coords_x = data.coords_x,
-            .coords_y = data.coords_y,
-            .coords_w = data.coords_w,
-            .coords_h = data.coords_h,
-            .tint_r = 1.0,
-            .tint_g = 1.0,
-            .tint_b = 1.0,
-            .tint_a = 1.0,
-        },
-        &s->sprite_id);
-    SPRITES_play_anim(s->sprite_id, data.fly_anim);
 }
 
 static void on_destroy(size_t entity_id) {
     entity e = (entity){0};
     ENTITY_get_entity(entity_id, &e);
     wisp_state* s = e.state;
-    SPRITES_del_sprite(s->sprite_id);
     SDL_free(s);
 }
 
@@ -133,16 +119,6 @@ static void on_move_finished(size_t entity_id,
     decide(entity_id, e.state);
 }
 
-// It always plays its flying animation, facing where it last went sideways.
-static void update_sprite(wisp_state* s, body b) {
-    sprite spr = (sprite){0};
-    SPRITES_get_sprite(s->sprite_id, &spr);
-    spr.pos_x = (Sint32)SDL_round(b.x) + data.offset_x;
-    spr.pos_y = (Sint32)SDL_round(b.y) + data.offset_y;
-    spr.flip_mode = s->facing == 1 ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL;
-    SPRITES_edit_sprite(s->sprite_id, spr);
-}
-
 // Moves only start here when it isn't moving, like while idle, interrupted or
 // out of reach. Otherwise, they start when the last one finished.
 static void update(size_t entity_id) {
@@ -155,7 +131,17 @@ static void update(size_t entity_id) {
     if (!moving) decide(entity_id, s);
     body b = (body){0};
     PHYSICS_get_body(e.body_id, &b);
-    update_sprite(s, b);
+    s->time += GAME_MANAGER_get_current_dt();
+    if (s->time >= 0.05f) {
+        s->time -= 0.05f;
+        PARTICLES_emit(particle_flames_base,
+                       (particles_emit_settings){
+                           .shape = particles_emit_rect,
+                           .rect = {.x = b.x, .y = b.y, .w = 4.0f, .h = 4.0f},
+                           .vel = {.x = 0.0f, .y = -20.0f},
+                           .count = 1,
+                       });
+    }
 }
 
 
@@ -175,7 +161,6 @@ size_t WISP_create(double x, double y) {
         },
         &body_id);
     wisp_state* s = SDL_calloc(1, sizeof(wisp_state));
-    s->facing = 1;
     s->mode = wisp_idle;
     entity e = data.entity;
     e.body_id = body_id;

@@ -170,11 +170,11 @@ static const Uint8 frag_spirv[] = {
 static const Uint8 frag_dxil[] = {
 #embed PARTICLES_FRAG_DXIL_PATH
 };
-static const Uint8 glow_shader_spirv[] = {
-#embed PARTICLES_SHADER_GLOW_SPIRV_PATH
+static const Uint8 flames_shader_spirv[] = {
+#embed PARTICLES_SHADER_FLAMES_SPIRV_PATH
 };
-static const Uint8 glow_shader_dxil[] = {
-#embed PARTICLES_SHADER_GLOW_DXIL_PATH
+static const Uint8 flames_shader_dxil[] = {
+#embed PARTICLES_SHADER_FLAMES_DXIL_PATH
 };
 
 static gpu_type types[PARTICLES_TOTAL] = {0};
@@ -398,9 +398,9 @@ static int load_shaders(void) {
         0,
         0);
 
-    frag_shaders[particle_shader_glow] = GRAPHICS_load_fragment_shader(
-        "particles_shader_glow",
-        GRAPHICS_SHADER_CODE(glow_shader_spirv, glow_shader_dxil),
+    frag_shaders[particle_shader_flames] = GRAPHICS_load_fragment_shader(
+        "particles_shader_flames",
+        GRAPHICS_SHADER_CODE(flames_shader_spirv, flames_shader_dxil),
         1,
         0,
         0);
@@ -603,6 +603,6 @@ hashmap PARTICLES_get_string_particle_shaders_map(void) {
     hashmap map;
     init_hashmap(&map, sizeof(particle_shader));
     set_on_hashmap(&(particle_shader){particle_shader_base}, "base", &map);
-    set_on_hashmap(&(particle_shader){particle_shader_glow}, "glow", &map);
+    set_on_hashmap(&(particle_shader){particle_shader_flames}, "flames", &map);
     return map;
 }

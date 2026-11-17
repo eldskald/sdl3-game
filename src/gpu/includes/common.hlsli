@@ -12,6 +12,9 @@
 // Aspect ratio of the screen, `WINDOW_SIZE_X / WINDOW_SIZE_Y` on `src/defs.h`.
 #define ASPECT (16.0 / 9.0)
 
+// UV size of a spritesheet cell, `SPRITESHEET_CELL_X/Y / SPRITESHEET_X/Y` on `src/defs.h`.
+#define SPRITESHEET_CELL float2(1.0 / 32.0, 1.0 / 32.0)
+
 // PCG's, from "Hash Functions for GPU Rendering", Jarzynski and Olano, 2020.
 uint hash(uint v) {
     uint state = v * 747796405u + 2891336453u;
@@ -23,6 +26,12 @@ uint hash(uint v) {
 float random(inout uint seed) {
     seed = hash(seed);
     return (seed >> 8) / 16777216.0;
+}
+
+// Safely normalizes a vector, if it's zero then it returns zero instead of NaN
+float2 norm(float2 v) {
+    float sq_len = dot(v, v);
+    return sq_len > EPSILON ? v * rsqrt(sq_len) : float2(0.0, 0.0);
 }
 
 #endif

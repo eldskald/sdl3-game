@@ -18,7 +18,7 @@ typedef enum { particle_none, PARTICLES_TYPES } particle_type;
 // groups after it. `particle_shaders_total` counts them.
 typedef enum {
     particle_shader_base,
-    particle_shader_glow,
+    particle_shader_flames,
     particle_shaders_total,
 } particle_shader;
 
