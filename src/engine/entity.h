@@ -4,19 +4,18 @@
 #include <SDL3/SDL.h>
 
 // Ways an entity can move around the tilemap, as flags, so an entity's `moves`
-// can be something like `move_run | move_jump | move_fall | move_drop`. All but
-// `move_crawl` are implemented for now. `move_run` goes sideways to the next
-// tile on the same floor, `move_jump` jumps from the floor, or out of a fluid
-// from its surface, `move_fall` runs off a ledge, `move_drop` drops down from a
-// platform, or lets go of a wall or ceiling it's climbing, and `move_swim`
-// swims in fluids deep enough to swim in. `move_climb_wall` climbs up and down
-// walls and `move_climb_ceiling` along ceilings, both with its run class'
-// values, without falling, and around the corners between them and floors.
-// `move_fly` flies anywhere in the air, in any direction, like swimming but
-// with its fly class' values, staying where it is when it isn't going
-// anywhere. Entities that can move otherwise, running, jumping or climbing,
-// only fly when they're told to with `ENTITY_fly_to()`, until they land with
-// `ENTITY_land_on()`.
+// can be something like `move_run | move_jump | move_fall | move_drop`.
+// `move_run` goes sideways to the next tile on the same floor, `move_jump`
+// jumps from the floor, or out of a fluid from its surface, `move_fall` runs
+// off a ledge, `move_drop` drops down from a platform, or lets go of a wall or
+// ceiling it's climbing, and `move_swim` swims in fluids deep enough to swim
+// in. `move_climb_wall` climbs up and down walls and `move_climb_ceiling` along
+// ceilings, both with its run class' values, without falling, and around the
+// corners between them and floors. `move_fly` flies anywhere in the air, in any
+// direction, like swimming but with its fly class' values, staying where it is
+// when it isn't going anywhere. Entities that can move otherwise, running,
+// jumping or climbing, only fly when they're told to with `ENTITY_fly_to()`,
+// until they land with `ENTITY_land_on()`.
 //
 // ```
 // enum entity_move {
@@ -25,10 +24,9 @@
 //     move_fall = 1 << 2,
 //     move_drop = 1 << 3,
 //     move_swim = 1 << 4,
-//     move_crawl = 1 << 5,
-//     move_climb_wall = 1 << 6,
-//     move_climb_ceiling = 1 << 7,
-//     move_fly = 1 << 8,
+//     move_climb_wall = 1 << 5,
+//     move_climb_ceiling = 1 << 6,
+//     move_fly = 1 << 7,
 // };
 // ```
 typedef enum {
@@ -37,10 +35,9 @@ typedef enum {
     move_fall = 1 << 2,
     move_drop = 1 << 3,
     move_swim = 1 << 4,
-    move_crawl = 1 << 5,
-    move_climb_wall = 1 << 6,
-    move_climb_ceiling = 1 << 7,
-    move_fly = 1 << 8,
+    move_climb_wall = 1 << 5,
+    move_climb_ceiling = 1 << 6,
+    move_fly = 1 << 7,
 } entity_move;
 
 // What a single move of an entity does, while its `entity_move` flags are
@@ -175,11 +172,11 @@ typedef struct {
 
 // An entity moves its body around the tilemap by itself, one move at a time,
 // each found with `ENTITY_move_towards()`, so whatever owns it decides what it
-// does after each one. It moves its body at
-// `body_id` with the values of its classes, jumping with its `jump` class or
-// any weaker one. Its body must be the size of its `size` class. `moves` are
-// its `entity_move` flags of how it's allowed to move. The body becomes the
-// entity's, deleted along with it.
+// does after each one. It creates its own physics body and moves it with the
+// values of its classes, jumping with its `jump` class or any weaker one. Its
+// body must be the size of its `size` class. `moves` are its `entity_move`
+// flags of how it's allowed to move. The body becomes the entity's, deleted
+// along with it.
 //
 // With `move_swim`, it swims when its body is in a fluid deep enough, like the
 // player, whatever the fluid, moving in any direction and staying where it is
@@ -203,7 +200,6 @@ typedef struct {
 //
 // ```
 // struct entity {
-//     size_t body_id;
 //     Uint32 moves;
 //     Uint32 safe_fluids;
 //     jump_class jump;
@@ -221,7 +217,6 @@ typedef struct {
 // };
 // ```
 typedef struct {
-    size_t body_id;
     Uint32 moves;
     Uint32 safe_fluids;
     jump_class jump;
@@ -240,10 +235,12 @@ typedef struct {
 
 
 // Creates a new entity with `data` for its values, returning its index on
-// `entity_id`, then calls its `on_create_func`. Its `body_id` must be of an
-// existing body the size of its `size` class, and its classes must exist.
-// Returns `2` when `data` is invalid, `0` when everything went right.
-int ENTITY_new_entity(entity data, size_t* entity_id);
+// `entity_id`, then calls its `on_create_func`. The `x` and `y` values are its
+// position at the middle of the bottom side of its collision box, we do this
+// instead of anchoring them at the top left corner because it's easier to spawn
+// them on the chunks API without needing to know their size class. Returns `2`
+// when `data` is invalid, `0` when everything went right.
+int ENTITY_new_entity(entity data, double x, double y, size_t* entity_id);
 
 // Calls the `on_destroy_func` of the entity at `entity_id`, then deletes it
 // along with its body. Returns `3` when `entity_id` is outside the array's
@@ -262,6 +259,11 @@ int ENTITY_get_entity(size_t entity_id, entity* data);
 // the array's range, `2` when `data` is invalid, `1` when there is no entity at
 // that index, `0` when everything went right.
 int ENTITY_edit_entity(size_t entity_id, entity data);
+
+// Gets the entity's associated physics body on `body_id`. Returns `3` when
+// `entity_id` is outside the array's range, `1` when there is no entity at that
+// index, `0` when everything went right.
+int ENTITY_get_body_id(size_t entity_id, size_t* body_id);
 
 // Makes the entity at `entity_id` start the first move of a path towards
 // `(x,y)`, in pixels, which is where the bottom center of its body should end

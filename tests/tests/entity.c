@@ -126,11 +126,11 @@ static int run_order(size_t id,
 // Ticks until the body of the entity `id` stops moving sideways, up to a
 // second, like when it slides to a stop after its last move.
 static void settle(size_t id) {
-    entity e = (entity){0};
-    ENTITY_get_entity(id, &e);
+    size_t body_id = 0;
+    ENTITY_get_body_id(id, &body_id);
     for (int t = 0; t < FIXED_T_TARGET_FPS; t++) {
         body b = (body){0};
-        PHYSICS_get_body(e.body_id, &b);
+        PHYSICS_get_body(body_id, &b);
         if (SDL_fabs(b.vel_x) <= EPSILON) return;
         tick(id);
     }
@@ -145,34 +145,18 @@ static void fill(int x, int y, int w, int h, tile_type type, bool platform) {
         }
 }
 
-// A body of `size` standing on the floor of tile `(x,y)`.
-static size_t new_body_at(int x, int y, size_class size) {
-    Uint8 w = 0;
-    Uint8 h = 0;
-    ENTITY_get_size(size, &w, &h);
-    size_t body_id = 0;
-    PHYSICS_new_body(
-        (body){
-            .type = physics_actor,
-            .x = x * SPRITESHEET_CELL_X + (SPRITESHEET_CELL_X - w) / 2.0,
-            .y = (y + 1) * SPRITESHEET_CELL_Y - h,
-            .w = w,
-            .h = h,
-        },
-        &body_id);
-    return body_id;
-}
-
 // An entity in `classes` with its body standing on the floor of tile `(x,y)`,
 // with the moves of `classes`, or every one but swimming when it has none,
 // calling `on_move_finished()` when its moves finish.
 static size_t new_entity_with(int x, int y, entity classes) {
-    classes.body_id = new_body_at(x, y, classes.size);
     classes.on_move_finished_func = on_move_finished;
     if (!classes.moves)
         classes.moves = move_run | move_jump | move_fall | move_drop;
     size_t id = 0;
-    ENTITY_new_entity(classes, &id);
+    ENTITY_new_entity(classes,
+                      (x + 0.5f) * SPRITESHEET_CELL_X,
+                      (y + 1) * SPRITESHEET_CELL_Y,
+                      &id);
     return id;
 }
 
@@ -191,10 +175,11 @@ static size_t new_entity_at(int x, int y) {
 }
 
 // Tile the bottom center of the entity's body is on.
-static void get_tile(size_t id, int* x, int* y, body* b) {
+static void get_tile(size_t id, int* x, int* y, body* b, size_t* body_id) {
     entity e = (entity){0};
     ENTITY_get_entity(id, &e);
-    PHYSICS_get_body(e.body_id, b);
+    ENTITY_get_body_id(id, body_id);
+    PHYSICS_get_body(*body_id, b);
     *x = (int)SDL_floor((b->x + b->w / 2.0) / SPRITESHEET_CELL_X);
     *y = (int)SDL_floor((b->y + b->h - 1.0) / SPRITESHEET_CELL_Y);
 }
@@ -215,11 +200,12 @@ static void expect_reach_with(const char* desc,
     int x = sx;
     int y = sy;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    size_t body_id = 0;
+    get_tile(id, &x, &y, &b, &body_id);
     entity e = (entity){0};
     ENTITY_get_entity(id, &e);
     bool on_floor = false;
-    PHYSICS_is_body_on_floor(e.body_id, &on_floor);
+    PHYSICS_is_body_on_floor(body_id, &on_floor);
     ENTITY_del_entity(id);
     report r = (report){0};
     check(&r,
@@ -264,11 +250,13 @@ typedef struct {
 static void track_walking(size_t id, void* arg) {
     walking_track* w = arg;
     entity e = (entity){0};
+    size_t body_id = 0;
     ENTITY_get_entity(id, &e);
+    ENTITY_get_body_id(id, &body_id);
     body b = (body){0};
-    PHYSICS_get_body(e.body_id, &b);
+    PHYSICS_get_body(body_id, &b);
     bool was_on_floor = w->on_floor;
-    PHYSICS_is_body_on_floor(e.body_id, &w->on_floor);
+    PHYSICS_is_body_on_floor(body_id, &w->on_floor);
     if (w->on_floor && was_on_floor && b.vel_y >= 0.0 &&
         SDL_fabs(b.vel_x) > SDL_fabs(w->last_vx) + EPSILON) {
         w->walking++;
@@ -289,7 +277,8 @@ expect_hops(const char* desc, int sx, int sy, int gx, int gy, int max_ticks) {
     int x = sx;
     int y = sy;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    size_t body_id = 0;
+    get_tile(id, &x, &y, &b, &body_id);
     ENTITY_del_entity(id);
     report r = (report){0};
     check(&r,
@@ -411,7 +400,8 @@ static void test_moves(void) {
     int x = 0;
     int y = 0;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    size_t body_id = 0;
+    get_tile(id, &x, &y, &b, &body_id);
     ENTITY_del_entity(id);
     expect("Made an entity go on top of a tower too tall to jump on, checking "
            "if it got as close as it could, stopped and was out of reach...",
@@ -463,7 +453,8 @@ static void expect_stay_out(const char* desc, entity classes) {
     int x = 0;
     int y = 0;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    size_t body_id = 0;
+    get_tile(id, &x, &y, &b, &body_id);
     ENTITY_del_entity(id);
     report r = (report){0};
     check(&r,
@@ -492,8 +483,10 @@ static void track_underwater(size_t id, void* arg) {
     if (u->ticks <= FIXED_T_TARGET_FPS / 2) return;
     entity e = (entity){0};
     ENTITY_get_entity(id, &e);
+    size_t body_id = 0;
+    ENTITY_get_body_id(id, &body_id);
     body b = (body){0};
-    PHYSICS_get_body(e.body_id, &b);
+    PHYSICS_get_body(body_id, &b);
     u->fastest = SDL_max(u->fastest, SDL_fabs(b.vel_x));
 }
 
@@ -550,12 +543,14 @@ static void test_swimming(void) {
     ENTITY_get_entity(id, &e);
     for (int t = 0; t < 10; t++)
         tick(id);
+    size_t body_id = 0;
+    ENTITY_get_body_id(id, &body_id);
     body before = (body){0};
-    PHYSICS_get_body(e.body_id, &before);
+    PHYSICS_get_body(body_id, &before);
     for (int t = 0; t < 120; t++)
         tick(id);
     body after = (body){0};
-    PHYSICS_get_body(e.body_id, &after);
+    PHYSICS_get_body(body_id, &after);
     bool swimming = false;
     bool unsafe = false;
     ENTITY_get_fluids(id, &swimming, &unsafe);
@@ -582,7 +577,7 @@ static void test_swimming(void) {
     int x = 5;
     int y = 24;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    get_tile(id, &x, &y, &b, &body_id);
     double fastest_under = under.fastest;
     ENTITY_del_entity(id);
     report r = (report){0};
@@ -814,8 +809,10 @@ static void test_owning(void) {
     size_t id = new_entity_with(5, 29, runner);
     entity e = (entity){0};
     ENTITY_get_entity(id, &e);
+    size_t body_id = 0;
+    ENTITY_get_body_id(id, &body_id);
     body start = (body){0};
-    PHYSICS_get_body(e.body_id, &start);
+    PHYSICS_get_body(body_id, &start);
     finished_calls = 0;
     int moved = ENTITY_move_towards(
         id, 20 * SPRITESHEET_CELL_X + 4.0, 30 * SPRITESHEET_CELL_Y);
@@ -867,13 +864,14 @@ static void test_owning(void) {
     fill(10, 28, 5, 2, tile_stone, false);
     id = new_entity_at(9, 29);
     ENTITY_get_entity(id, &e);
+    ENTITY_get_body_id(id, &body_id);
     finished_calls = 0;
     moved = ENTITY_move_towards(
         id, 12 * SPRITESHEET_CELL_X + 4.0, 28 * SPRITESHEET_CELL_Y);
     bool on_floor = true;
     for (int t = 0; t < MAX_TICKS && on_floor; t++) {
         tick(id);
-        PHYSICS_is_body_on_floor(e.body_id, &on_floor);
+        PHYSICS_is_body_on_floor(body_id, &on_floor);
     }
     int interrupted = ENTITY_interrupt_movement(id);
     r = last_result;
@@ -942,7 +940,7 @@ static void test_owning(void) {
     int reached_x = 0;
     int reached_y = 0;
     body rb = (body){0};
-    get_tile(id, &reached_x, &reached_y, &rb);
+    get_tile(id, &reached_x, &reached_y, &rb, &body_id);
     ENTITY_del_entity(id);
     expect("Put it at the bottom of the middle of the pool instead, checking "
            "if it found a ledge swimming through the lava, couldn't move "
@@ -1011,17 +1009,10 @@ static void test_owning(void) {
     FLUIDS_update();
 }
 
-// An entity in `classes` with its body's top left at `(x,y)`, in pixels.
 static size_t new_entity_at_pos(double x, double y, entity classes) {
-    Uint8 w = 0;
-    Uint8 h = 0;
-    ENTITY_get_size(classes.size, &w, &h);
-    PHYSICS_new_body(
-        (body){.type = physics_actor, .x = x, .y = y, .w = w, .h = h},
-        &classes.body_id);
     classes.on_move_finished_func = on_move_finished;
     size_t id = 0;
-    ENTITY_new_entity(classes, &id);
+    ENTITY_new_entity(classes, x, y, &id);
     return id;
 }
 
@@ -1037,7 +1028,8 @@ static bool climb_to(size_t id, int gx, int gy, entity_surface* surface) {
     int x = 0;
     int y = 0;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    size_t body_id = 0;
+    get_tile(id, &x, &y, &b, &body_id);
     ENTITY_get_clinging(id, surface);
     return x == gx && y == gy && SDL_fabs(b.vel_x) <= EPSILON &&
            (*surface == surface_none || SDL_fabs(b.vel_y) <= EPSILON);
@@ -1088,10 +1080,9 @@ static void test_climbing(void) {
     fill(20, 20, 21, 1, tile_stone, false);
     Uint8 w = 0;
     Uint8 h = 0;
-    ENTITY_get_size(climber.size, &w, &h);
-    id = new_entity_at_pos(30 * SPRITESHEET_CELL_X +
-                               (SPRITESHEET_CELL_X - w) / 2.0,
-                           21 * SPRITESHEET_CELL_Y,
+    ENTITY_get_size(size_class_small, &w, &h);
+    id = new_entity_at_pos(30 * SPRITESHEET_CELL_X + SPRITESHEET_CELL_X * 0.5f,
+                           21 * SPRITESHEET_CELL_Y + h,
                            climber);
     entity_surface before = surface_none;
     ENTITY_get_clinging(id, &before);
@@ -1117,13 +1108,14 @@ static bool fly_to(size_t id, int gx, int gy) {
     int x0 = 0;
     int y0 = 0;
     body b0 = (body){0};
-    get_tile(id, &x0, &y0, &b0);
+    size_t body_id = 0;
+    get_tile(id, &x0, &y0, &b0, &body_id);
     for (int t = 0; t < FIXED_T_TARGET_FPS; t++)
         tick(id);
     int x = 0;
     int y = 0;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    get_tile(id, &x, &y, &b, &body_id);
     return x0 == gx && y0 == gy && x == gx && y == gy &&
            SDL_fabs(b.y - b0.y) <= 1.0 && SDL_fabs(b.vel_x) <= EPSILON &&
            SDL_fabs(b.vel_y) <= EPSILON;
@@ -1185,16 +1177,17 @@ land_at(size_t id, int gx, int gy, entity_surface* surface, bool* on_floor) {
     int x0 = 0;
     int y0 = 0;
     body b0 = (body){0};
-    get_tile(id, &x0, &y0, &b0);
+    size_t body_id = 0;
+    get_tile(id, &x0, &y0, &b0, &body_id);
     for (int t = 0; t < FIXED_T_TARGET_FPS; t++)
         tick(id);
     int x = 0;
     int y = 0;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    get_tile(id, &x, &y, &b, &body_id);
     entity e = (entity){0};
     ENTITY_get_entity(id, &e);
-    PHYSICS_is_body_on_floor(e.body_id, on_floor);
+    PHYSICS_is_body_on_floor(body_id, on_floor);
     ENTITY_get_clinging(id, surface);
     return last_moved == 6 && x0 == gx && y0 == gy && x == gx && y == gy &&
            SDL_fabs(b.vel_x) <= EPSILON &&
@@ -1204,13 +1197,12 @@ land_at(size_t id, int gx, int gy, entity_surface* surface, bool* on_floor) {
 static void test_landing(void) {
     entity flyer = player_like;
     flyer.moves = move_fly;
-    Uint8 w = 0;
-    Uint8 h = 0;
-    ENTITY_get_size(flyer.size, &w, &h);
 
     build_room();
-    size_t id = new_entity_at_pos(
-        20 * SPRITESHEET_CELL_X + 2.0, 15 * SPRITESHEET_CELL_Y, flyer);
+    size_t id =
+        new_entity_at_pos(20 * SPRITESHEET_CELL_X + SPRITESHEET_CELL_X * 0.5f,
+                          16 * SPRITESHEET_CELL_Y,
+                          flyer);
     entity_surface surface = surface_none;
     bool on_floor = false;
     bool landed = land_at(id, 30, 29, &surface, &on_floor);
@@ -1246,8 +1238,9 @@ static void test_landing(void) {
         move_fly | move_run | move_climb_wall | move_climb_ceiling | move_drop;
     build_room();
     fill(30, 20, 30, 10, tile_stone, false);
-    id = new_entity_at_pos(
-        20 * SPRITESHEET_CELL_X + 2.0, 15 * SPRITESHEET_CELL_Y, climbing_flyer);
+    id = new_entity_at_pos(20 * SPRITESHEET_CELL_X + SPRITESHEET_CELL_X * 0.5f,
+                           16 * SPRITESHEET_CELL_Y,
+                           climbing_flyer);
     bool flying_at_first = true;
     ENTITY_is_flying(id, &flying_at_first);
     int flew = ENTITY_fly_to(
@@ -1280,7 +1273,8 @@ static void test_landing(void) {
     int x = 0;
     int y = 0;
     body b = (body){0};
-    get_tile(id, &x, &y, &b);
+    size_t body_id = 0;
+    get_tile(id, &x, &y, &b, &body_id);
     bool climbed_up = x == 35 && y == 19;
 
     // Then flying again, to land on the ceiling
@@ -1312,8 +1306,10 @@ static void test_jumping(void) {
     int jumped = ENTITY_jump(id, jump_class_high, tx, 28 * SPRITESHEET_CELL_Y);
     tick_until_stopped_moving(id);
     entity_move_result r = last_result;
+    size_t body_id = 0;
+    ENTITY_get_body_id(id, &body_id);
     body b = (body){0};
-    PHYSICS_get_body(e.body_id, &b);
+    PHYSICS_get_body(body_id, &b);
     double off = SDL_fabs(b.x + b.w / 2.0 - tx);
     int too_far = ENTITY_jump(id,
                               jump_class_high,
@@ -1344,7 +1340,7 @@ static void test_jumping(void) {
     bool on_floor = true;
     for (int t = 0; t < MAX_TICKS && on_floor; t++) {
         tick(id);
-        PHYSICS_is_body_on_floor(e.body_id, &on_floor);
+        PHYSICS_is_body_on_floor(body_id, &on_floor);
     }
     ENTITY_interrupt_movement(id);
     int in_air = ENTITY_jump(id, jump_class_high, tx, 28 * SPRITESHEET_CELL_Y);
@@ -1358,29 +1354,42 @@ static void test_jumping(void) {
 static void test_storage(void) {
     TILEMAP_clear();
     CAMERA_center_at(0.0f, 0.0f);
-    size_t body_id = new_body_at(2, 2, size_class_normal);
+    int tile_x = 2;
+    int tile_y = 2;
     size_t id = 0;
     int r = ENTITY_new_entity(
         (entity){
-            .body_id = body_id,
             .run = run_class_fast,
             .size = size_class_normal,
             .on_create_func = on_create,
             .on_destroy_func = on_destroy,
             .update_func = on_update,
         },
+        tile_x * SPRITESHEET_CELL_X,
+        (tile_y + 1) * SPRITESHEET_CELL_Y,
         &id);
     entity data = (entity){0};
     ENTITY_get_entity(id, &data);
+    size_t body_id = 0;
+    ENTITY_get_body_id(id, &body_id);
+    body b = (body){0};
+    PHYSICS_get_body(body_id, &b);
+    Uint8 w = 0;
+    Uint8 h = 0;
+    ENTITY_get_size(size_class_normal, &w, &h);
     expect("Created an entity, checking it and if its on_create_func was "
-           "called with its ID...",
-           5,
+           "called with its ID and if the body was created correctly...",
+           9,
            (bool[]){
                r == 0,
-               data.body_id == body_id,
                data.run == run_class_fast,
+               data.size == size_class_normal,
                create_calls == 1,
                created_id == id,
+               b.w == w,
+               b.h == h,
+               b.x == tile_x * SPRITESHEET_CELL_X - w * 0.5f,
+               b.y == (tile_y + 1) * SPRITESHEET_CELL_Y - h,
            });
 
     PHYSICS_update();
@@ -1400,27 +1409,24 @@ static void test_storage(void) {
     data.run = run_class_slow;
     ENTITY_edit_entity(id, data);
     ENTITY_get_entity(id, &data);
-    size_t missing_body = body_id + 1;
     entity wrong_size = data;
-    wrong_size.size = size_class_wide;
+    wrong_size.size = ENTITY_SIZE_CLASSES_TOTAL;
     entity wrong_class = data;
     wrong_class.jump = ENTITY_JUMP_CLASSES_TOTAL;
-    expect("Edited it, as well as created and edited one with a body that "
-           "doesn't exist, a body of another size than its size class and a "
-           "class that doesn't exist, checking it and the errors...",
-           7,
-           (bool[]){
-               data.run == run_class_slow,
-               ENTITY_new_entity((entity){.body_id = missing_body}, &id) == 2,
-               ENTITY_edit_entity(id, (entity){.body_id = missing_body}) == 2,
-               ENTITY_new_entity(wrong_size, &id) == 2,
-               ENTITY_edit_entity(id, wrong_size) == 2,
-               ENTITY_new_entity(wrong_class, &id) == 2,
-               ENTITY_edit_entity(id, wrong_class) == 2,
-           });
+    expect(
+        "Edited it, as well as created and edited one with a size that doesn't "
+        "exist, and created and edited one with a jump class that doesn't "
+        "exist, checking the first edit and error codes...",
+        5,
+        (bool[]){
+            data.run == run_class_slow,
+            ENTITY_new_entity(wrong_size, 8.0f, 8.0f, &id) == 2,
+            ENTITY_edit_entity(id, wrong_size) == 2,
+            ENTITY_new_entity(wrong_class, 8.0f, 8.0f, &id) == 2,
+            ENTITY_edit_entity(id, wrong_class) == 2,
+        });
 
     ENTITY_del_entity(id);
-    body b = (body){0};
     expect("Deleted it, checking if its on_destroy_func was called, its body "
            "is gone and the errors of using it and an index out of range...",
            6,

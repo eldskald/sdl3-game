@@ -169,10 +169,10 @@ static void escape(size_t entity_id, frog_state* s) {
 // Moves towards the player unless it's within `follow_distance` of them on the
 // same floor.
 static void follow(size_t entity_id, frog_state* s) {
-    entity e = (entity){0};
-    ENTITY_get_entity(entity_id, &e);
+    size_t body_id = 0;
     body b = (body){0};
-    PHYSICS_get_body(e.body_id, &b);
+    ENTITY_get_body_id(entity_id, &body_id);
+    PHYSICS_get_body(body_id, &b);
     player_state player = PLAYER_get_player();
     body pb = (body){0};
     if (!player.created || PHYSICS_get_body(player.body_id, &pb)) {
@@ -252,36 +252,24 @@ static void update(size_t entity_id) {
     bool moving = false;
     ENTITY_is_moving(entity_id, &moving);
     if (!moving) decide(entity_id, s);
+    size_t body_id = 0;
     body b = (body){0};
-    PHYSICS_get_body(e.body_id, &b);
-    update_sprite(s, entity_id, e.body_id, b);
+    ENTITY_get_body_id(entity_id, &body_id);
+    PHYSICS_get_body(body_id, &b);
+    update_sprite(s, entity_id, body_id, b);
 }
 
 
 
 size_t FROG_create(double x, double y) {
-    Uint8 w = 0;
-    Uint8 h = 0;
-    ENTITY_get_size(data.entity.size, &w, &h);
-    size_t body_id = 0;
-    PHYSICS_new_body(
-        (body){
-            .type = physics_actor,
-            .x = x - w / 2.0,
-            .y = y - h,
-            .w = w,
-            .h = h,
-        },
-        &body_id);
     frog_state* s = SDL_calloc(1, sizeof(frog_state));
     s->anim = frog_anim_idle;
     s->facing = 1;
     s->mode = frog_idle;
     entity e = data.entity;
-    e.body_id = body_id;
     e.state = s;
     size_t entity_id = 0;
-    ENTITY_new_entity(e, &entity_id);
+    ENTITY_new_entity(e, x, y, &entity_id);
     return entity_id;
 }
 

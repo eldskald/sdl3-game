@@ -251,8 +251,10 @@ void test_chunks(void) {
         entity_spawn* spawn = dynarr_at(i, &data.entities);
         entity e = (entity){0};
         body b = (body){0};
+        size_t bid = 0;
         frogs_ok[i] = ENTITY_get_entity(i, &e) == 0 &&
-                      PHYSICS_get_body(e.body_id, &b) == 0 &&
+                      ENTITY_get_body_id(i, &bid) == 0 &&
+                      PHYSICS_get_body(bid, &b) == 0 &&
                       b.x + b.w / 2.0 == spawn->x && b.y + b.h == spawn->y;
     }
     expect("Loaded mocked chunk, checking spawned entities...", 2, frogs_ok);
