@@ -8,17 +8,17 @@
          "name":"Entities",
          "objects":[
                 {
-                 "gid":1092,
+                 "gid":1091,
                  "height":16,
-                 "id":28,
+                 "id":30,
                  "name":"",
                  "opacity":1,
                  "rotation":0,
                  "type":"",
                  "visible":true,
                  "width":16,
-                 "x":216,
-                 "y":24
+                 "x":224,
+                 "y":48
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -499,7 +499,7 @@
          "y":0
         }],
  "nextlayerid":13,
- "nextobjectid":29,
+ "nextobjectid":31,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",

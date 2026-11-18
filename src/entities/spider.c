@@ -114,10 +114,10 @@ static void on_destroy(size_t entity_id) {
 // Moves towards the player unless it's within `follow_distance` of them on the
 // same floor, setting what it's doing after.
 static void follow(size_t entity_id, spider_state* s) {
-    entity e = (entity){0};
-    ENTITY_get_entity(entity_id, &e);
+    size_t body_id = 0;
+    ENTITY_get_body_id(entity_id, &body_id);
     body b = (body){0};
-    PHYSICS_get_body(e.body_id, &b);
+    PHYSICS_get_body(body_id, &b);
     player_state player = PLAYER_get_player();
     body pb = (body){0};
     if (!player.created || PHYSICS_get_body(player.body_id, &pb)) {
@@ -245,37 +245,25 @@ static void update(size_t entity_id) {
     bool moving = false;
     ENTITY_is_moving(entity_id, &moving);
     if (!moving) decide(entity_id, s);
+    size_t body_id = 0;
+    ENTITY_get_body_id(entity_id, &body_id);
     body b = (body){0};
-    PHYSICS_get_body(e.body_id, &b);
-    update_sprite(s, entity_id, e.body_id, b);
+    PHYSICS_get_body(body_id, &b);
+    update_sprite(s, entity_id, body_id, b);
 }
 
 
 
 size_t SPIDER_create(double x, double y) {
-    Uint8 w = 0;
-    Uint8 h = 0;
-    ENTITY_get_size(data.entity.size, &w, &h);
-    size_t body_id = 0;
-    PHYSICS_new_body(
-        (body){
-            .type = physics_actor,
-            .x = x - w / 2.0,
-            .y = y - h,
-            .w = w,
-            .h = h,
-        },
-        &body_id);
     spider_state* s = SDL_calloc(1, sizeof(spider_state));
     s->anim = spider_anim_idle;
     s->facing = 1;
     s->facing_y = -1;
     s->mode = spider_idle;
     entity e = data.entity;
-    e.body_id = body_id;
     e.state = s;
     size_t entity_id = 0;
-    ENTITY_new_entity(e, &entity_id);
+    ENTITY_new_entity(e, x, y, &entity_id);
     return entity_id;
 }
 

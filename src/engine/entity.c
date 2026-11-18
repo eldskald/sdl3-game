@@ -309,6 +309,7 @@ typedef struct {
 // `ENTITY_fly_to()`, until it lands.
 typedef struct {
     entity entity;
+    size_t body_id;
     dynarr path;
     size_t path_at;
     Uint16 goal_x, goal_y;
@@ -2581,9 +2582,9 @@ static bool end_move(size_t id, bool interrupted) {
     entity_data* d = get_entity(id);
     const path_move* m = move_at(d, d->path_at);
     body b = (body){0};
-    PHYSICS_get_body(d->entity.body_id, &b);
+    PHYSICS_get_body(d->body_id, &b);
     bool on_floor = false;
-    PHYSICS_is_body_on_floor(d->entity.body_id, &on_floor);
+    PHYSICS_is_body_on_floor(d->body_id, &on_floor);
     entity_move_result r = d->result;
     entity e = moving_as(d);
     Uint16 x = 0;
@@ -2673,7 +2674,7 @@ static bool start_move(entity_data* d,
     d->climbing = false;
     d->move_time = 0.0;
     d->progress = (move_progress){.wet = m->from_swim};
-    if (m->move == motion_drop) PHYSICS_drop_down_body(d->entity.body_id);
+    if (m->move == motion_drop) PHYSICS_drop_down_body(d->body_id);
     return true;
 }
 
@@ -2698,9 +2699,9 @@ static void update_movement(size_t id) {
     entity mover = moving_as(d);
     const entity* e = &mover;
     body b = (body){0};
-    PHYSICS_get_body(e->body_id, &b);
+    PHYSICS_get_body(d->body_id, &b);
     bool on_floor = false;
-    PHYSICS_is_body_on_floor(e->body_id, &on_floor);
+    PHYSICS_is_body_on_floor(d->body_id, &on_floor);
     body_fluids f = get_body_fluids(e->safe_fluids, &b, b.x, b.y);
     bool swimming = swims_in(e, f.swimming);
     movement mv = get_movement(e, f.swimming);
@@ -2777,7 +2778,7 @@ static void update_movement(size_t id) {
             if (!ended) {
                 control_move(&mv, m, d->move_time, dt, &vx, &vy);
                 d->move_time += dt;
-                PHYSICS_set_body_velocity(e->body_id, vx, vy);
+                PHYSICS_set_body_velocity(d->body_id, vx, vy);
                 return;
             }
         }
@@ -2796,7 +2797,7 @@ static void update_movement(size_t id) {
         d->climbing = get_touching(e, &b) != surface_none;
         weightless = weightless || d->climbing;
     }
-    PHYSICS_set_body_velocity(e->body_id,
+    PHYSICS_set_body_velocity(d->body_id,
                               run_speed(&mv, vx, dir, dt),
                               weightless ? run_speed(&mv, vy, vdir, dt)
                                          : vertical_speed(&mv, vy, vdir, dt));
@@ -2838,9 +2839,9 @@ static void refresh(void) {
 // `on_floor`.
 static void get_body(const entity_data* d, body* b, bool* on_floor) {
     *b = (body){0};
-    PHYSICS_get_body(d->entity.body_id, b);
+    PHYSICS_get_body(d->body_id, b);
     *on_floor = false;
-    PHYSICS_is_body_on_floor(d->entity.body_id, on_floor);
+    PHYSICS_is_body_on_floor(d->body_id, on_floor);
 }
 
 // Gets the entity at `entity_id` on `d` for a call that tries `to_do`
@@ -2870,34 +2871,41 @@ static bool get_start_node(
 }
 
 static bool is_valid(entity data) {
-    if (data.jump < 0 || data.jump >= ENTITY_JUMP_CLASSES_TOTAL ||
-        data.fall < 0 || data.fall >= ENTITY_FALL_CLASSES_TOTAL ||
-        data.run < 0 || data.run >= ENTITY_RUN_CLASSES_TOTAL || data.swim < 0 ||
-        data.swim >= ENTITY_SWIM_CLASSES_TOTAL || data.fly < 0 ||
-        data.fly >= ENTITY_FLY_CLASSES_TOTAL || data.size < 0 ||
-        data.size >= ENTITY_SIZE_CLASSES_TOTAL)
-        return false;
-    body b = (body){0};
-    if (PHYSICS_get_body(data.body_id, &b)) return false;
-    return b.w == sizes[data.size].w && b.h == sizes[data.size].h;
+    return (data.jump >= 0 && data.jump < ENTITY_JUMP_CLASSES_TOTAL &&
+            data.fall >= 0 && data.fall < ENTITY_FALL_CLASSES_TOTAL &&
+            data.run >= 0 && data.run < ENTITY_RUN_CLASSES_TOTAL &&
+            data.swim >= 0 && data.swim < ENTITY_SWIM_CLASSES_TOTAL &&
+            data.fly >= 0 && data.fly < ENTITY_FLY_CLASSES_TOTAL &&
+            data.size >= 0 && data.size < ENTITY_SIZE_CLASSES_TOTAL);
 }
 
-static void warn_invalid(const char* to_do, entity data) {
+static void warn_invalid(const char* to_do) {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                "Tried to %s with invalid entity data: { body_id = %lu, size = "
-                "%d }",
-                to_do,
-                data.body_id,
-                data.size);
+                "Tried to %s with invalid entity data.",
+                to_do);
 }
 
-int ENTITY_new_entity(entity data, size_t* entity_id) {
+int ENTITY_new_entity(entity data, double x, double y, size_t* entity_id) {
     if (!is_valid(data)) {
-        warn_invalid("create entity", data);
+        warn_invalid("create entity");
         return 2;
     }
+    Uint8 w = 0;
+    Uint8 h = 0;
+    ENTITY_get_size(data.size, &w, &h);
+    size_t body_id = 0;
+    PHYSICS_new_body(
+        (body){
+            .type = physics_actor,
+            .x = x - w / 2.0f,
+            .y = y - h,
+            .w = w,
+            .h = h,
+        },
+        &body_id);
     entity_data d = (entity_data){
         .entity = data,
+        .body_id = body_id,
         .climbing = climbs(&data),
         .flying = only_flies(&data),
     };
@@ -2916,7 +2924,7 @@ int ENTITY_del_entity(size_t entity_id) {
 
     // Fetched again, since `on_destroy_func` might have moved the pool
     entity_data* d = get_entity(entity_id);
-    PHYSICS_del_body(d->entity.body_id);
+    PHYSICS_del_body(d->body_id);
     deinit_dynarr(&d->path);
     remove_from_pool(entity_id, &entities);
     return 0;
@@ -2935,7 +2943,7 @@ int ENTITY_edit_entity(size_t entity_id, entity data) {
     int err = check_id(entity_id, "edit");
     if (err) return err;
     if (!is_valid(data)) {
-        warn_invalid("edit", data);
+        warn_invalid("edit");
         return 2;
     }
     entity_data* d = get_entity(entity_id);
@@ -2943,6 +2951,14 @@ int ENTITY_edit_entity(size_t entity_id, entity data) {
     d->flying = (d->flying && data.moves & move_fly) || only_flies(&data);
     d->climbing = d->climbing && climbs(&data);
     drop_path(d);
+    return 0;
+}
+
+int ENTITY_get_body_id(size_t entity_id, size_t* body_id) {
+    int err = check_id(entity_id, "get body_id");
+    if (err) return err;
+    entity_data* d = get_entity(entity_id);
+    *body_id = d->body_id;
     return 0;
 }
 
@@ -3440,7 +3456,7 @@ void ENTITY_update(void) {
         entity_data* d = get_entity(idx);
         if (!d) continue;
         bool simulated = false;
-        PHYSICS_is_body_within_the_simulation(d->entity.body_id, &simulated);
+        PHYSICS_is_body_within_the_simulation(d->body_id, &simulated);
         if (!simulated) continue;
         if (d->entity.update_func) d->entity.update_func(idx);
 
@@ -3564,7 +3580,7 @@ size_t ENTITY_test_get_moves(size_t entity_id,
     refresh();
     entity_data* d = get_entity(entity_id);
     body b = (body){0};
-    PHYSICS_get_body(d->entity.body_id, &b);
+    PHYSICS_get_body(d->body_id, &b);
     dynarr out = (dynarr){0};
     init_dynarr(&out, sizeof(path_move));
     node_state s = (node_state){
