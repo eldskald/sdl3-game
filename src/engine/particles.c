@@ -277,6 +277,7 @@ static void load_types(void) {
             .acc = {d->acc_x, d->acc_y},
             .damping = d->damping,
             .face_vel = d->face_vel,
+            .tan_acc = d->tan_acc,
             .slither_freq = d->slither_freq,
             .slither_amp = d->slither_amp,
             .bounce_count = d->bounce_count,

@@ -101,6 +101,11 @@
 
 
 
+// Props
+#define PROPS_FLAMES_CSV_PATH "data/graphics/flames.csv"
+
+
+
 // Player
 #define PLAYER_BASE_CSV_PATH         "data/player/core.csv"
 #define PLAYER_PRESENTATION_CSV_PATH "data/player/presentation.csv"

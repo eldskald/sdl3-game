@@ -3,11 +3,10 @@
 #include "defs.h"
 #include "engine/entity.h"
 #include "engine/game-manager.h"
-#include "engine/particles.h"
 #include "engine/physics.h"
-#include "engine/sprites.h"
 #include "paths.h"
 #include "player/player-core.h"
+#include "props/flames.h"
 #include "services/csv.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
@@ -35,7 +34,6 @@ typedef struct {
     double out_of_reach_retry;
     Uint8 coords_x, coords_y, coords_w, coords_h;
     Sint8 offset_x, offset_y;
-    animation fly_anim;
 } wisp_data;
 
 // What each wisp keeps on its entity's `state`. `retry_timer` counts down to
@@ -43,7 +41,7 @@ typedef struct {
 typedef struct {
     wisp_mode mode;
     double retry_timer;
-    double time;
+    size_t flame_id;
 } wisp_state;
 
 static const char wisp_csv[] = {
@@ -57,12 +55,22 @@ static wisp_data data = (wisp_data){0};
 static void on_create(size_t entity_id) {
     entity e = (entity){0};
     ENTITY_get_entity(entity_id, &e);
+    size_t body_id = 0;
+    ENTITY_get_body_id(entity_id, &body_id);
+    body b = (body){0};
+    PHYSICS_get_body(body_id, &b);
+    size_t flame_id = 0;
+    flame f = (flame){.x = b.x, .y = b.y};
+    FLAMES_new_flames(f, &flame_id);
+    wisp_state* s = e.state;
+    s->flame_id = flame_id;
 }
 
 static void on_destroy(size_t entity_id) {
     entity e = (entity){0};
     ENTITY_get_entity(entity_id, &e);
     wisp_state* s = e.state;
+    FLAMES_del_flames(s->flame_id);
     SDL_free(s);
 }
 
@@ -79,8 +87,10 @@ static void follow(size_t entity_id, wisp_state* s) {
         s->mode = wisp_idle;
         return;
     }
+    bool pfloor = false;
+    PHYSICS_is_body_on_floor(player.body_id, &pfloor);
     double px = pb.x + pb.w / 2.0;
-    double py = pb.y + pb.h;
+    double py = pb.y + pb.h - (pfloor ? SPRITESHEET_CELL_Y : 0.0f);
     double wx = b.x + b.w / 2.0;
     double wy = b.y + b.h;
     if (SDL_fabs(px - wx) <= data.follow_distance &&
@@ -119,8 +129,6 @@ static void on_move_finished(size_t entity_id,
     decide(entity_id, e.state);
 }
 
-// Moves only start here when it isn't moving, like while idle, interrupted or
-// out of reach. Otherwise, they start when the last one finished.
 static void update(size_t entity_id) {
     entity e = (entity){0};
     ENTITY_get_entity(entity_id, &e);
@@ -133,17 +141,11 @@ static void update(size_t entity_id) {
     ENTITY_get_body_id(entity_id, &body_id);
     body b = (body){0};
     PHYSICS_get_body(body_id, &b);
-    s->time += GAME_MANAGER_get_current_dt();
-    if (s->time >= 0.05f) {
-        s->time -= 0.05f;
-        PARTICLES_emit(particle_flames_base,
-                       (particles_emit_settings){
-                           .shape = particles_emit_rect,
-                           .rect = {.x = b.x, .y = b.y, .w = 4.0f, .h = 4.0f},
-                           .vel = {.x = 0.0f, .y = -20.0f},
-                           .count = 1,
-                       });
-    }
+    flame f = (flame){0};
+    FLAMES_get_flames(s->flame_id, &f);
+    f.x = b.x + b.w * 0.5f;
+    f.y = b.y + b.h * 0.5f;
+    FLAMES_edit_flames(s->flame_id, f);
 }
 
 
@@ -168,19 +170,10 @@ void WISP_start(void) {
         {"size_class", parsing_size_class, &e->size},
         {"follow_distance", parsing_double, &d->follow_distance},
         {"out_of_reach_retry", parsing_double, &d->out_of_reach_retry},
-        {"coords", parsing_uint8, &d->coords_x},
-        {"coords", parsing_uint8, &d->coords_y, .at = 1},
-        {"coords", parsing_uint8, &d->coords_w, .at = 2},
-        {"coords", parsing_uint8, &d->coords_h, .at = 3},
-        {"offset", parsing_sint8, &d->offset_x},
-        {"offset", parsing_sint8, &d->offset_y, .at = 1},
-        PARSING_ANIM_FIELDS("fly", d->fly_anim),
     };
     dynarr parsed = CSV_parse(wisp_csv);
     read_csv_keys(&parsed, fields, SDL_arraysize(fields));
     CSV_free(&parsed);
-
-    d->fly_anim.looped = true;
 
     e->moves = move_fly;
     e->on_create_func = on_create;

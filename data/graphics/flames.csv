@@ -1,0 +1,9 @@
+emit_w,4
+emit_h,4
+base_time,0.05
+spark_min_time,0.15
+spark_max_time,0.25
+emit_base_speed,-20
+emit_spark_speed,-40
+spread,45
+speed_jitter,0.5
