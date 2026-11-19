@@ -12,6 +12,7 @@
 #include "services/csv.h"
 #include "tests.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_stdinc.h>
 #include <stdio.h>
 
 // Type a CSV value must have to be read by its loader.
@@ -55,6 +56,9 @@ static const char bloom_csv[] = {
 };
 static const char ripples_csv[] = {
 #embed FLUIDS_RIPPLES_CSV_PATH suffix(, '\0')
+};
+static const char flames_csv[] = {
+#embed PROPS_FLAMES_CSV_PATH suffix(, '\0')
 };
 static const char props_csv[] = {
 #embed PHYSICS_PROPS_CSV_PATH suffix(, '\0')
@@ -362,6 +366,25 @@ static void check_ripples(void) {
     finish(FLUIDS_RIPPLES_CSV_PATH, &r);
 }
 
+static void check_flames(void) {
+    const key_spec specs[] = {
+        {"emit_w", val_double, 1, 1},
+        {"emit_h", val_double, 1, 1},
+        {"base_time", val_double, 1, 1},
+        {"spark_min_time", val_double, 1, 1},
+        {"spark_max_time", val_double, 1, 1},
+        {"emit_base_speed", val_double, 1, 1},
+        {"emit_spark_speed", val_double, 1, 1},
+        {"spread", val_double, 1, 1},
+        {"speed_jitter", val_double, 1, 1},
+    };
+    report r = (report){0};
+    dynarr parsed = CSV_parse(flames_csv);
+    check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
+    CSV_free(&parsed);
+    finish(PROPS_FLAMES_CSV_PATH, &r);
+}
+
 static void check_props(void) {
     const key_spec specs[] = {
         {"prop_body_collision_pad", val_double, 1, 1},
@@ -560,48 +583,15 @@ static void check_spider(void) {
 }
 
 static void check_wisp(void) {
-    const char* anims[] = {"fly_anim"};
-    char keys[SDL_arraysize(anims)][3][KEY_MAX_SIZE] = {0};
-    const key_spec base_specs[] = {
+    const key_spec specs[] = {
         {"fly_class", val_fly_class, 1, 1},
         {"size_class", val_size_class, 1, 1},
         {"follow_distance", val_double, 1, 1},
         {"out_of_reach_retry", val_double, 1, 1},
-        {"coords", val_uint8, 4, 4},
-        {"offset", val_sint8, 2, 2},
     };
-    key_spec specs[SDL_arraysize(base_specs) + 3 * SDL_arraysize(anims)];
-    SDL_memcpy(specs, base_specs, sizeof(base_specs));
-    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
-        sprintf(keys[a][0], "%s_x", anims[a]);
-        sprintf(keys[a][1], "%s_y", anims[a]);
-        sprintf(keys[a][2], "%s_dur", anims[a]);
-        size_t at = SDL_arraysize(base_specs) + 3 * a;
-        specs[at] =
-            (key_spec){keys[a][0], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
-        specs[at + 1] =
-            (key_spec){keys[a][1], val_uint8, 1, SPRITES_ANIM_MAX_KEYFRAMES};
-        specs[at + 2] =
-            (key_spec){keys[a][2], val_double, 1, SPRITES_ANIM_MAX_KEYFRAMES};
-    }
     report r = (report){0};
     dynarr parsed = CSV_parse(wisp_csv);
     check_keys_csv(&r, &parsed, specs, SDL_arraysize(specs));
-
-    // Each keyframe of an animation needs its x, y and duration.
-    for (size_t a = 0; a < SDL_arraysize(anims); a++) {
-        dynarr* x = get_row(&parsed, keys[a][0]);
-        dynarr* y = get_row(&parsed, keys[a][1]);
-        dynarr* dur = get_row(&parsed, keys[a][2]);
-        if (!x || !y || !dur) continue;
-        check(&r,
-              x->len == y->len && y->len == dur->len,
-              "\"%s\" has %lu x, %lu y and %lu durations, expected the same",
-              anims[a],
-              x->len - 1,
-              y->len - 1,
-              dur->len - 1);
-    }
     CSV_free(&parsed);
     finish(WISP_CSV_PATH, &r);
 }
@@ -1160,6 +1150,7 @@ void test_data_integrity(void) {
     check_bloom();
     check_ripples();
     check_props();
+    check_flames();
     check_camera();
     check_player_core();
     check_player_presentation();

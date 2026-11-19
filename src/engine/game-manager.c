@@ -20,6 +20,7 @@
 #include "entities/spider.h"
 #include "entities/wisp.h"
 #include "player/player-core.h"
+#include "props/flames.h"
 #include "props/vines.h"
 #include "utils/logger.h"
 #include <SDL3/SDL.h>
@@ -87,20 +88,28 @@ static void fixed_tick(void) {
     PROFILER_finish_timer("inputs");
 #endif
 
+#if DEV && !TEST
+    PROFILER_setup_timer("physics");
+#endif
     PHYSICS_update();
+#if DEV && !TEST
+    PROFILER_finish_timer("physics");
+#endif
 
 #if DEV && !TEST
-    PROFILER_setup_timer("vines");
+    PROFILER_setup_timer("props");
 #endif
     VINES_update();
+    FLAMES_update();
 #if DEV && !TEST
-    PROFILER_finish_timer("vines");
+    PROFILER_finish_timer("props");
 #endif
 
 #if DEV && !TEST
     PROFILER_setup_timer("player");
 #endif
     PLAYER_update();
+    CAMERA_update();
 #if DEV && !TEST
     PROFILER_finish_timer("player");
 #endif
@@ -111,14 +120,6 @@ static void fixed_tick(void) {
     ENTITY_update();
 #if DEV && !TEST
     PROFILER_finish_timer("entities");
-#endif
-
-#if DEV && !TEST
-    PROFILER_setup_timer("camera");
-#endif
-    CAMERA_update();
-#if DEV && !TEST
-    PROFILER_finish_timer("camera");
 #endif
 
 #if DEV && !TEST
@@ -161,6 +162,8 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
     Uint64 start = SDL_GetTicksNS();
     Uint64 ticks = 0;
 
+    SDL_srand(0);
+
     while (running) {
         Uint64 now = SDL_GetTicksNS();
         for (int caught_up = 0;
@@ -190,6 +193,8 @@ static int SDLCALL fixed_thread(void* _arg) { // NOLINT
 static int SDLCALL fluids_thread(void* _arg) { // NOLINT
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Started fluids loop thread.");
     fluids_t_start = SDL_GetTicksNS();
+
+    SDL_srand(0);
 
     while (running) {
         // Fluids thread loop
@@ -236,6 +241,8 @@ int GAME_MANAGER_start(void) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_INPUT, SDL_LOG_PRIORITY_INFO);
 #endif
 
+    SDL_srand(0);
+
     if (INPUTS_start()) return 1;
     if (RENDERER_start()) return 1;
     if (TEXT_start()) return 1;
@@ -247,6 +254,7 @@ int GAME_MANAGER_start(void) {
     CHUNKS_start();
     PHYSICS_start();
     VINES_start();
+    FLAMES_start();
     FLUIDS_start();
     REACTIONS_start();
     PLAYER_start();
@@ -290,6 +298,7 @@ void GAME_MANAGER_stop(void) {
     TILEMAP_stop();
     PHYSICS_stop();
     VINES_stop();
+    FLAMES_stop();
     FLUIDS_stop();
     REACTIONS_stop();
     SFX_stop();

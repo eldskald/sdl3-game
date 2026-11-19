@@ -4,7 +4,7 @@
 #ifndef COMMON
 #define COMMON
 
-#define EPSILON 0.0001
+#define EPSILON 1e-8
 #define PI 3.14159265
 #define TAU (PI * 2)
 #define DEG2RAD (PI / 180)

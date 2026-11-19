@@ -112,7 +112,7 @@ void main(uint3 id: SV_DispatchThreadID) {
 
         float2 tan = norm(float2(-p.vel.y, p.vel.x));
         float2 acc = t.acc + tan * t.tan_acc;
-        p.vel += t.acc * _Dt;
+        p.vel += acc * _Dt;
         p.vel *= pow((1.0 - t.damping), _Dt);
         float2 move = p.vel * _Dt;
         float2 next = p.pos + move;
