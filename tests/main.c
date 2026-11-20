@@ -34,7 +34,8 @@ const char* __lsan_default_suppressions(void) { // NOLINT
            "leak:VULKAN_INTERNAL_DeterminePhysicalDevice\n"
            "leak:VULKAN_INTERNAL_PrepareVulkan\n"
            "leak:libvulkan.so\n"
-           "leak:libdrm.so\n";
+           "leak:libdrm.so\n"
+           "leak:SDL_EGL_LoadLibrary\n";
 }
 
 const char* __lsan_default_options(void) { // NOLINT

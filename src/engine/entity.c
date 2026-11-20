@@ -915,13 +915,17 @@ static entity_surface get_touching(const entity* e, const body* b) {
 // one with its center if it swims there, or the one under it, since it bobs up
 // past it at the surface, or the one with its center if it's clinging to
 // something or flying there. Returns `node_none` when it's on none.
-static node_kind get_body_node(
-    const entity* e, const body* b, bool on_floor, Uint16* x, Uint16* y) {
+static node_kind get_body_node(const entity* e,
+                               const body* b,
+                               bool on_floor,
+                               bool climbing,
+                               Uint16* x,
+                               Uint16* y) {
     int from_x, to_x, from_y, to_y;
     get_span(b, b->x, b->y, &from_x, &to_x, &from_y, &to_y);
     int center, middle;
     get_center_tile(b, &center, &middle);
-    if (on_floor) {
+    if (on_floor || climbing) {
         int best = -1;
         for (int i = from_x; i <= to_x; i++) {
             if (get_node_kind(e, b, i, to_y) != node_ground) continue;
@@ -959,11 +963,15 @@ static node_kind get_body_node(
 
 // Same as `get_body_node()`, but on nodes with fluids the entity avoids too, so
 // it finds where it is wherever it is.
-static node_kind find_body_node(
-    const entity* e, const body* b, bool on_floor, Uint16* x, Uint16* y) {
+static node_kind find_body_node(const entity* e,
+                                const body* b,
+                                bool on_floor,
+                                bool climbing,
+                                Uint16* x,
+                                Uint16* y) {
     bool ignoring = ignoring_unsafe;
     ignoring_unsafe = true;
-    node_kind kind = get_body_node(e, b, on_floor, x, y);
+    node_kind kind = get_body_node(e, b, on_floor, climbing, x, y);
     ignoring_unsafe = ignoring;
     return kind;
 }
@@ -1508,7 +1516,7 @@ static void push_landing(const entity* e,
                          bool on_floor,
                          double time,
                          dynarr* out) {
-    node_kind kind = get_body_node(e, &b, on_floor, &m.to_x, &m.to_y);
+    node_kind kind = get_body_node(e, &b, on_floor, false, &m.to_x, &m.to_y);
     if (kind == node_none) return;
     if (m.to_x == m.from_x && m.to_y == m.from_y) return;
     m.cost += time;
@@ -2589,7 +2597,8 @@ static bool end_move(size_t id, bool interrupted) {
     entity e = moving_as(d);
     Uint16 x = 0;
     Uint16 y = 0;
-    r.on_node = find_body_node(&e, &b, on_floor, &x, &y) != node_none;
+    r.on_node =
+        find_body_node(&e, &b, on_floor, d->climbing, &x, &y) != node_none;
     r.end_x = r.on_node ? x : 0;
     r.end_y = r.on_node ? y : 0;
     if (interrupted)
@@ -2864,9 +2873,13 @@ static int begin_call(size_t entity_id,
 // Gets on `(x,y)` the node the body `b` of `e`, on the floor if `on_floor`, is
 // on, even one with fluids it avoids. Returns whether it's on one it can find
 // a path from, which it isn't in the air or outside the simulation space.
-static bool get_start_node(
-    const entity* e, const body* b, bool on_floor, Uint16* x, Uint16* y) {
-    return find_body_node(e, b, on_floor, x, y) != node_none &&
+static bool get_start_node(const entity* e,
+                           const body* b,
+                           bool on_floor,
+                           bool climbing,
+                           Uint16* x,
+                           Uint16* y) {
+    return find_body_node(e, b, on_floor, climbing, x, y) != node_none &&
            is_within_sim(*x, *y);
 }
 
@@ -3005,12 +3018,13 @@ static void start_single_move(entity_data* d,
 static int start_towards(entity_data* d,
                          body b,
                          bool on_floor,
+                         bool climbing,
                          double x,
                          double y,
                          bool ignore_unsafe) {
     entity e = moving_as(d);
     Uint16 sx, sy;
-    if (!get_start_node(&e, &b, on_floor, &sx, &sy)) return 5;
+    if (!get_start_node(&e, &b, on_floor, climbing, &sx, &sy)) return 5;
     Uint16 gx, gy;
     get_goal(x, y, &gx, &gy);
     if (sx == gx && sy == gy) {
@@ -3044,7 +3058,7 @@ move_towards(size_t entity_id, double x, double y, bool ignore_unsafe) {
         d->flying = true;
     else if (d->flying)
         return 5;
-    return start_towards(d, b, on_floor, x, y, ignore_unsafe);
+    return start_towards(d, b, on_floor, d->climbing, x, y, ignore_unsafe);
 }
 
 int ENTITY_move_towards(size_t entity_id, double x, double y) {
@@ -3066,7 +3080,7 @@ int ENTITY_fly_to(size_t entity_id, double x, double y) {
     if (!(d->entity.moves & move_fly)) return 2;
     if (d->moving) return 4;
     d->flying = true;
-    return start_towards(d, b, on_floor, x, y, false);
+    return start_towards(d, b, on_floor, d->climbing, x, y, false);
 }
 
 // Where a body like `b` of `e` lands on node `(x,y)`, on `px,py`: on its
@@ -3097,10 +3111,10 @@ int ENTITY_land_on(size_t entity_id, double x, double y) {
     if (!get_landing(&d->entity, &b, gx, gy, &px, &py)) return 2;
     entity e = moving_as(d);
     Uint16 sx, sy;
-    if (!get_start_node(&e, &b, on_floor, &sx, &sy)) return 5;
+    if (!get_start_node(&e, &b, on_floor, d->climbing, &sx, &sy)) return 5;
     if (sx != gx || sy != gy) {
         if (only_flies(&d->entity)) d->flying = true;
-        return start_towards(d, b, on_floor, x, y, false);
+        return start_towards(d, b, on_floor, d->climbing, x, y, false);
     }
     if (!d->flying && is_near(b.x, 0.0, px) && is_near(b.y, 0.0, py) &&
         SDL_fabs(b.vel_x) <= EPSILON)
@@ -3149,7 +3163,8 @@ int ENTITY_get_node(size_t entity_id, Uint16* x, Uint16* y) {
     int err = begin_call(entity_id, "get the node of", &d, &b, &on_floor);
     if (err) return err;
     entity e = moving_as(d);
-    return find_body_node(&e, &b, on_floor, x, y) == node_none ? 4 : 0;
+    return find_body_node(&e, &b, on_floor, d->climbing, x, y) == node_none ? 4
+                                                                            : 0;
 }
 
 int ENTITY_get_clinging(size_t entity_id, entity_surface* surface) {
@@ -3183,7 +3198,7 @@ int ENTITY_find_nearest_safe_tile(size_t entity_id, Uint16* x, Uint16* y) {
     if (err) return err;
     entity e = moving_as(d);
     Uint16 sx, sy;
-    if (!get_start_node(&e, &b, on_floor, &sx, &sy)) return 5;
+    if (!get_start_node(&e, &b, on_floor, d->climbing, &sx, &sy)) return 5;
     if (is_node_safe(&e, &b, sx, sy)) {
         *x = sx;
         *y = sy;
@@ -3240,7 +3255,8 @@ static bool aim_jump(const entity* e,
             continue;
         }
         Uint16 lx, ly;
-        if (find_body_node(e, &landing, s.on_floor, &lx, &ly) != node_none &&
+        if (find_body_node(e, &landing, s.on_floor, false, &lx, &ly) !=
+                node_none &&
             lx == gx && ly == gy) {
             double off = SDL_fabs(landing.x + landing.w / 2.0 - x);
             if (!found || off < best_off) {
@@ -3267,10 +3283,10 @@ int ENTITY_jump(size_t entity_id, jump_class jump, double x, double y) {
     entity e = moving_as(d);
     bool swimming =
         swims_in(&e, get_body_fluids(e.safe_fluids, &b, b.x, b.y).swimming);
-    if (!on_floor && !swimming) return 5;
+    if ((!on_floor && !swimming) || d->climbing) return 5;
     Uint16 sx = 0;
     Uint16 sy = 0;
-    find_body_node(&e, &b, on_floor, &sx, &sy);
+    find_body_node(&e, &b, on_floor, d->climbing, &sx, &sy);
     Uint16 gx, gy;
     get_goal(x, y, &gx, &gy);
 

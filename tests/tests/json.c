@@ -51,6 +51,10 @@ void test_json(void) {
                  SDL_strcmp(test->str, "test with, space, and commas") == 0});
     JSON_free(test);
 
+    test = JSON_parse("[]");
+    expect("Parsing []...", 2, (bool[]){test->type == arr, test->arr.len == 0});
+    JSON_free(test);
+
     test = JSON_parse("\"[24, 17]\"");
     expect("Parsing \"[24, 17]\"...",
            2,
