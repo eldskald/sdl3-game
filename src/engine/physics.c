@@ -226,7 +226,7 @@ static bool are_intersecting(double ax,
 // Cuts `d` short so a body at `pos` with `size` ends up within `[0, level]`,
 // the level's edges being walls for every body type. Returns whether it did.
 static bool clamp_to_level(double pos, double size, double level, double* d) {
-    double to = SDL_clamp(pos + *d, 0.0, level - size);
+    double to = SDL_clamp(pos + *d, EPSILON, level - size - EPSILON);
     bool hit = to != pos + *d;
     *d = to - pos;
     return hit;
@@ -870,9 +870,11 @@ int PHYSICS_simulate(
         data->y + data->h > TILEMAP_SIZE_Y * SPRITESHEET_CELL_Y || !step_func) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Tried to simulate body with invalid data: { w = %d, h = "
-                    "%d }",
+                    "%d, x = %f, y = %f }",
                     data->w,
-                    data->h);
+                    data->h,
+                    data->x,
+                    data->y);
         return 2;
     }
     const double dt = 1.0 / FIXED_T_TARGET_FPS;

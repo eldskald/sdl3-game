@@ -3,6 +3,7 @@
 #include "data-structs/hashmap.h"
 #include "services/defs.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_stdinc.h>
 
 typedef enum {
     elemarr,
@@ -299,6 +300,11 @@ static bool parse(const char* string, jsondata* res) {
                     break;
                 }
                 if (!recursions.len) {
+                    if (SDL_strlen(val) == 0) {
+                        SDL_free(val);
+                        parsing_arr_ended = true;
+                        break;
+                    }
                     jsondata elem = (jsondata){0};
                     if (!parse(val, &elem)) {
                         error_arr(&arrval,

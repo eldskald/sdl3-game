@@ -302,8 +302,8 @@ int ENTITY_fly_to(size_t entity_id, double x, double y);
 // as completed if it landed on that tile, otherwise missed. Returns `3` when
 // `entity_id` is outside the array's range, `1` when there is no entity at
 // that index, `2` when `jump` isn't a jump class, `4` when it's in the middle
-// of a move, `5` when it's neither on the floor nor swimming, `7` when it
-// can't land on that tile from where it is, and `0` when it jumped.
+// of a move, `5` when it's neither on the floor nor swimming or it's climbing,
+// `7` when it can't land on that tile from where it is, and `0` when it jumped.
 int ENTITY_jump(size_t entity_id, jump_class jump, double x, double y);
 
 // Makes the entity at `entity_id` land on the tile at `(x,y)`, in pixels, like

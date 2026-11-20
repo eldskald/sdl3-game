@@ -1,5 +1,6 @@
 #include "utils/logger.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_log.h>
 
 // Longest name a resource can have, longer ones are cut.
 #define NAME_MAX_LEN 256
@@ -19,3 +20,14 @@ bool log_creation(int category, const void* resource, const char* fmt, ...) {
     SDL_LogInfo(category, "%s created successfully.", name);
     return true;
 }
+
+#ifdef DEV
+void debug(const char* fmt, ...) {
+    char msg[512];
+    va_list args;
+    va_start(args, fmt);
+    SDL_vsnprintf(msg, sizeof(msg), fmt, args);
+    va_end(args);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "%s", msg);
+}
+#endif

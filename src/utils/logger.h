@@ -11,3 +11,10 @@ bool log_creation(int category,
                   const void* resource,
                   SDL_PRINTF_FORMAT_STRING const char* fmt,
                   ...) SDL_PRINTF_VARARG_FUNC(3);
+
+
+#ifdef DEV
+// Quick output printing for debug reasons
+void debug(SDL_PRINTF_FORMAT_STRING const char* fmt, ...)
+    SDL_PRINTF_VARARG_FUNC(1);
+#endif
