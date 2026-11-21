@@ -14,10 +14,12 @@ typedef enum { FLUIDS_TYPES } fluid_type;
 
 // Struct containing containing data about a fluid cell.
 //
+//```
 // struct fluid_cell {
 //     double volume[FLUIDS_TOTAL];
 //     bool solid;
 // }
+//```
 typedef struct {
     double volume[FLUIDS_TOTAL];
     bool solid;

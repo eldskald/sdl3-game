@@ -1,7 +1,6 @@
 #pragma once
 #include "defs.h"
 #include <SDL3/SDL.h>
-#include <stddef.h>
 
 // Blend modes.
 //

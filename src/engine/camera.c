@@ -4,6 +4,7 @@
 #include "engine/game-manager.h"
 #include "paths.h"
 #include "services/csv.h"
+#include "utils/math.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_rect.h>
@@ -103,9 +104,9 @@ void CAMERA_update(void) {
 
     double v = data.smoothing_max_speed;
     if (d < data.smoothing_range)
-        v = data.smoothing_min_speed +
-            (data.smoothing_max_speed - data.smoothing_min_speed) * d /
-                data.smoothing_range;
+        v = lerp(data.smoothing_min_speed,
+                 data.smoothing_max_speed,
+                 d / data.smoothing_range);
 
     double step = v * GAME_MANAGER_get_current_dt();
     if (step >= d) {

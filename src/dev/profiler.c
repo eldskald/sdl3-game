@@ -74,6 +74,10 @@ void PROFILER_toggle_stats(thread t) {
     toggled = toggled == t ? 0 : t;
 }
 
+void PROFILER_cycle_stats(void) {
+    toggled = (toggled + 1) % 4;
+}
+
 void PROFILER_draw(void) {
     if (!toggled) return;
 
