@@ -68,3 +68,10 @@ void RENDERER_draw_triangle(float x1,
 // by its alpha. When both ends are the same, it's drawn as a single point.
 void RENDERER_draw_line(
     float x1, float y1, float x2, float y2, SDL_FColor col, Sint8 z_index);
+
+
+#ifdef DEV
+// Returns the target rect where the final, stretched pixel game screen is being
+// drawn on
+SDL_FRect RENDERER_get_final_screen_rect(void);
+#endif

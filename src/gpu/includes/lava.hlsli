@@ -20,6 +20,7 @@
 #define LAVA_PARTICLES_VEL float2(0.0, -120.0)
 #define LAVA_PARTICLES_SPEED_JITTER 0.5
 #define LAVA_PARTICLES_SPREAD 30.0
+#define LAVA_PARTICLES_VOL_CUTOFF 0.9
 
 float lava_bubbles(float2 uv) {
     uv += _CamPos;
@@ -36,7 +37,7 @@ float lava_edge(float o, float s) {
 Request lava_particles(
     float2 pos, float2 cell_size, float volume, float dt, uint seed) {
     uint spawn = rand_per_sec(random(seed), dt, LAVA_PARTICLES_FREQ);
-    spawn = volume >= 0.9 ? spawn : 0;
+    spawn = volume >= LAVA_PARTICLES_VOL_CUTOFF ? spawn : 0;
     Request req;
     req.shape = SHAPE_RECT;
     req.size = cell_size;

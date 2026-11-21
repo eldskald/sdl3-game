@@ -16,6 +16,7 @@
 
 #ifdef DEV
 #include "dev/dev.h"
+#include "dev/fluids-debugger.h"
 #include "dev/profiler.h"
 #endif
 
@@ -77,6 +78,8 @@ static const Uint8 box_sample_spirv[] = {
 static const Uint8 box_sample_dxil[] = {
 #embed RENDERER_BOX_SAMPLE_FRAG_DXIL_PATH
 };
+
+
 
 // The spritesheet has an extra row of pixels at its bottom, with a white pixel
 // on its first one, at `white_u,white_v`. Lines and triangles are drawn with
@@ -579,7 +582,10 @@ static void render_final_screen(void) {
 #ifdef DEV
     // Drawn over the window in its pixels, after post processing.
     GRAPHICS_set_state(&(graphics_state){.blend = graphics_blend_blend});
+
     PROFILER_draw();
+    FLUIDS_DEBUGGER_draw();
+
     GRAPHICS_set_state(NULL);
 #endif
 }
@@ -638,3 +644,30 @@ void RENDERER_update(void) {
     render_final_screen();
     GRAPHICS_end_frame();
 }
+
+
+
+#ifdef DEV
+SDL_FRect RENDERER_get_final_screen_rect(void) {
+    Uint32 window_w, window_h;
+    if (!GRAPHICS_get_swapchain_size(&window_w, &window_h))
+        return (SDL_FRect){0};
+    float window_ar = (float)window_w / (float)window_h;
+    float base_ar = (float)WINDOW_SIZE_X / (float)WINDOW_SIZE_Y;
+
+    int x, y, w, h;
+    if (window_ar >= base_ar) {
+        h = window_h;
+        w = window_h * base_ar;
+        y = 0;
+        x = (window_w - w) / 2;
+    } else {
+        w = window_w;
+        h = window_w / base_ar;
+        x = 0;
+        y = (window_h - h) / 2;
+    }
+
+    return (SDL_FRect){.x = x, .y = y, .w = w, .h = h};
+}
+#endif

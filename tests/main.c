@@ -24,23 +24,33 @@
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
-// Vulkan might leak memory once at startup, out of power to fix it for now.
-// NVidia's Vulkan driver also leaks it through the D-Bus connection, also at
-// startup. It's just a couple of bytes and once, the kind that should have been
-// freed when we free the window and other video memory but the libraries didn't
-// do it so we suppress them here to not pollute reports.
+// This next block is due to some Linux video drivers getting reported as leaks
+// by ASan. Because we use an offscreen video driver to test the graphics
+// engine, this calls the drivers and LSan catches a false positive leak. We do
+// the `dlclose()` one because some leaks were happening on a separate thread on
+// the CI's lavapipe from mesa-vulkan-drivers, which means `dlclose` was
+// sometimes running before LSan ran at the end, so they got unloaded and mapped
+// as `<unknown module>`. So in order to correctly suppress them, we need to
+// stop `dlclose()` from unloading them so their symbols get correctly mapped to
+// the driver that allocated the memory so then we can suppress it. We're also
+// suppressing NVidia because locally if you're using NVidia, it would also leak
+// so we need to suppress the CI driver libs and the local libs too. If any new
+// graphics driver comes up and breaks, we need to add it here.
+#ifdef __SANITIZE_ADDRESS__
+int dlclose(void* handle) { // NOLINT
+    (void)handle;
+    return 0;
+}
+
 const char* __lsan_default_suppressions(void) { // NOLINT
-    return "leak:libdbus-1.so\n"
-           "leak:VULKAN_INTERNAL_DeterminePhysicalDevice\n"
-           "leak:VULKAN_INTERNAL_PrepareVulkan\n"
-           "leak:libvulkan.so\n"
-           "leak:libdrm.so\n"
-           "leak:SDL_EGL_LoadLibrary\n";
+    return "leak:SDL_EGL_LoadLibrary\n"
+           "leak:libnvidia\n";
 }
 
 const char* __lsan_default_options(void) { // NOLINT
     return "print_suppressions=0";
 }
+#endif
 
 int main(int argc, char* argv[]) {
     SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_COUNT);

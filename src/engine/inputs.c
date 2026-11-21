@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #ifdef DEV
+#include "dev/fluids-debugger.h"
 #include "dev/profiler.h"
 #endif
 
@@ -166,13 +167,10 @@ void INPUTS_handle_inputs(SDL_Event* event) {
 
 #ifdef DEV
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F1) {
-        PROFILER_toggle_stats(thread_main);
+        PROFILER_cycle_stats();
     }
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F2) {
-        PROFILER_toggle_stats(thread_fixed);
-    }
-    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F3) {
-        PROFILER_toggle_stats(thread_fluids);
+        FLUIDS_DEBUGGER_toggle();
     }
 #endif
 }
