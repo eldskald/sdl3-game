@@ -1,6 +1,7 @@
-classes,
+entity,
 fly_class,normal
 size_class,normal
+weight,0.2
 ,
 behaviour,
 follow_distance,24

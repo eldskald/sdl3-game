@@ -5,6 +5,7 @@
 #include "engine/game-manager.h"
 #include "engine/physics.h"
 #include "engine/sprites.h"
+#include "engine/tilemap.h"
 #include "paths.h"
 #include "player/player-core.h"
 #include "services/csv.h"
@@ -186,6 +187,9 @@ update_sprite(spider_state* s, size_t entity_id, size_t body_id, body b) {
     else if (moving)
         anim = spider_anim_walk;
     if (anim != s->anim) {
+        if (s->anim == spider_anim_airborne)
+            TILEMAP_land_on((SDL_FRect){.x = b.x, .y = b.y, .w = b.w, .h = b.h},
+                            data.entity.weight);
         s->anim = anim;
         play_anim(s);
     }
@@ -276,6 +280,7 @@ void SPIDER_start(void) {
         {"fall_class", parsing_fall_class, &e->fall},
         {"run_class", parsing_run_class, &e->run},
         {"size_class", parsing_size_class, &e->size},
+        {"weight", parsing_double, &e->weight},
         {"follow_distance", parsing_double, &d->follow_distance},
         {"out_of_reach_retry", parsing_double, &d->out_of_reach_retry},
         {"coords", parsing_uint8, &d->coords_x},

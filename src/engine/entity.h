@@ -175,8 +175,9 @@ typedef struct {
 // does after each one. It creates its own physics body and moves it with the
 // values of its classes, jumping with its `jump` class or any weaker one. Its
 // body must be the size of its `size` class. `moves` are its `entity_move`
-// flags of how it's allowed to move. The body becomes the entity's, deleted
-// along with it.
+// flags of how it's allowed to move and `weight` is the weight used for step
+// on, land on, splash and ripple functions. The body becomes the entity's,
+// deleted along with it.
 //
 // With `move_swim`, it swims when its body is in a fluid deep enough, like the
 // player, whatever the fluid, moving in any direction and staying where it is
@@ -202,6 +203,7 @@ typedef struct {
 // struct entity {
 //     Uint32 moves;
 //     Uint32 safe_fluids;
+//     double weight;
 //     jump_class jump;
 //     fall_class fall;
 //     run_class run;
@@ -219,6 +221,7 @@ typedef struct {
 typedef struct {
     Uint32 moves;
     Uint32 safe_fluids;
+    double weight;
     jump_class jump;
     fall_class fall;
     run_class run;
@@ -238,8 +241,9 @@ typedef struct {
 // `entity_id`, then calls its `on_create_func`. The `x` and `y` values are its
 // position at the middle of the bottom side of its collision box, we do this
 // instead of anchoring them at the top left corner because it's easier to spawn
-// them on the chunks API without needing to know their size class. Returns `2`
-// when `data` is invalid, `0` when everything went right.
+// them on the chunks API without needing to know their size class. `weight` is
+// for the body that gets created for the entity. Returns `2` when `data` is
+// invalid, `0` when everything went right.
 int ENTITY_new_entity(entity data, double x, double y, size_t* entity_id);
 
 // Calls the `on_destroy_func` of the entity at `entity_id`, then deletes it

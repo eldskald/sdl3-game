@@ -32,7 +32,7 @@ struct ParticleType {
     float lifetime;
     float lifetime_jitter;
     float fade_time;
-    uint ignore_fluids;
+    float ignore_fluids;
 
     uint face_vel;
     float damping;

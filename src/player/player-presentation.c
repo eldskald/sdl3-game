@@ -100,7 +100,7 @@ static sprite_state state = (sprite_state){0};
 static void on_step(size_t _sprite_id, size_t _arg) { // NOLINT
     body b = (body){0};
     if (PHYSICS_get_body(state.player.body_id, &b)) return;
-    TILEMAP_step_on((SDL_FRect){b.x, b.y, b.w, b.h}, state.player.facing);
+    TILEMAP_step_on((SDL_FRect){b.x, b.y, b.w, b.h}, state.player.facing, 1.0f);
 }
 
 static void state_changed(states_machine_state new_state) {
@@ -480,8 +480,10 @@ static void update_states_machine(player_state player, body player_body) {
 
     if (new_state != state.state) {
         if (state.state == state_airborne && is_on_floor && !player.swimming)
-            TILEMAP_land_on((SDL_FRect){
-                player_body.x, player_body.y, player_body.w, player_body.h});
+            TILEMAP_land_on(
+                (SDL_FRect){
+                    player_body.x, player_body.y, player_body.w, player_body.h},
+                1.0f);
         state.state = new_state;
         state_changed(new_state);
     }

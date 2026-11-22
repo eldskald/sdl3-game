@@ -1361,6 +1361,7 @@ static void test_storage(void) {
         (entity){
             .run = run_class_fast,
             .size = size_class_normal,
+            .weight = 0.8f,
             .on_create_func = on_create,
             .on_destroy_func = on_destroy,
             .update_func = on_update,
@@ -1379,7 +1380,7 @@ static void test_storage(void) {
     ENTITY_get_size(size_class_normal, &w, &h);
     expect("Created an entity, checking it and if its on_create_func was "
            "called with its ID and if the body was created correctly...",
-           9,
+           10,
            (bool[]){
                r == 0,
                data.run == run_class_fast,
@@ -1390,6 +1391,7 @@ static void test_storage(void) {
                b.h == h,
                b.x == tile_x * SPRITESHEET_CELL_X - w * 0.5f,
                b.y == (tile_y + 1) * SPRITESHEET_CELL_Y - h,
+               b.weight == data.weight,
            });
 
     PHYSICS_update();
@@ -1425,6 +1427,23 @@ static void test_storage(void) {
             ENTITY_new_entity(wrong_class, 8.0f, 8.0f, &id) == 2,
             ENTITY_edit_entity(id, wrong_class) == 2,
         });
+
+    data.weight = 0.5f;
+    data.size = size_class_wide;
+    ENTITY_edit_entity(id, data);
+    ENTITY_get_entity(id, &data);
+    PHYSICS_get_body(body_id, &b);
+    ENTITY_get_size(size_class_wide, &w, &h);
+    expect("Edited its weight and size class, checking if its body got updated "
+           "correctly...",
+           5,
+           (bool[]){
+               data.weight == 0.5f,
+               data.size == size_class_wide,
+               b.weight == 0.5f,
+               b.w == w,
+               b.h == h,
+           });
 
     ENTITY_del_entity(id);
     expect("Deleted it, checking if its on_destroy_func was called, its body "

@@ -749,8 +749,10 @@ static void ripple_fluids(body b, double vel_x, double vel_y) {
     if (vol < EPSILON) return;
     double speed =
         SDL_min(SDL_sqrt(vel_x * vel_x + vel_y * vel_y), ripples_max_speed);
-    FLUIDS_ripple_at(
-        x, y, ripples_size, ripples_strength * speed / ripples_max_speed);
+    FLUIDS_ripple_at(x,
+                     y,
+                     ripples_size,
+                     b.weight * ripples_strength * speed / ripples_max_speed);
 }
 
 
@@ -801,7 +803,8 @@ static void splash_fluids(body_data* b, double x0, double y0, double vel_y) {
     fluid_rect to = get_fluid_rect(b->body.x, b->body.y, b->body.w, b->body.h);
     if (are_same_fluid_rects(from, to)) return;
     if (has_fluid(from) || !has_fluid(to)) return;
-    FLUIDS_splash_at(to.x, to.y + to.h - 1, to.w, SDL_fabs(vel_y));
+    FLUIDS_splash_at(
+        to.x, to.y + to.h - 1, b->body.weight * to.w, SDL_fabs(vel_y));
     b->splash_cooldown = PHYSICS_SPLASH_COOLDOWN;
 }
 
