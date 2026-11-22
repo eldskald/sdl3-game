@@ -482,7 +482,7 @@ static void check_entity_classes(void) {
 
 static void check_frog(void) {
     const char* anims[] = {
-        "idle_anim", "walk_anim", "airborne_up_anim", "airborne_down_anim"};
+        "idle_anim", "airborne_up_anim", "airborne_down_anim"};
     char keys[SDL_arraysize(anims)][3][KEY_MAX_SIZE] = {0};
     const key_spec base_specs[] = {
         {"jump_class", val_jump_class, 1, 1},
@@ -494,6 +494,7 @@ static void check_frog(void) {
         {"out_of_reach_retry", val_double, 1, 1},
         {"coords", val_uint8, 4, 4},
         {"offset", val_sint8, 2, 2},
+        {"weight", val_double, 1, 1},
     };
     key_spec specs[SDL_arraysize(base_specs) + 3 * SDL_arraysize(anims)];
     SDL_memcpy(specs, base_specs, sizeof(base_specs));
@@ -542,6 +543,7 @@ static void check_spider(void) {
         {"out_of_reach_retry", val_double, 1, 1},
         {"coords", val_uint8, 4, 4},
         {"offset", val_sint8, 2, 2},
+        {"weight", val_double, 1, 1},
         {"ceiling_offset", val_sint8, 2, 2},
         {"left_wall_offset", val_sint8, 2, 2},
         {"right_wall_offset", val_sint8, 2, 2},
@@ -586,6 +588,7 @@ static void check_wisp(void) {
     const key_spec specs[] = {
         {"fly_class", val_fly_class, 1, 1},
         {"size_class", val_size_class, 1, 1},
+        {"weight", val_double, 1, 1},
         {"follow_distance", val_double, 1, 1},
         {"out_of_reach_retry", val_double, 1, 1},
     };
@@ -1010,7 +1013,7 @@ static void check_particles(void) {
         {"lifetime", val_double},
         {"lifetime_jitter", val_double},
         {"fade_time", val_double},
-        {"ignore_fluids", val_bool},
+        {"ignore_fluids", val_double},
         {"face_vel", val_bool},
         {"acc_x", val_double},
         {"acc_y", val_double},

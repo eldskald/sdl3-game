@@ -6,6 +6,7 @@
 #include "engine/game-manager.h"
 #include "engine/physics.h"
 #include "engine/sprites.h"
+#include "engine/tilemap.h"
 #include "paths.h"
 #include "player/player-core.h"
 #include "services/csv.h"
@@ -14,7 +15,6 @@
 
 typedef enum {
     frog_anim_idle,
-    frog_anim_walk,
     frog_anim_airborne_up,
     frog_anim_airborne_down,
 } frog_anim;
@@ -71,9 +71,6 @@ static void play_anim(frog_state* s) {
     switch (s->anim) {
     case frog_anim_idle:
         SPRITES_play_anim(s->sprite_id, data.idle_anim);
-        break;
-    case frog_anim_walk:
-        SPRITES_play_anim(s->sprite_id, data.walk_anim);
         break;
     case frog_anim_airborne_up:
         SPRITES_play_anim(s->sprite_id, data.airborne_up_anim);
@@ -223,9 +220,10 @@ update_sprite(frog_state* s, size_t entity_id, size_t body_id, body b) {
     frog_anim anim = frog_anim_idle;
     if (!on_floor && !swimming)
         anim = b.vel_y < 0.0 ? frog_anim_airborne_up : frog_anim_airborne_down;
-    else if (SDL_fabs(b.vel_x) > EPSILON)
-        anim = frog_anim_walk;
     if (anim != s->anim) {
+        if (anim == frog_anim_idle)
+            TILEMAP_land_on((SDL_FRect){.x = b.x, .y = b.y, .w = b.w, .h = b.h},
+                            data.entity.weight);
         s->anim = anim;
         play_anim(s);
     }
@@ -284,6 +282,7 @@ void FROG_start(void) {
         {"run_class", parsing_run_class, &e->run},
         {"swim_class", parsing_swim_class, &e->swim},
         {"size_class", parsing_size_class, &e->size},
+        {"weight", parsing_double, &e->weight},
         {"follow_distance", parsing_double, &d->follow_distance},
         {"out_of_reach_retry", parsing_double, &d->out_of_reach_retry},
         {"coords", parsing_uint8, &d->coords_x},
@@ -293,7 +292,6 @@ void FROG_start(void) {
         {"offset", parsing_sint8, &d->offset_x},
         {"offset", parsing_sint8, &d->offset_y, .at = 1},
         PARSING_ANIM_FIELDS("idle", d->idle_anim),
-        PARSING_ANIM_FIELDS("walk", d->walk_anim),
         PARSING_ANIM_FIELDS("airborne_up", d->airborne_up_anim),
         PARSING_ANIM_FIELDS("airborne_down", d->airborne_down_anim),
     };

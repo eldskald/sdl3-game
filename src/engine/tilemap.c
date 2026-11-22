@@ -436,7 +436,7 @@ pick_sfx(SDL_FRect rect, const tile_sfx* fluid_sets, const tile_sfx* tile_set) {
 // Plays one of the sounds of `set` at random on the next voice at its volume,
 // as heard from `(x,y)`, unless it's within `sfx_cooldown` of the last one
 // played.
-static void play_sfx(const tile_sfx* set, double x, double y) {
+static void play_sfx(const tile_sfx* set, double x, double y, double vol) {
     if (!set->count) return;
     Uint64 now = SDL_GetTicksNS();
     if (sfx_played &&
@@ -450,8 +450,12 @@ static void play_sfx(const tile_sfx* set, double x, double y) {
         sfx_voices_created = true;
     }
     audio_wav* wav = set->wavs[SDL_rand(set->count)];
-    SFX_play_voice_2d(
-        sfx_voices[sfx_next_voice], wav, x, y, set->volume, sfx_falloff_range);
+    SFX_play_voice_2d(sfx_voices[sfx_next_voice],
+                      wav,
+                      x,
+                      y,
+                      set->volume * vol,
+                      sfx_falloff_range);
     sfx_next_voice = (sfx_next_voice + 1) % TILE_SFX_VOICES_TOTAL;
     sfx_last_ns = now;
     sfx_played = true;
@@ -580,35 +584,38 @@ void TILEMAP_draw(void) {
 
 
 
-void TILEMAP_step_on(SDL_FRect rect, Sint8 dir) {
+void TILEMAP_step_on(SDL_FRect rect, Sint8 dir, double weight) {
     tile_type type = get_tile_under(rect);
     if (!type) return;
 
     play_sfx(pick_sfx(rect, fluids_step_sfx, &tile_step_sfx[type]),
              rect.x + rect.w / 2,
-             rect.y + rect.h);
+             rect.y + rect.h,
+             weight);
 
     // Thrown up and behind the body, at 45 degrees
     step_particles p = step_on_particles[type];
     if (p.particle == particle_none || !p.count) return;
-    PARTICLES_emit(p.particle,
-                   (particles_emit_settings){
-                       .shape = particles_emit_point,
-                       .pos = {rect.x + rect.w / 2, rect.y + rect.h},
-                       .vel = {-dir * p.speed * COS75, -p.speed * SIN75},
-                       .speed_jitter = p.speed_jitter,
-                       .spread = p.spread,
-                       .count = p.count,
-                   });
+    PARTICLES_emit(
+        p.particle,
+        (particles_emit_settings){
+            .shape = particles_emit_point,
+            .pos = {rect.x + rect.w / 2, rect.y + rect.h},
+            .vel = {-dir * p.speed * COS75 * weight, -p.speed * SIN75 * weight},
+            .speed_jitter = p.speed_jitter,
+            .spread = p.spread,
+            .count = p.count,
+        });
 }
 
-void TILEMAP_land_on(SDL_FRect rect) {
+void TILEMAP_land_on(SDL_FRect rect, double weight) {
     tile_type type = get_tile_under(rect);
     if (!type) return;
 
     play_sfx(pick_sfx(rect, fluids_land_sfx, &tile_land_sfx[type]),
              rect.x + rect.w / 2,
-             rect.y + rect.h);
+             rect.y + rect.h,
+             weight);
 
     land_particles p = land_on_particles[type];
     Uint32 count = (Uint32)SDL_lroundf(p.count_per_pixel * rect.w);
@@ -617,7 +624,7 @@ void TILEMAP_land_on(SDL_FRect rect) {
                    (particles_emit_settings){
                        .shape = particles_emit_rect,
                        .rect = {rect.x, rect.y + rect.h - 1, rect.w, 1},
-                       .vel = {0, -p.speed},
+                       .vel = {0, -p.speed * weight},
                        .speed_jitter = p.speed_jitter,
                        .spread = p.spread,
                        .count = count,

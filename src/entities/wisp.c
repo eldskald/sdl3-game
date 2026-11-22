@@ -168,6 +168,7 @@ void WISP_start(void) {
     parsing_field fields[] = {
         {"fly_class", parsing_fly_class, &e->fly},
         {"size_class", parsing_size_class, &e->size},
+        {"weight", parsing_double, &e->weight},
         {"follow_distance", parsing_double, &d->follow_distance},
         {"out_of_reach_retry", parsing_double, &d->out_of_reach_retry},
     };

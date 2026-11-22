@@ -19,7 +19,9 @@ typedef enum {
 // Body information. Position is `x` and `y`, velocity is `vel_x` and `vel_y`,
 // dimensions are `w` and `h`, while `type` is which type of physics it should
 // have. `w` and `h` must not be zero. The `x,y,w,h` values must also fit inside
-// the tilemap's space.
+// the tilemap's space, and `weight` is a number to indicate how much the body
+// splashes and creates ripples in bodies of fluids, where `0.0` means no
+// interaction and `1.0` means normal interaction.
 //
 // ```
 // struct body {
@@ -27,6 +29,7 @@ typedef enum {
 //     double x, y;
 //     double vel_x, vel_y;
 //     Uint8 w, h;
+//     double weight;
 // };
 // ```
 typedef struct {
@@ -34,6 +37,7 @@ typedef struct {
     double x, y;
     double vel_x, vel_y;
     Uint8 w, h;
+    double weight;
 } body;
 
 // Prop point, for making soft body simulated props like vines, cloth, chains,

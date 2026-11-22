@@ -129,7 +129,8 @@ void main(uint3 id: SV_DispatchThreadID) {
             } else {
                 die(p, t, normal);
             }
-        } else if (code == CODE_OUTSIDE || (code > 0 && t.ignore_fluids == 0)) {
+        } else if (code == CODE_OUTSIDE ||
+                   (code > 0 && p.age > t.ignore_fluids)) {
             p.type = 0;
         } else {
             p.pos = next;

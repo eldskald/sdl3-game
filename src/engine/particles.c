@@ -23,7 +23,7 @@ typedef struct {
     float lifetime;
     float lifetime_jitter;
     float fade_time;
-    Uint32 ignore_fluids;
+    float ignore_fluids;
 
     Uint32 face_vel;
     float damping;
@@ -97,7 +97,7 @@ typedef struct {
     float lifetime;
     float lifetime_jitter;
     float fade_time;
-    bool ignore_fluids;
+    float ignore_fluids;
 
     bool face_vel;
     float acc_x, acc_y;
@@ -217,7 +217,7 @@ static void load_types(void) {
         {"lifetime", parsing_float, &rows->lifetime},
         {"lifetime_jitter", parsing_float, &rows->lifetime_jitter},
         {"fade_time", parsing_float, &rows->fade_time},
-        {"ignore_fluids", parsing_bool, &rows->ignore_fluids},
+        {"ignore_fluids", parsing_float, &rows->ignore_fluids},
 
         {"face_vel", parsing_bool, &rows->face_vel},
         {"acc_x", parsing_float, &rows->acc_x},

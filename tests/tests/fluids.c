@@ -379,6 +379,7 @@ void test_fluids(void) {
             .w = FLUIDS_CELL_W,
             .h = 2 * FLUIDS_CELL_H,
             .vel_y = SPLASH_BODY_MAX_SPEED,
+            .weight = 1.0f,
         },
         &id);
     PHYSICS_update();

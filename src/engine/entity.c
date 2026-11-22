@@ -2910,10 +2910,11 @@ int ENTITY_new_entity(entity data, double x, double y, size_t* entity_id) {
     PHYSICS_new_body(
         (body){
             .type = physics_actor,
-            .x = x - w / 2.0f,
+            .x = x - w * 0.5f,
             .y = y - h,
             .w = w,
             .h = h,
+            .weight = data.weight,
         },
         &body_id);
     entity_data d = (entity_data){
@@ -2960,6 +2961,18 @@ int ENTITY_edit_entity(size_t entity_id, entity data) {
         return 2;
     }
     entity_data* d = get_entity(entity_id);
+    entity* e = &d->entity;
+    if (e->weight != data.weight || e->size != data.size) {
+        Uint8 w = 0;
+        Uint8 h = 0;
+        ENTITY_get_size(data.size, &w, &h);
+        body b = (body){0};
+        PHYSICS_get_body(d->body_id, &b);
+        b.weight = data.weight;
+        b.w = w;
+        b.h = h;
+        PHYSICS_edit_body(d->body_id, b);
+    }
     d->entity = data;
     d->flying = (d->flying && data.moves & move_fly) || only_flies(&data);
     d->climbing = d->climbing && climbs(&data);
