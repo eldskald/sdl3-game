@@ -13,7 +13,6 @@
 #include "props/vines.h"
 #include "services/csv.h"
 #include "services/json.h"
-#include "utils/logger.h"
 #include "utils/parsing.h"
 #include <SDL3/SDL.h>
 
@@ -351,7 +350,6 @@ static chunk load_from_json(const char* json) {
         jsondata* layer = JSON_at(idx, &layers);
         char* name = JSON_get("name", layer)->str;
         char* type = JSON_get("type", layer)->str;
-        debug("parsing %s layer %s", type, name);
 
         // If layer is main tilemap
         if (SDL_strcmp(name, "Main") == 0 &&
@@ -408,9 +406,7 @@ static chunk load_from_json(const char* json) {
                 fluid_type fluid =
                     *(fluid_type*)hashmap_value_at(f, &fluid_names);
                 dynarr objects = JSON_get("objects", layer)->arr;
-                debug("parsing %lu objects...", objects.len);
                 for (int i = 0; i < objects.len; i++) {
-                    debug("object %d...", i);
                     jsondata* obj = JSON_at(i, &objects);
                     double x = JSON_get("x", obj)->num;
                     double y = JSON_get("y", obj)->num;
@@ -423,7 +419,6 @@ static chunk load_from_json(const char* json) {
                                                    .type = fluid};
                     push_to_dynarr(&pool, &fluids);
                 }
-                debug("finished parsing objects");
             }
         }
 
@@ -447,8 +442,6 @@ static chunk load_from_json(const char* json) {
             c.player_x = x + offset_x;
             c.player_y = y + offset_y;
         }
-
-        debug("parsing done.");
     }
 
     deinit_hashmap(&fluid_names);
@@ -567,12 +560,8 @@ int CHUNKS_load_at(size_t id, Uint16 x, Uint16 y) {
 
 #ifdef DEV
 void CHUNK_load_from_file(char* data) {
-    debug("loading from json...");
     chunk level = load_from_json(data);
-    debug("json loaded.");
-    debug("loading chunk...");
     load_chunk_at(&level, 0, 0);
-    debug("chunk loaded.");
     SDL_free(level.map);
     deinit_dynarr(&level.fluids);
     deinit_dynarr(&level.vines);

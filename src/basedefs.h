@@ -1,7 +1,3 @@
-#pragma once
-
-#include "../out/defs.h"
-
 // Main settings
 #define WINDOW_TITLE "Game"
 #define WINDOW_SIZE_X 320

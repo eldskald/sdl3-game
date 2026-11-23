@@ -25,8 +25,8 @@ LINUX_CC := gcc
 WIN_CC	 := x86_64-w64-mingw32-gcc
 
 # Compile flags
-LINUX_COMP_FLAGS	= -std=c23 -Wall -Isrc -Ivendor --embed-dir=./
-WIN_COMP_FLAGS		= -std=c23 -Wall -Isrc -Ivendor -ISDL3/include --embed-dir=./
+LINUX_COMP_FLAGS	= -std=c23 -Wall -Isrc -Iout -Ivendor --embed-dir=./
+WIN_COMP_FLAGS		= -std=c23 -Wall -Isrc -Iout -Ivendor -ISDL3/include --embed-dir=./
 
 # Linker flags
 LINUX_LINK_FLAGS	= -lSDL3
@@ -36,13 +36,13 @@ WIN_LINK_FLAGS		= -L./SDL3/lib -lSDL3
 ifeq ($(DEV_PLATFORM), Linux)
 	EXT				:= .x86_64
 	DEV_CC			:= $(LINUX_CC)
-	DEV_COMP_FLAGS	:= $(LINUX_COMP_FLAGS) -g -Og -DDEV
+	DEV_COMP_FLAGS	:= $(LINUX_COMP_FLAGS) -DDEV
 	DEV_LINK_FLAGS	:= $(LINUX_LINK_FLAGS)
 endif
 ifeq ($(DEV_PLATFORM), Windows)
 	EXT				:= .exe
 	DEV_CC			:= $(WIN_CC)
-	DEV_COMP_FLAGS	:= $(WIN_COMP_FLAGS) -g -Og -DDEV
+	DEV_COMP_FLAGS	:= $(WIN_COMP_FLAGS) -DDEV
 	DEV_LINK_FLAGS	:= $(WIN_LINK_FLAGS)
 endif
 
@@ -54,17 +54,20 @@ clean:
 	rm -rf windows.zip linux.zip dev$(EXT)
 
 dev:
-	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(LANG_FLAGS) $(DEV_LINK_FLAGS) -o dev$(EXT)
+	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(LANG_FLAGS) -O3 $(DEV_LINK_FLAGS) -o dev$(EXT)
+
+debug:
+	$(DEV_CC) $(SRC_FILES) $(DEV_COMP_FLAGS) $(LANG_FLAGS) -g $(DEV_LINK_FLAGS) -o dev$(EXT)
 
 test:
-	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_STUBBED_FILES) $(TEST_FILES) -Itests $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o test -DTEST -fsanitize=address
+	$(DEV_CC) $(TEST_SRC_FILES) $(TEST_STUBBED_FILES) $(TEST_FILES) -O3 -Itests $(DEV_COMP_FLAGS) $(DEV_LINK_FLAGS) -o test -DTEST -fsanitize=address
 
 windows:
-	$(WIN_CC) $(RELEASE_SRC_FILES) $(WIN_COMP_FLAGS) -O2 $(LANG_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
+	$(WIN_CC) $(RELEASE_SRC_FILES) $(WIN_COMP_FLAGS) -O3 $(LANG_FLAGS) $(WIN_LINK_FLAGS) -o $(GAME_NAME).exe
 	zip -r -q windows.zip $(GAME_NAME).exe SDL3.dll
 	rm $(GAME_NAME).exe
 
 linux:
-	$(LINUX_CC) $(RELEASE_SRC_FILES) $(LINUX_COMP_FLAGS) -O2 $(LANG_FLAGS) $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
+	$(LINUX_CC) $(RELEASE_SRC_FILES) $(LINUX_COMP_FLAGS) -O3 $(LANG_FLAGS) $(LINUX_LINK_FLAGS) -o $(GAME_NAME).x86_64
 	zip -r -q linux.zip $(GAME_NAME).x86_64
 	rm $(GAME_NAME).x86_64

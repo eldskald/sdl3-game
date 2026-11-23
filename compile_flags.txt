@@ -1,8 +1,8 @@
 -std=c23
 -Wall
--g
 -DDEV
 -Isrc
+-Iout
 -Ivendor
 -Itests
 --embed-dir=./

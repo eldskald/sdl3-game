@@ -8,7 +8,7 @@
 #include "engine/particles.h"
 #include "engine/tilemap.h"
 // The real files are checked, not the mocks on `tests/paths.h`.
-#include "../../src/paths.h"
+#include "../../out/paths.h"
 #include "services/csv.h"
 #include "tests.h"
 #include <SDL3/SDL.h>

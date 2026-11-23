@@ -2,7 +2,7 @@
 
 // Replaces `src/paths.h` on tests, since `-Itests` comes before `-Isrc`. It's
 // the same paths, but the files the tests check against point to their mocks.
-#include "../src/paths.h"
+#include "../out/paths.h"
 
 #undef CHUNKS_PLATFORMS_CSV_PATH
 #undef CHUNKS_001_PATH
