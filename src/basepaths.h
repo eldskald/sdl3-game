@@ -1,6 +1,3 @@
-#pragma once
-#include "../out/paths.h"
-
 // clang-format off
 
 // Graphics

@@ -42,6 +42,9 @@
 c_defs=out/defs.h
 c_paths=out/paths.h
 
+c_basedefs=src/basedefs.h
+c_basepaths=src/basepaths.h
+
 fluids_hlsl_out=out/out_fluids.hlsli
 fluids_hlsl_includes_out=out/out_includes.hlsli
 particles_hlsl_out=out/out_particles.hlsli
@@ -94,6 +97,17 @@ tiles=""
 
 
 
+echo "Copying basedefs into defs..."
+
+cat $c_basedefs >> $c_defs
+echo "" >> $c_defs
+echo "" >> $c_defs
+echo "" >> $c_defs
+
+echo "Basedefs finished."
+
+
+
 echo "Generating tile defs..."
 
 cdefs=""
@@ -140,7 +154,7 @@ echo "#endif" >> $fluids_hlsl_out
 # Fluid include files
 while IFS=, read -r fluid _; do
     [[ $fluid == "fluid" ]] && continue
-    echo "#include \"includes/${fluid}.hlsli\"" >> $fluids_hlsl_includes_out
+    echo "#include \"includes/fluids/${fluid}.hlsli\"" >> $fluids_hlsl_includes_out
 done < $fluids_csv
 
 # fluid_bubbles HLSL function
@@ -220,6 +234,17 @@ echo "" >> $particles_hlsl_out
 echo "#endif" >> $particles_hlsl_out
 
 echo "Particle defs generated successfully."
+
+
+
+echo "Copying basedefs into defs..."
+
+cat $c_basepaths >> $c_paths
+echo "" >> $c_paths
+echo "" >> $c_paths
+echo "" >> $c_paths
+
+echo "Basedefs finished."
 
 
 
